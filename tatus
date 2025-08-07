@@ -1,0 +1,14 @@
+warning: in the working copy of 'src/App.js', LF will be replaced by CRLF the next time Git touches it
+[1mdiff --git a/src/App.js b/src/App.js[m
+[1mindex 1518197..372c02b 100644[m
+[1m--- a/src/App.js[m
+[1m+++ b/src/App.js[m
+[36m@@ -193,7 +193,7 @@[m [mconst Header = () => {[m
+             alt="Logo"[m
+             style={{ height: '24px', width: 'auto' }}[m
+           />[m
+[31m-          Sistema de Gestión RRHH ProDominicana v2.0 - PC3[m
+[32m+[m[32m          Sistema de Gestión RRHH ProDominicana v2.0 - PC4[m
+         </h1>[m
+ [m
+         </div>[m

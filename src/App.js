@@ -193,7 +193,7 @@ const Header = () => {
             alt="Logo"
             style={{ height: '24px', width: 'auto' }}
           />
-          Sistema de Gestión RRHH ProDominicana v2.0
+          Sistema de Gestión RRHH ProDominicana
         </h1>
 
         </div>

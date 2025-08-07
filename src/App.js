@@ -192,7 +192,7 @@ const Header = () => {
             src="PD-Logo-RGB-CEI.png"
             alt="Logo"
             style={{ height: '24px', width: 'auto' }}
-          />Sistema de Gestión RRHH ProDominicana v2.0 - PC4
+          />Sistema de Gestión RRHH ProDominicana v2.0 - PC1
         </h1>
 
         </div>

@@ -4,18 +4,19 @@ import { AppProvider } from './context/AppContext';
 import { useAuth } from './context/AuthContext';
 import { useApp } from './context/AppContext';
 import LoginPage from './components/auth/LoginPage';
-import { Building2, Home, User, Calendar, Clock, DollarSign, Briefcase, Users, BookOpen, BarChart3, Settings, FileText, Menu, LogOut } from 'lucide-react';
+import { Building2, User, Calendar, Menu, LogOut, Settings } from 'lucide-react'; // ✅ SOLO ICONOS USADOS
 import { getNavigationByRole } from './data/navigation';
 import VacacionesModule from './components/modules/vacaciones/VacacionesModule';
 import NominaModule from './components/modules/nomina/NominaModule';
 import AsistenciaModule from './components/modules/asistencia/AsistenciaModule';
 import CapacitacionModule from './components/modules/capacitacion/CapacitacionModule';
 import VacantesModule from './components/modules/vacantes/VacantesModule';
-// ✅ CORREGIDO: usando perfilModule con p minúscula (como está el archivo real)
 import PerfilModule from './components/modules/perfil/perfilModule';
 import EmpleadosModule from './components/modules/empleados/EmpleadosModule';
-import configuracion from './components/modules/configuracion/ConfiguracionModule';
-import ConfiguracionModule from './components/modules/configuracion/ConfiguracionModule';
+import ConfiguracionModule from './components/modules/configuracion/ConfiguracionModule'; // ✅ SOLO ESTE IMPORT
+
+// ... resto de tu código igual ...
+
 
 const Sidebar = ({ isOpen, onClose }) => {
   const { user } = useAuth();

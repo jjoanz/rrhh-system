@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useApp } from '../../context/AppContext';
-import { DEMO_USERS } from '../../';
+import { DEMO_USERS } from '../../data';
 import { 
   Building2, 
   User, 

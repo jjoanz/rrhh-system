@@ -6,11 +6,14 @@ const AppProvider = ({ children }) => {
   // Estados principales
   const [empleados, setEmpleados] = useState([]);
   const [departments, setDepartments] = useState([]);
-  
+
   // Estados de navegación/UI (FALTABAN ESTOS)
   const [activeSection, setActiveSection] = useState('dashboard');
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  
+
+  // Estado para manejar mensajes de error
+  const [errorMessage, setErrorMessage] = useState(null);
+
   // Sistema de intercomunicación entre módulos
   const [moduleData, setModuleData] = useState({
     // Datos del módulo de Empleados (FUENTE PRINCIPAL)
@@ -19,7 +22,7 @@ const AppProvider = ({ children }) => {
       datosPersonales: {},
       candidatosInternos: []
     },
-    
+
     // Datos del módulo de Configuración (CEREBRO)
     configuracion: {
       parametrosNomina: {
@@ -51,50 +54,50 @@ const AppProvider = ({ children }) => {
         jerarquia: {}
       }
     },
-    
+
     // Datos operacionales de cada módulo
     nomina: {
       empleadosData: [],
       calculosActuales: [],
       historicoNomina: []
     },
-    
+
     asistencia: {
       empleadosActivos: [],
       registrosHoy: [],
       estadisticasSemana: {}
     },
-    
+
     vacaciones: {
       empleadosVacaciones: [],
       solicitudesPendientes: [],
       calendarioAusencias: {}
     },
-    
+
     capacitacion: {
       perfilesProfesionales: [],
       cursosActivos: [],
       certificaciones: []
     },
-    
+
     vacantes: {
       candidatosInternos: [],
       posicionesAbiertas: [],
       nuevasContrataciones: []
     },
-    
+
     perfil: {
       datosPersonales: {},
       actualizaciones: {},
       preferencias: {}
     },
-    
+
     dashboard: {
       empleadosStats: {},
       metricas: {},
       alertas: []
     },
-    
+
     reportes: {
       datosOrganizacionales: {},
       metricas: {},
@@ -116,6 +119,12 @@ const AppProvider = ({ children }) => {
 
   const closeSidebar = () => {
     setSidebarOpen(false);
+  };
+
+  // Función para mostrar mensajes de error
+  const showErrorMessage = (message, title) => {
+    setErrorMessage({ title: title || 'Error', message });
+    console.error(`${title || 'Error'}: ${message}`);
   };
 
   // Función para actualizar datos de un módulo específico
@@ -196,11 +205,11 @@ const AppProvider = ({ children }) => {
   // Función para ejecutar efectos en módulos dependientes
   const triggerModuleEffects = (sourceModule, dataKey, newData) => {
     const affectedModules = getAffectedModules(sourceModule, dataKey);
-    
+
     affectedModules.forEach(targetModule => {
       // Aquí se ejecutarían las actualizaciones específicas para cada módulo
       console.log(`Actualizando ${targetModule} debido a cambios en ${sourceModule}.${dataKey}`);
-      
+
       // Ejemplos de efectos específicos:
       if (sourceModule === 'empleados' && dataKey === 'empleadosData') {
         if (targetModule === 'dashboard') {
@@ -209,7 +218,7 @@ const AppProvider = ({ children }) => {
           updateNominaEmployeeData(newData);
         }
       }
-      
+
       if (sourceModule === 'asistencia' && targetModule === 'nomina') {
         calculatePayrollFromAttendance(newData);
       }
@@ -293,15 +302,15 @@ const AppProvider = ({ children }) => {
   // Función para obtener el estado de intercomunicación
   const getIntercomStatus = () => {
     return {
-      activeModules: Object.keys(moduleData).filter(module => 
-        Object.values(moduleData[module]).some(data => 
+      activeModules: Object.keys(moduleData).filter(module =>
+        Object.values(moduleData[module]).some(data =>
           Array.isArray(data) ? data.length > 0 : Object.keys(data || {}).length > 0
         )
       ),
       recentNotifications: moduleNotifications.slice(-10),
       dataFlows: Object.keys(moduleData).map(module => ({
         module,
-        hasData: Object.values(moduleData[module]).some(data => 
+        hasData: Object.values(moduleData[module]).some(data =>
           Array.isArray(data) ? data.length > 0 : Object.keys(data || {}).length > 0
         ),
         lastUpdate: moduleNotifications
@@ -314,7 +323,7 @@ const AppProvider = ({ children }) => {
   // Función para limpiar notificaciones antiguas
   const clearOldNotifications = () => {
     const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-    setModuleNotifications(prev => 
+    setModuleNotifications(prev =>
       prev.filter(notif => new Date(notif.timestamp) > oneDayAgo)
     );
   };
@@ -340,38 +349,43 @@ const AppProvider = ({ children }) => {
     setEmpleados,
     departments,
     setDepartments,
-    
+
     // Estados de navegación/UI ✅ AGREGADOS
     activeSection,
     setActiveSection,
     sidebarOpen,
     setSidebarOpen,
-    
+
     // Funciones de navegación/UI ✅ AGREGADAS
     navigateToSection,
     toggleSidebar,
     closeSidebar,
-    
+
     // Sistema de intercomunicación
     moduleData,
     updateModuleData,
     getModuleData,
-    
+
     // Notificaciones
     moduleNotifications,
-    
+
     // Suscripciones
     subscribeToModule,
     unsubscribeFromModule,
-    
+
     // Utilidades
     getIntercomStatus,
     forceSyncAllModules,
-    
+
     // Funciones específicas de integración
     updateDashboardStats,
     updateNominaEmployeeData,
-    calculatePayrollFromAttendance
+    calculatePayrollFromAttendance,
+
+    // Función para mostrar errores
+    showErrorMessage,
+    errorMessage,
+    setErrorMessage
   };
 
   return (
@@ -391,3 +405,4 @@ const useApp = () => {
 };
 
 export { AppContext, AppProvider, useApp };
+showErrorMessage

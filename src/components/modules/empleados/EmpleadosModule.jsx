@@ -220,17 +220,32 @@ const EmpleadosModule = () => {
     'Especialista en Seguridad', 'Coordinador de Operaciones'
   ];
 
+const axios = require("axios");
+
+
   // Inicialización
   useEffect(() => {
-    setCargando(true);
-    setTimeout(() => {
-      setEmpleados(empleadosMock);
+  const fetchData = async () => {
+    try {
+      setCargando(true);
+
+      // 🔹 Obtener empleados desde backend
+      const res = await axios.get('http://localhost:5000/api/empleados/list');
+      setEmpleados(res.data);
+
+      // 🔹 Mantener mocks por ahora para departamentos y puestos
       setDepartamentos(departamentosMock);
       setPuestos(puestosMock);
-      setCargando(false);
-    }, 1000);
-  }, []);
 
+    } catch (error) {
+      console.error("Error cargando empleados:", error);
+    } finally {
+      setCargando(false);
+    }
+  };
+
+  fetchData();
+}, []);
   // Filtrado y búsqueda
   const empleadosFiltrados = useMemo(() => {
     return empleados.filter(empleado => {

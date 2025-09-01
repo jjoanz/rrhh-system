@@ -12,6 +12,7 @@ import {
   AlertCircle 
 } from 'lucide-react';
 
+
 const LoginPage = () => {
   const { login } = useAuth();
   const { showSuccessMessage, showErrorMessage } = useApp();
@@ -117,7 +118,7 @@ const LoginPage = () => {
               margin: '0 auto',
               width: '4rem',
               height: '4rem',
-              background: 'linear-gradient(135deg, #3b82f6, #6366f1)',
+              background: 'linear-gradient(135deg, #f63b3bff, #6366f1)',
               borderRadius: '1rem',
               display: 'flex',
               alignItems: 'center',

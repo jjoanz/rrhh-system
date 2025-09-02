@@ -98,18 +98,14 @@ useEffect(() => {
         departamento: emp.DEPARTAMENTO_NOMBRE || 'Sin departamento',
         puesto: emp.CARGO || 'Sin puesto',
         supervisor: '',
-        fechaIngreso: emp.FECHAINGRESO ? 
+        fechaIngreso: emp.FECHAINGRESO ? emp.FECHAINGRESO.split('T')[0] : '', // "2020-08-16"
+        fechaIngresoDisplay: emp.FECHAINGRESO ? 
           (() => {
             try {
               const fecha = new Date(emp.FECHAINGRESO);
-              // Verificar si la fecha es válida
-              if (isNaN(fecha.getTime())) {
-                console.warn('Fecha inválida para empleado:', emp.EmpleadoID, emp.FECHAINGRESO);
-                return 'Fecha no válida';
-              }
+              if (isNaN(fecha.getTime())) return 'Fecha no válida';
               return fecha.toLocaleDateString('es-DO');
             } catch (error) {
-              console.warn('Error procesando fecha:', emp.FECHAINGRESO, error);
               return 'Fecha no válida';
             }
           })() : 'Sin fecha',
@@ -615,19 +611,50 @@ const styles = {
 
   // Componente de formulario de empleado
   const FormularioEmpleado = ({ empleado, onGuardar, onCancelar }) => {
-    const [formData, setFormData] = useState(empleado || {
-      nombre: '',
-      apellido: '',
-      email: '',
-      telefono: '',
-      direccion: '',
-      departamento: '',
-      puesto: '',
-      supervisor: '',
-      fechaIngreso: '',
-      salario: '',
-      estado: 'activo'
-    });
+    const [formData, setFormData] = useState(() => {
+  // Función para convertir fecha de SQL Server
+          const convertirFecha = (fecha) => {
+            if (!fecha) return '';
+            try {
+              const fechaValida = new Date(fecha);
+              if (isNaN(fechaValida.getTime())) return '';
+              return fechaValida.toISOString().split('T')[0];
+            } catch (error) {
+              console.error('Error al convertir fecha en formulario:', error);
+              return '';
+            }
+          };
+
+          if (empleado) {
+            return {
+              id: empleado.id || '',
+              nombre: empleado.nombre || '',
+              apellido: empleado.apellido || '',
+              email: empleado.email || '',
+              telefono: empleado.telefono || '',
+              direccion: empleado.direccion || '',
+              departamento: empleado.departamento || '',
+              puesto: empleado.puesto || '',
+              supervisor: empleado.supervisor || '',
+              fechaIngreso: convertirFecha(empleado.fechaIngreso),
+              salario: empleado.salario || '',
+              estado: empleado.estado || 'activo'
+            };
+          }
+          return {
+            nombre: '',
+            apellido: '',
+            email: '',
+            telefono: '',
+            direccion: '',
+            departamento: '',
+            puesto: '',
+            supervisor: '',
+            fechaIngreso: '',
+            salario: '',
+            estado: 'activo'
+          };
+        });
 
     const handleGuardar = () => {
       if (!formData.nombre || !formData.apellido || !formData.email || !formData.departamento || !formData.puesto || !formData.fechaIngreso) {
@@ -718,7 +745,7 @@ const styles = {
                     style={styles.select}
                   >
                     <option value="">Seleccionar departamento</option>
-                    {departamentos.map(dept => (
+                    {Array.isArray(departamentos) && departamentos.map(dept => (
                       <option key={dept.id} value={dept.nombre}>{dept.nombre}</option>
                     ))}
                   </select>
@@ -727,15 +754,17 @@ const styles = {
                 <div style={styles.formGroup}>
                   <label style={styles.label}>Puesto *</label>
                   <select
-                    value={formData.puesto}
-                    onChange={(e) => setFormData({...formData, puesto: e.target.value})}
-                    style={styles.select}
-                  >
-                    <option value="">Seleccionar puesto</option>
-                    {puestos.map(puesto => (
-                      <option key={puesto} value={puesto}>{puesto}</option>
-                    ))}
-                  </select>
+                      value={formData.puesto}
+                      onChange={(e) => setFormData({...formData, puesto: e.target.value})}
+                      style={styles.select}
+                        >
+                      <option value="">Seleccionar puesto</option>
+                      {Array.isArray(puestos) && puestos.map(puesto => (
+                        <option key={puesto.id || puesto.nombre} value={puesto.nombre}>
+                          {puesto.nombre}
+                        </option>
+                      ))}
+                    </select>
                 </div>
                 
                 <div style={styles.formGroup}>
@@ -746,7 +775,7 @@ const styles = {
                     style={styles.select}
                   >
                     <option value="">Sin supervisor</option>
-                    {empleados.map(emp => (
+                    {Array.isArray(empleados) && empleados.map(emp => (
                       <option key={emp.id} value={`${emp.nombre} ${emp.apellido}`}>
                         {emp.nombre} {emp.apellido}
                       </option>
@@ -825,7 +854,12 @@ const styles = {
       </div>
     );
   }
-
+    // DEBUGGING - QUITAR DESPUÉS
+  console.log('Primer empleado:', empleados[0]);
+  if (empleados[0]) {
+    console.log('Fecha del primer empleado:', empleados[0].fechaIngreso);
+    console.log('Tipo de fecha:', typeof empleados[0].fechaIngreso);
+  }
   return (
     <div style={styles.container}>
       <style>
@@ -1040,21 +1074,48 @@ const styles = {
                   </span>
                 </td>
                 <td style={styles.tableCell}>
-                  {new Date(empleado.fechaIngreso).toLocaleDateString()}
+                  {empleado.fechaIngresoDisplay || 'Sin fecha'}
                 </td>
                 <td style={styles.tableCell}>
                   <div style={styles.actionButtons}>
                     <button
-                      onClick={() => {
-                        setEmpleadoSeleccionado(empleado);
-                        setModalActivo('editar');
-                      }}
-                      style={{ ...styles.actionButton, color: '#059669' }}
-                      className="action-button"
-                      title="Editar"
-                    >
-                      <Edit size={16} />
-                    </button>
+                        onClick={() => {
+                          const empleadoLimpio = {
+                            id: empleado.id || '',
+                            nombre: empleado.nombre || '',
+                            apellido: empleado.apellido || '',
+                            email: empleado.email || '',
+                            telefono: empleado.telefono || '',
+                            direccion: empleado.direccion || '',
+                            departamento: empleado.departamento || '',
+                            puesto: empleado.puesto || '',
+                            supervisor: empleado.supervisor || '',
+                            fechaIngreso: empleado.fechaIngreso || '',
+                            salario: empleado.salario || '',
+                            estado: empleado.estado || 'activo'
+                          };
+                          
+                          setEmpleadoSeleccionado(empleadoLimpio);
+                          setModalActivo('editar');
+                        }}
+                        style={{ ...styles.actionButton, color: '#059669' }}
+                        className="action-button"
+                        title="Editar"
+                      >
+                        <Edit size={16} />
+                      </button>
+                      <button
+                        onClick={() => {
+                          if (window.confirm('¿Estás seguro de que quieres eliminar este empleado?')) {
+                            eliminarEmpleado(empleado.id);
+                          }
+                        }}
+                        style={{ ...styles.actionButton, color: '#dc2626' }}
+                        className="action-button"
+                        title="Eliminar"
+                      >
+                        <Trash2 size={16} />
+                      </button>
                     <button
                       onClick={() => {
                         if (window.confirm('¿Estás seguro de que quieres eliminar este empleado?')) {

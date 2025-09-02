@@ -91,7 +91,7 @@ useEffect(() => {
         codigo: `EMP${String(emp.EmpleadoID).padStart(3, '0')}`,
         nombre: emp.NOMBRE || '',
         apellido: emp.APELLIDO || '',
-        email: emp.Email || `${(emp.NOMBRE || 'empleado').toLowerCase().replace(/\s+/g, '')}@empresa.com`,
+        email: emp.Email || `${(emp.NOMBRE || 'empleado').split(' ')[0].toLowerCase()}${(emp.APELLIDO || 'empleado').split(' ')[0].toLowerCase()}@prodominicana.gob.do`,
         telefono: emp.Telefono || '',
         direccion: emp.Direccion || '',
         // Usar el nombre del departamento del JOIN
@@ -276,7 +276,7 @@ const estadisticas = useMemo(() => {
   };
 
   // Estilos en línea
-  const styles = {
+const styles = {
   container: {
     padding: '24px'
   },
@@ -326,6 +326,11 @@ const estadisticas = useMemo(() => {
     color: '#374151',
     border: '1px solid #d1d5db'
   },
+  buttonFilter: {
+    height: '40px',
+    whiteSpace: 'nowrap',
+    flex: '0 0 auto'
+  },
   statsGrid: {
     display: 'grid',
     gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
@@ -370,17 +375,16 @@ const estadisticas = useMemo(() => {
     marginBottom: '24px'
   },
   filtersContent: {
-  display: 'flex',
-  gap: '16px',
-  alignItems: 'center',
-  flexWrap: 'wrap' // ✅ permite que se acomoden en varias filas si no hay espacio
-  },
-  searchContainer: {
-  position: 'relative',
-  flex: '2',          // ✅ el buscador ocupa más espacio que los selects
-  minWidth: '250px',  // más flexible que 300px
-  maxWidth: '500px'
-  },
+      display: 'flex',
+      flexWrap: 'nowrap',   // 🚫 no deja que se vayan a otra línea
+      gap: '20px',
+      alignItems: 'center',
+      justifyContent: 'space-between'
+      },
+    searchContainer: {
+      position: 'relative',
+      flex: '0 0 300px',    // ancho fijo de 300px, no se estira más
+      },
   searchInput: {
     width: '100%',
     height: '40px',
@@ -392,21 +396,20 @@ const estadisticas = useMemo(() => {
   },
   searchIcon: {
     position: 'absolute',
-    left: '24px',
+    left: '12px',
     top: '50%',
     transform: 'translateY(-50%)',
     color: '#9ca3af'
   },
   select: {
-  flex: '1',          // ✅ que se estiren de forma proporcional
-  minWidth: '180px',  // tamaño mínimo razonable
-  height: '40px',
-  padding: '0 12px',
-  border: '1px solid #d1d5db',
-  borderRadius: '8px',
-  backgroundColor: 'white',
-  fontSize: '14px',
-  outline: 'none'
+    flex: '0 0 200px',      // ancho fijo para cada select
+    height: '40px',
+    padding: '0 12px',
+    border: '1px solid #d1d5db',
+    borderRadius: '8px',
+    backgroundColor: 'white',
+    fontSize: '14px',
+    outline: 'none'
   },
   tableCard: {
     backgroundColor: 'white',
@@ -607,6 +610,7 @@ const estadisticas = useMemo(() => {
     borderColor: '#2563eb'
   }
 };
+
 
 
   // Componente de formulario de empleado
@@ -936,7 +940,7 @@ const estadisticas = useMemo(() => {
         </div>
       </div>
 
-      {/* Filtros */}
+     {/* Filtros */}
       <div style={styles.filtersCard}>
         <div style={styles.filtersContent}>
           <div style={styles.searchContainer}>
@@ -945,15 +949,20 @@ const estadisticas = useMemo(() => {
               type="text"
               placeholder="Buscar por nombre, email o código..."
               value={filtros.busqueda}
-              onChange={(e) => setFiltros({...filtros, busqueda: e.target.value})}
+              onChange={(e) => setFiltros({ ...filtros, busqueda: e.target.value })}
               style={styles.searchInput}
               className="search-input"
             />
           </div>
-          
+          <br />
+          <br />
+          <br />
+          <br />
+          <br />
+
           <select
             value={filtros.departamento}
-            onChange={(e) => setFiltros({...filtros, departamento: e.target.value})}
+            onChange={(e) => setFiltros({ ...filtros, departamento: e.target.value })}
             style={styles.select}
             className="select"
           >
@@ -962,10 +971,10 @@ const estadisticas = useMemo(() => {
               <option key={dept.id} value={dept.nombre}>{dept.nombre}</option>
             ))}
           </select>
-          
+
           <select
             value={filtros.estado}
-            onChange={(e) => setFiltros({...filtros, estado: e.target.value})}
+            onChange={(e) => setFiltros({ ...filtros, estado: e.target.value })}
             style={styles.select}
             className="select"
           >
@@ -975,14 +984,16 @@ const estadisticas = useMemo(() => {
             <option value="vacaciones">En Vacaciones</option>
             <option value="licencia">En Licencia</option>
           </select>
-          
-          <button style={{ ...styles.button, ...styles.buttonSecondary }} className="button-secondary">
+
+          <button
+            style={{ ...styles.button, ...styles.buttonSecondary, ...styles.buttonFilter }}
+            className="button-secondary"
+          >
             <Download size={16} />
             Exportar
           </button>
         </div>
       </div>
-
       {/* Tabla */}
       <div style={styles.tableCard}>
         <table style={styles.table}>

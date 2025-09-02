@@ -13,15 +13,15 @@ import asistenciaRoutes from './routes/asistenciaRoutes.js';
 import departamentosRoutes from './routes/departamentosRoutes.js';
 import puestosRoutes from './routes/puestosRoutes.js';
 
+
 // --- INICIALIZAR EXPRESS ---
 const app = express();
-app.use(express.json());
+app.use(express.json()); // <-- AGREGAR ESTA LÍNEA
+app.use(cors({
+  origin: 'http://localhost:3000',
+  credentials: true
+}));
 
-// --- HABILITAR CORS ---
-// Permitir cualquier origen (solo para desarrollo)
-app.use(cors());
-// O limitar a tu frontend específico
-// app.use(cors({ origin: 'http://localhost:3000' }));
 
 const PORT = 5000;
 
@@ -61,3 +61,4 @@ if (fs.existsSync(frontendBuildPath)) {
 app.listen(PORT, () => {
   console.log(`🚀 Servidor backend corriendo en http://localhost:${PORT}`);
 });
+

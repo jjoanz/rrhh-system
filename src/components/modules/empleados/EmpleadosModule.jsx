@@ -65,13 +65,6 @@ const EmpleadosModule = () => {
     'Especialista en Seguridad', 'Coordinador de Operaciones'
   ];
 
-
-
-
-  // Inicialización
-  // Inicialización
-// Inicialización
-// Inicialización
 // Inicialización
 useEffect(() => {
   const fetchData = async () => {

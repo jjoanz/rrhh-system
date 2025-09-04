@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { getNominas, procesarNomina, getNominaById, marcarNominaPagada, getEmpleadosActivos } from '../../../api/nominaService';
 import { 
   DollarSign, Download, Calendar, FileText, Eye, Calculator, CreditCard,
   PieChart, TrendingUp, Settings, AlertCircle, CheckCircle, Clock, User,
@@ -10,6 +11,38 @@ import {
 const SistemaNominaCompleto = () => {
   // Estados principales
   const [activeTab, setActiveTab] = useState('empleados');
+  const [nominasProcesadas, setNominasProcesadas] = useState([]);
+  const [empleados, setEmpleados] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  // Función para cargar empleados
+  const cargarEmpleados = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const data = await getEmpleadosActivos();
+      setEmpleados(data);
+      console.log('Empleados cargados:', data);
+    } catch (error) {
+      console.error('Error al cargar empleados:', error);
+      setError('Error al cargar empleados desde la base de datos');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // useEffect para cargar cuando cambie de tab
+  useEffect(() => {
+    if (activeTab === 'empleados') {
+      cargarEmpleados();
+    }
+  }, [activeTab]);
+
+  
+  
+  
+  // resto de tu código...
 
 // Modal de incidencias
 const ModalIncidencia = ({ empleado, onClose, onSave, empleados, configNomina }) => {
@@ -393,7 +426,7 @@ const ModalIncidencia = ({ empleado, onClose, onSave, empleados, configNomina })
     </div>
   );
 };
-  const [loading, setLoading] = useState(false);
+  
   const [selectedPeriodo, setSelectedPeriodo] = useState('2024-07');
   const [user] = useState({ role: 'admin' }); // Usuario actual
   
@@ -405,78 +438,9 @@ const ModalIncidencia = ({ empleado, onClose, onSave, empleados, configNomina })
   const [modalOperacionMasiva, setModalOperacionMasiva] = useState({ open: false, tipo: null });
 
   // Catálogo de empleados mejorado
-  const [empleados, setEmpleados] = useState([
-    {
-      id: 1,
-      cedula: '001-1234567-8',
-      nombre: 'Juan Carlos',
-      apellidos: 'Pérez González',
-      cargo: 'Desarrollador Senior',
-      departamento: 'Tecnología',
-      tipoContrato: 'fijo',
-      salarioBase: 45000,
-      tipoSalario: 'mensual',
-      fechaIngreso: '2023-01-15',
-      fechaNacimiento: '1990-05-20',
-      banco: 'Banco Popular',
-      numeroCuenta: '123456789',
-      estado: 'activo',
-      telefono: '809-555-0001',
-      email: 'juan.perez@company.com',
-      direccion: 'Av. Winston Churchill #25, Santo Domingo',
-      sexo: 'M',
-      estadoCivil: 'soltero',
-      nacionalidad: 'dominicana',
-      tipoDocumento: 'cedula',
-      nivelEducativo: 'universitario',
-      profesion: 'Ingeniero en Sistemas',
-      contactoEmergencia: {
-        nombre: 'María Pérez',
-        telefono: '809-555-9999',
-        relacion: 'madre'
-      },
-      prestaciones: {
-        vacacionesAcumuladas: 14,
-        cesantiaAcumulada: 23,
-        regaliaDiciembreUltimoAno: 45000
-      }
-    },
-    {
-      id: 2,
-      cedula: '001-8765432-1',
-      nombre: 'María Elena',
-      apellidos: 'García Rodríguez',
-      cargo: 'Analista de RRHH',
-      departamento: 'Recursos Humanos',
-      tipoContrato: 'fijo',
-      salarioBase: 35000,
-      tipoSalario: 'mensual',
-      fechaIngreso: '2022-08-10',
-      fechaNacimiento: '1988-12-15',
-      banco: 'Banco BHD',
-      numeroCuenta: '987654321',
-      estado: 'activo',
-      telefono: '809-555-0002',
-      email: 'maria.garcia@company.com',
-      direccion: 'Calle Mercedes #123, Santiago',
-      sexo: 'F',
-      estadoCivil: 'casada',
-      nacionalidad: 'dominicana',
-      tipoDocumento: 'cedula',
-      nivelEducativo: 'universitario',
-      profesion: 'Licenciada en Psicología',
-      contactoEmergencia: {
-        nombre: 'Pedro García',
-        telefono: '809-555-8888',
-        relacion: 'esposo'
-      },
-      prestaciones: {
-        vacacionesAcumuladas: 14,
-        cesantiaAcumulada: 46,
-        regaliaDiciembreUltimoAno: 35000
-      }
-    }
-  ]);
+  
+ 
+
 
   // Configuración avanzada
   const [configNomina, setConfigNomina] = useState({
@@ -590,7 +554,29 @@ const ModalIncidencia = ({ empleado, onClose, onSave, empleados, configNomina })
   ]);
 
   // Nóminas procesadas
-  const [nominasProcesadas, setNominasProcesadas] = useState([]);
+
+  const cargarNominas = async () => {
+  try {
+    setLoading(true);
+    setError(null);
+    const data = await getNominas(); 
+    setNominasProcesadas(data);
+    console.log('Nóminas cargadas:', data);
+  } catch (error) {
+    console.error('Error al cargar nóminas:', error);
+    setError('Error al cargar nóminas desde la base de datos');
+  } finally {
+    setLoading(false);
+  }
+};
+
+useEffect(() => {
+  if (activeTab === 'nomina') {
+    cargarNominas();
+  }
+}, [activeTab]);
+
+
 
   // Utilidades
   const formatearMoneda = (valor) => {
@@ -829,33 +815,23 @@ const ModalIncidencia = ({ empleado, onClose, onSave, empleados, configNomina })
   };
 
   // Procesar nómina completa
-  const procesarNominaCompleta = () => {
-    setLoading(true);
-    
-    setTimeout(() => {
-      const empleadosActivos = empleados.filter(e => e.estado === 'activo');
-      const nuevasNominas = empleadosActivos.map(empleado => {
-        const calculo = calcularNominaEmpleado(empleado.id, selectedPeriodo);
-        if (!calculo) return null;
-
-        return {
-          id: Date.now() + empleado.id,
-          empleadoId: empleado.id,
-          periodo: selectedPeriodo,
-          fechaProceso: new Date().toISOString().split('T')[0],
-          fechaPago: null,
-          estado: 'procesada',
-          conceptos: calculo.conceptos,
-          prestaciones: calculo.prestaciones,
-          metodoPago: null,
-          referenciaPago: null
-        };
-      }).filter(Boolean);
-
-      setNominasProcesadas(prev => [...nuevasNominas, ...prev]);
+    const procesarNominaCompleta = async () => {
+    try {
+      setLoading(true);
+      const empleadosIds = empleados.filter(e => e.estado === 'activo').map(e => e.id);
+      
+      const resultado = await procesarNomina({
+        periodo: selectedPeriodo,
+        empleadosIds: empleadosIds
+      });
+      
+      await cargarNominas(); // Recargar la lista
+      showSuccessMessage(resultado.message);
+    } catch (error) {
+      showErrorMessage('Error al procesar nómina');
+    } finally {
       setLoading(false);
-      showSuccessMessage(`✅ Nómina procesada para ${nuevasNominas.length} empleados`);
-    }, 2000);
+    }
   };
 
   // Renderizado de empleados con CRUD completo
@@ -994,6 +970,7 @@ const ModalIncidencia = ({ empleado, onClose, onSave, empleados, configNomina })
                 </th>
                 <th style={{ padding: '0.75rem', textAlign: 'left', fontSize: '0.875rem', fontWeight: '600', color: '#374151' }}>
                   Estado
+                  
                 </th>
                 <th style={{ padding: '0.75rem', textAlign: 'center', fontSize: '0.875rem', fontWeight: '600', color: '#374151' }}>
                   Acciones
@@ -1030,7 +1007,7 @@ const ModalIncidencia = ({ empleado, onClose, onSave, empleados, configNomina })
                         {formatearMoneda(empleado.salarioBase)}
                       </div>
                       <div style={{ fontSize: '0.875rem', color: '#6b7280' }}>
-                        {empleado.tipoSalario === 'mensual' ? 'Mensual' : 'Por hora'}
+                        {empleado.tipoSalario === 'mensual' ? 'Mensual' : 'Actual'}
                       </div>
                     </td>
                     <td style={{ padding: '0.75rem', fontSize: '0.875rem', color: '#6b7280' }}>
@@ -1043,9 +1020,9 @@ const ModalIncidencia = ({ empleado, onClose, onSave, empleados, configNomina })
                         fontSize: '0.75rem',
                         fontWeight: '500',
                         background: empleado.estado === 'activo' ? '#dcfce7' : 
-                                   empleado.estado === 'suspendido' ? '#fef3c7' : '#fee2e2',
-                        color: empleado.estado === 'activo' ? '#166534' : 
-                               empleado.estado === 'suspendido' ? '#d97706' : '#dc2626'
+                                   empleado.estado === 'suspendido' ? '#fef3c7' : '#b6daafff',
+                        color: empleado.estado === 'activo' ? '#045523ff' : 
+                               empleado.estado === 'suspendido' ? '#a7d891ff' : '#335803ff'
                       }}>
                         {empleado.estado}
                       </span>

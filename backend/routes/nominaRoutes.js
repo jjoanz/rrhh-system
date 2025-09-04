@@ -5,17 +5,24 @@ import {
   procesarNomina,
   marcarNominaPagada,
   generarReporteNomina,
-  eliminarNomina
+  eliminarNomina,
+  getEmpleadosActivos
 } from '../controllers/nominaController.js';
 
 const router = express.Router();
+
+// RUTAS ESPECÍFICAS PRIMERO (antes de las rutas dinámicas con parámetros)
 
 // GET /api/nomina/list - Listar todas las nóminas con filtros opcionales
 // Query params: periodo, empleadoId, estado
 router.get('/list', getNominas);
 
-// GET /api/nomina/:id - Obtener detalle de una nómina específica
-router.get('/:id', getNominaById);
+// GET /api/nomina/empleados-activos - Obtener empleados activos para nómina
+router.get('/empleados-activos', getEmpleadosActivos);
+
+// GET /api/nomina/reportes/generar - Generar reportes de nómina
+// Query params: periodo?, tipo? (completo|resumen|aportes)
+router.get('/reportes/generar', generarReporteNomina);
 
 // POST /api/nomina/procesar - Procesar nueva nómina
 // Body: { periodo: "2024-01", empleadosIds?: [1,2,3] }
@@ -25,9 +32,10 @@ router.post('/procesar', procesarNomina);
 // Body: { nominaIds: [1,2,3], fechaPago: "2024-01-31", metodoPago: "transferencia", referenciaPago?: "REF123" }
 router.put('/pagar', marcarNominaPagada);
 
-// GET /api/nomina/reportes/generar - Generar reportes de nómina
-// Query params: periodo?, tipo? (completo|resumen|aportes)
-router.get('/reportes/generar', generarReporteNomina);
+// RUTAS DINÁMICAS AL FINAL (con parámetros como :id)
+
+// GET /api/nomina/:id - Obtener detalle de una nómina específica
+router.get('/:id', getNominaById);
 
 // DELETE /api/nomina/:id - Eliminar nómina (solo si no está pagada)
 router.delete('/:id', eliminarNomina);

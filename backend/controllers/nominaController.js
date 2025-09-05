@@ -48,7 +48,7 @@ export const getNominas = async (req, res) => {
         n.TotalDeducciones,
         n.SalarioNeto
       FROM Nomina n
-      JOIN Empleado e ON n.EmpleadoID = e.EmpleadoID
+      JOIN Empleados e ON n.EmpleadoID = e.EmpleadoID
       WHERE 1=1
     `;
 

@@ -15,30 +15,41 @@ const SistemaNominaCompleto = () => {
   const [empleados, setEmpleados] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  console.log('📋 Estado actual empleados:', empleados?.length || 0, empleados);
+  console.log('🔄 Loading:', loading);
+  console.log('❌ Error:', error);
 
-  // Función para cargar empleados
-  const cargarEmpleados = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const data = await getEmpleadosActivos();
-      setEmpleados(data);
-      console.log('Empleados cargados:', data);
-    } catch (error) {
-      console.error('Error al cargar empleados:', error);
-      setError('Error al cargar empleados desde la base de datos');
-    } finally {
-      setLoading(false);
-    }
-  };
+ // Función para cargar empleados
+const cargarEmpleados = async () => {
+ try {
+   console.log('🚀 Iniciando cargarEmpleados...');
+   setLoading(true);
+   setError(null);
+   const data = await getEmpleadosActivos();
+   console.log('✅ Empleados recibidos:', data);
+   console.log('📊 Cantidad de empleados:', data?.length || 0);
+   setEmpleados(data);
+   console.log('🎯 Estado empleados después de setEmpleados:', data);
+ } catch (error) {
+   console.error('❌ Error al cargar empleados:', error);
+   setError('Error al cargar empleados desde la base de datos');
+ } finally {
+   setLoading(false);
+ }
+};
 
-  // useEffect para cargar cuando cambie de tab
-  useEffect(() => {
-    if (activeTab === 'empleados') {
-      cargarEmpleados();
-    }
-  }, [activeTab]);
-
+// useEffect para cargar cuando cambie de tab
+useEffect(() => {
+ console.log('🔄 Tab cambió a:', activeTab);
+ console.log('🔄 Tipo de activeTab:', typeof activeTab);
+ 
+ if (activeTab === 'empleados') {
+   console.log('✅ Ejecutando cargarEmpleados...');
+   cargarEmpleados();
+ } else {
+   console.log('❌ activeTab no es "empleados", es:', activeTab);
+ }
+}, [activeTab]);
   
   
   
@@ -559,7 +570,7 @@ const ModalIncidencia = ({ empleado, onClose, onSave, empleados, configNomina })
   try {
     setLoading(true);
     setError(null);
-    const data = await getNominas(); 
+    const data = await getNominas(); // ✅ CAMBIAR: debe ser getNominas()
     setNominasProcesadas(data);
     console.log('Nóminas cargadas:', data);
   } catch (error) {
@@ -682,7 +693,7 @@ useEffect(() => {
   // Cálculo mejorado de nómina
   const calcularNominaEmpleado = (empleadoId, periodo) => {
     const empleado = empleados.find(e => e.id === empleadoId);
-    if (!empleado || empleado.estado !== 'activo') return null;
+    if (!empleado || empleado.estado?.toLowerCase() !== 'activo') return null;
 
     // Obtener incidencias del período
     const incidenciasPeriodo = incidencias.filter(i => 
@@ -698,16 +709,14 @@ useEffect(() => {
       salarioBase = empleado.salarioBase * horasNormales;
     }
 
-    // Calcular horas extras
-    const horasExtras = incidenciasPeriodo
-      .filter(i => i.tipo === 'horas_extra' && i.aprobado)
-      .reduce((total, incidencia) => {
-        const valorHora = empleado.tipoSalario === 'por_hora' 
-          ? empleado.salarioBase 
-          : empleado.salarioBase / 184;
-        const recargo = configNomina.recargosHorarios.find(r => r.tipo === incidencia.tipoRecargo);
-        return total + (incidencia.horas * valorHora * (recargo?.multiplicador || 1));
-      }, 0);
+    // ✅ Horas extras solo manuales
+      const valorHora = empleado.tipoSalario === 'por_hora'
+        ? empleado.salarioBase
+        : empleado.salarioBase / 184;
+
+      // Si no tiene definido horasExtras, se asume 0
+      const horasExtras = (empleado.horasExtras || 0) * valorHora;
+
 
     // Calcular descuentos por faltas
     const faltas = incidenciasPeriodo.filter(i => i.tipo === 'falta' && !i.justificada);
@@ -716,17 +725,13 @@ useEffect(() => {
       return total + valorDia;
     }, 0);
 
-    // Calcular bonificaciones
-    const bonificacionesFijas = configNomina.bonificaciones
-      .filter(b => b.tipo === 'fijo' && b.activa)
-      .reduce((total, b) => total + b.monto, 0);
+    // Calcular bonificaciones (desactivadas por ahora)
+      const bonificacionesFijas = 0;
+      const bonificacionesVariables = 0;
+      const totalBonificaciones = 0;
 
-    const bonificacionesVariables = configNomina.bonificaciones
-      .filter(b => b.tipo === 'variable' && b.activa)
-      .reduce((total, b) => total + (salarioBase * b.porcentaje / 100), 0);
-
-    const totalBonificaciones = bonificacionesFijas + bonificacionesVariables;
-    const totalDevengado = salarioBase + horasExtras + totalBonificaciones - descuentoFaltas;
+      // Solo salario base menos descuentos
+      const totalDevengado = salarioBase - descuentoFaltas;
 
     // Calcular deducciones legales
     const deduccionTSS = Math.min(
@@ -788,7 +793,7 @@ useEffect(() => {
           
         case 'regalia_navidena':
           // Calcular regalía para todos los empleados activos
-          const empleadosActivos = empleados.filter(e => e.estado === 'activo');
+          const empleadosActivos = empleados.filter(e => e.estado?.toLowerCase() === 'activo');
           console.log(`Calculando regalía navideña para ${empleadosActivos.length} empleados`);
           break;
           
@@ -818,7 +823,7 @@ useEffect(() => {
     const procesarNominaCompleta = async () => {
     try {
       setLoading(true);
-      const empleadosIds = empleados.filter(e => e.estado === 'activo').map(e => e.id);
+      const empleadosIds = empleados.filter(e => e.estado?.toLowerCase() === 'activo').map(e => e.id);
       
       const resultado = await procesarNomina({
         periodo: selectedPeriodo,
@@ -1333,8 +1338,15 @@ useEffect(() => {
 
   // Renderizado de nómina mejorado
   const renderNomina = () => {
-    const empleadosActivos = empleados.filter(e => e.estado === 'activo');
+    const empleadosActivos = empleados.filter(e => e.estado?.toLowerCase() === 'activo');
     const calculosNomina = empleadosActivos.map(emp => calcularNominaEmpleado(emp.id, selectedPeriodo)).filter(Boolean);
+    // AGREGAR ESTAS LÍNEAS DE DEBUG:
+      console.log('🔍 Empleados activos:', empleadosActivos.length);
+      console.log('🔍 Cálculos antes del filter:', empleadosActivos.map(emp => calcularNominaEmpleado(emp.id, selectedPeriodo)));
+      console.log('🔍 Cálculos después del filter:', calculosNomina.length);
+      console.log('🔍 Primer empleado activo:', empleadosActivos[0]);
+      console.log('🔍 selectedPeriodo:', selectedPeriodo);
+
     const totalNomina = calculosNomina.reduce((total, calc) => total + calc.conceptos.salarioNeto, 0);
     const totalDeducciones = calculosNomina.reduce((total, calc) => total + calc.conceptos.totalDeducciones, 0);
 
@@ -1447,9 +1459,11 @@ useEffect(() => {
                   <th style={{ padding: '0.75rem', textAlign: 'right', fontSize: '0.875rem', fontWeight: '600', color: '#374151' }}>
                     Salario Base
                   </th>
+                  
                   <th style={{ padding: '0.75rem', textAlign: 'right', fontSize: '0.875rem', fontWeight: '600', color: '#374151' }}>
                     Extras/Bonos
                   </th>
+
                   <th style={{ padding: '0.75rem', textAlign: 'right', fontSize: '0.875rem', fontWeight: '600', color: '#374151' }}>
                     Descuentos
                   </th>

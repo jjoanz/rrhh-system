@@ -726,12 +726,12 @@ useEffect(() => {
     }, 0);
 
     // Calcular bonificaciones (desactivadas por ahora)
-      const bonificacionesFijas = 0;
-      const bonificacionesVariables = 0;
-      const totalBonificaciones = 0;
+    const bonificacionesFijas = 0;
+    const bonificacionesVariables = 0;
+    const totalBonificaciones = 0;
 
-      // Solo salario base menos descuentos
-      const totalDevengado = salarioBase - descuentoFaltas;
+    // Solo salario base menos descuentos
+    const totalDevengado = salarioBase - descuentoFaltas;
 
     // Calcular deducciones legales
     const deduccionTSS = Math.min(

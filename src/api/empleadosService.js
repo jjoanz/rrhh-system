@@ -1,10 +1,10 @@
-import axios from 'axios';
+// src/api/empleadosService.js
+import api from './api'; // usa la instancia unificada con token e interceptores
 
-const API_BASE_URL = 'http://localhost:5000/api';
-
+// Obtener todos los empleados
 export const getEmpleados = async () => {
   try {
-    const response = await axios.get(`${API_BASE_URL}/empleados`);
+    const response = await api.get('/empleados');
     return response.data;
   } catch (error) {
     console.error('Error al obtener empleados:', error);
@@ -12,9 +12,10 @@ export const getEmpleados = async () => {
   }
 };
 
+// Exportar empleados
 export const exportEmpleados = async () => {
   try {
-    const response = await axios.get(`${API_BASE_URL}/empleados/export`);
+    const response = await api.get('/empleados/export');
     return response.data;
   } catch (error) {
     console.error('Error al exportar empleados:', error);

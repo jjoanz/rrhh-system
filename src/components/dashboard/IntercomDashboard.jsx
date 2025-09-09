@@ -1,78 +1,15 @@
 import React, { useState, useEffect } from 'react';
+import { useAuth } from '../../context/AuthContext';
 
 const IntercomDashboard = () => {
-  // Simular datos del contexto para demostración
-  const [moduleNotifications, setModuleNotifications] = useState([
-    {
-      id: 1,
-      from: 'empleados',
-      type: 'data_update',
-      dataKey: 'empleadosData',
-      timestamp: new Date(Date.now() - 5000).toISOString(),
-      affectedModules: ['nomina', 'asistencia', 'vacaciones', 'dashboard']
-    },
-    {
-      id: 2,
-      from: 'configuracion',
-      type: 'data_update',
-      dataKey: 'parametrosNomina',
-      timestamp: new Date(Date.now() - 15000).toISOString(),
-      affectedModules: ['nomina']
-    },
-    {
-      id: 3,
-      from: 'asistencia',
-      type: 'data_update',
-      dataKey: 'registrosHoy',
-      timestamp: new Date(Date.now() - 30000).toISOString(),
-      affectedModules: ['nomina', 'dashboard']
-    }
-  ]);
+  const { authenticatedFetch, user } = useAuth();
 
-  // Simular funciones del contexto
-  const getIntercomStatus = () => ({
-    activeModules: ['empleados', 'configuracion', 'nomina', 'asistencia', 'vacaciones', 'dashboard'],
-    recentNotifications: moduleNotifications,
-    dataFlows: [
-      { module: 'empleados', hasData: true, lastUpdate: new Date(Date.now() - 5000).toISOString() },
-      { module: 'configuracion', hasData: true, lastUpdate: new Date(Date.now() - 15000).toISOString() },
-      { module: 'nomina', hasData: true, lastUpdate: new Date(Date.now() - 10000).toISOString() },
-      { module: 'asistencia', hasData: true, lastUpdate: new Date(Date.now() - 30000).toISOString() },
-      { module: 'vacaciones', hasData: true, lastUpdate: new Date(Date.now() - 45000).toISOString() },
-      { module: 'capacitacion', hasData: false, lastUpdate: null },
-      { module: 'vacantes', hasData: false, lastUpdate: null },
-      { module: 'perfil', hasData: true, lastUpdate: new Date(Date.now() - 60000).toISOString() },
-      { module: 'dashboard', hasData: true, lastUpdate: new Date(Date.now() - 5000).toISOString() },
-      { module: 'reportes', hasData: false, lastUpdate: null }
-    ]
-  });
+  // Estado para empleados reales
+  const [empleadosData, setEmpleadosData] = useState([]);
 
-  const forceSyncAllModules = () => {
-    alert('🔄 Sincronización forzada ejecutada - En implementación real esto actualizaría todos los módulos');
-  };
+  // Notificaciones simuladas (puedes luego reemplazar por API si lo deseas)
+  const [moduleNotifications, setModuleNotifications] = useState([]);
 
-  const getModuleData = (module) => {
-    const sampleData = {
-      empleados: {
-        empleadosData: [
-          { id: 1, nombre: 'Ana García', departamento: 'RRHH' },
-          { id: 2, nombre: 'Carlos Rodríguez', departamento: 'Tecnología' }
-        ],
-        datosPersonales: { 'ana@empresa.com': { nombre: 'Ana', cargo: 'Gerente' } }
-      },
-      nomina: {
-        calculosActuales: [
-          { empleadoId: 1, salarioNeto: 85000 },
-          { empleadoId: 2, salarioNeto: 75000 }
-        ]
-      },
-      configuracion: {
-        parametrosNomina: { impuestos: { isr: 0.15 }, bonificaciones: { navidad: 1 } }
-      }
-    };
-    return sampleData[module] || {};
-  };
-  
   const [refreshInterval, setRefreshInterval] = useState(5000);
   const [selectedModule, setSelectedModule] = useState(null);
   const [isAutoRefresh, setIsAutoRefresh] = useState(true);
@@ -84,23 +21,7 @@ const IntercomDashboard = () => {
     dataFlows: []
   });
 
-  // Actualizar estado de intercomunicación
-  const updateIntercomStatus = () => {
-    const status = getIntercomStatus();
-    setIntercomStatus(status);
-  };
-
-  // Auto-refresh
-  useEffect(() => {
-    updateIntercomStatus();
-    
-    if (isAutoRefresh) {
-      const interval = setInterval(updateIntercomStatus, refreshInterval);
-      return () => clearInterval(interval);
-    }
-  }, [isAutoRefresh, refreshInterval]);
-
-  // Mapeo de colores para módulos
+  // Colores, iconos y nombres de módulos
   const moduleColors = {
     empleados: 'bg-blue-500',
     configuracion: 'bg-purple-500',
@@ -140,6 +61,73 @@ const IntercomDashboard = () => {
     reportes: 'Reportes'
   };
 
+  // Función para obtener el estado de intercomunicación (simulada)
+  const getIntercomStatus = () => ({
+    activeModules: ['empleados', 'configuracion', 'nomina', 'asistencia', 'vacaciones', 'dashboard'],
+    recentNotifications: moduleNotifications,
+    dataFlows: [
+      { module: 'empleados', hasData: empleadosData.length > 0, lastUpdate: new Date().toISOString() },
+      { module: 'configuracion', hasData: true, lastUpdate: new Date().toISOString() },
+      { module: 'nomina', hasData: true, lastUpdate: new Date().toISOString() },
+      { module: 'asistencia', hasData: true, lastUpdate: new Date().toISOString() },
+      { module: 'vacaciones', hasData: true, lastUpdate: new Date().toISOString() },
+      { module: 'capacitacion', hasData: false, lastUpdate: null },
+      { module: 'vacantes', hasData: false, lastUpdate: null },
+      { module: 'perfil', hasData: true, lastUpdate: new Date().toISOString() },
+      { module: 'dashboard', hasData: true, lastUpdate: new Date().toISOString() },
+      { module: 'reportes', hasData: false, lastUpdate: null }
+    ]
+  });
+
+  // Forzar sincronización (placeholder)
+  const forceSyncAllModules = () => {
+    alert('🔄 Sincronización forzada ejecutada - En implementación real esto actualizaría todos los módulos');
+  };
+
+  // Obtener datos de un módulo
+  const getModuleData = (module) => {
+    if (module === 'empleados') return { empleadosData };
+    return {};
+  };
+
+  // Actualizar estado de intercomunicación
+  const updateIntercomStatus = () => {
+    const status = getIntercomStatus();
+    setIntercomStatus(status);
+  };
+
+  // Auto-refresh
+  useEffect(() => {
+    updateIntercomStatus();
+    
+    if (isAutoRefresh) {
+      const interval = setInterval(updateIntercomStatus, refreshInterval);
+      return () => clearInterval(interval);
+    }
+  }, [isAutoRefresh, refreshInterval, empleadosData]);
+
+  // Obtener empleados reales del backend
+  useEffect(() => {
+    if (!user) return;
+
+    const fetchEmpleados = async () => {
+      try {
+        const response = await authenticatedFetch('http://localhost:5000/api/empleados/list');
+        const data = await response.json();
+        if (response.ok) {
+          setEmpleadosData(data.empleados || []);
+        } else {
+          console.error('Error al obtener empleados:', data.message);
+        }
+      } catch (err) {
+        console.error('Error de conexión:', err);
+      }
+    };
+
+    fetchEmpleados();
+  }, [user, authenticatedFetch]);
+
+  // Renderizado de tarjeta de módulo
   const renderModuleCard = (module, dataFlow) => {
     const isActive = dataFlow.hasData;
     const lastUpdate = dataFlow.lastUpdate;
@@ -168,7 +156,6 @@ const IntercomDashboard = () => {
           </div>
           <div className={`w-3 h-3 rounded-full ${isActive ? 'bg-green-500' : 'bg-gray-300'}`}></div>
         </div>
-        
         {lastUpdate && (
           <div className="text-xs text-gray-500">
             Última actualización: {new Date(lastUpdate).toLocaleTimeString()}
@@ -178,110 +165,7 @@ const IntercomDashboard = () => {
     );
   };
 
-  const renderDataFlowVisualization = () => {
-    const connections = [
-      // Empleados alimenta a todos
-      { from: 'empleados', to: ['nomina', 'asistencia', 'vacaciones', 'capacitacion', 'vacantes', 'perfil', 'dashboard', 'reportes'] },
-      // Configuración alimenta a operacionales
-      { from: 'configuracion', to: ['nomina', 'asistencia', 'vacaciones', 'capacitacion', 'vacantes'] },
-      // Intercomunicación entre operacionales
-      { from: 'asistencia', to: ['nomina', 'dashboard'] },
-      { from: 'vacaciones', to: ['nomina', 'asistencia'] },
-      { from: 'capacitacion', to: ['vacantes'] },
-      { from: 'vacantes', to: ['empleados'] },
-      // Hacia consumidores finales
-      { from: 'nomina', to: ['dashboard', 'reportes'] },
-      { from: 'perfil', to: ['empleados'] }
-    ];
-
-    return (
-      <div className="bg-white rounded-lg shadow-sm p-6">
-        <h3 className="text-lg font-semibold mb-4">Flujo de Datos entre Módulos</h3>
-        <div className="relative">
-          <svg width="100%" height="400" className="overflow-visible">
-            {/* Módulos */}
-            {Object.keys(moduleIcons).map((module, index) => {
-              const x = 100 + (index % 5) * 120;
-              const y = 50 + Math.floor(index / 5) * 80;
-              const isActive = intercomStatus.dataFlows.find(df => df.module === module)?.hasData;
-              
-              return (
-                <g key={module}>
-                  <circle
-                    cx={x}
-                    cy={y}
-                    r="25"
-                    fill={isActive ? moduleColors[module].replace('bg-', '#') : '#e5e7eb'}
-                    className="stroke-white stroke-2"
-                  />
-                  <text
-                    x={x}
-                    y={y}
-                    textAnchor="middle"
-                    dominantBaseline="middle"
-                    fontSize="16"
-                  >
-                    {moduleIcons[module]}
-                  </text>
-                  <text
-                    x={x}
-                    y={y + 40}
-                    textAnchor="middle"
-                    fontSize="10"
-                    fill="#6b7280"
-                  >
-                    {moduleNames[module]}
-                  </text>
-                </g>
-              );
-            })}
-            
-            {/* Conexiones */}
-            {connections.map((connection, connIndex) => {
-              const fromIndex = Object.keys(moduleIcons).indexOf(connection.from);
-              const fromX = 100 + (fromIndex % 5) * 120;
-              const fromY = 50 + Math.floor(fromIndex / 5) * 80;
-              
-              return connection.to.map((toModule, toIndex) => {
-                const toModuleIndex = Object.keys(moduleIcons).indexOf(toModule);
-                const toX = 100 + (toModuleIndex % 5) * 120;
-                const toY = 50 + Math.floor(toModuleIndex / 5) * 80;
-                
-                const isActive = intercomStatus.dataFlows.find(df => df.module === connection.from)?.hasData;
-                
-                return (
-                  <line
-                    key={`${connection.from}-${toModule}`}
-                    x1={fromX}
-                    y1={fromY}
-                    x2={toX}
-                    y2={toY}
-                    stroke={isActive ? '#3b82f6' : '#e5e7eb'}
-                    strokeWidth={isActive ? "2" : "1"}
-                    strokeDasharray={isActive ? "none" : "5,5"}
-                    opacity={isActive ? "0.8" : "0.3"}
-                  />
-                );
-              });
-            })}
-          </svg>
-        </div>
-        <div className="mt-4 text-sm text-gray-600">
-          <div className="flex items-center space-x-4">
-            <div className="flex items-center space-x-2">
-              <div className="w-4 h-1 bg-blue-500"></div>
-              <span>Datos activos</span>
-            </div>
-            <div className="flex items-center space-x-2">
-              <div className="w-4 h-1 bg-gray-300 border-dashed border border-gray-400"></div>
-              <span>Sin datos</span>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
+  // Panel de notificaciones
   const renderNotificationsPanel = () => {
     const recentNotifications = moduleNotifications.slice(-10).reverse();
     
@@ -340,9 +224,9 @@ const IntercomDashboard = () => {
     );
   };
 
+  // Modal de detalles de módulo
   const renderModuleDetails = () => {
     if (!selectedModule) return null;
-
     const moduleData = getModuleData(selectedModule);
     
     return (
@@ -394,8 +278,6 @@ const IntercomDashboard = () => {
               Visualización en tiempo real del flujo de datos entre módulos
             </p>
           </div>
-          
-          {/* Controles globales */}
           <div className="flex items-center space-x-4">
             <button
               onClick={forceSyncAllModules}
@@ -460,14 +342,8 @@ const IntercomDashboard = () => {
         </div>
       </div>
 
-      {/* Visualización de flujo de datos */}
-      <div className="mb-8">
-        {renderDataFlowVisualization()}
-      </div>
-
       {/* Grid de módulos y panel de actividad */}
       <div className="grid grid-cols-3 gap-6">
-        {/* Lista de módulos */}
         <div className="col-span-2">
           <h2 className="text-xl font-semibold mb-4">Estado de Módulos</h2>
           <div className="grid grid-cols-2 gap-4">
@@ -477,13 +353,12 @@ const IntercomDashboard = () => {
           </div>
         </div>
         
-        {/* Panel de notificaciones */}
         <div>
           {renderNotificationsPanel()}
         </div>
       </div>
 
-      {/* Modal de detalles del módulo */}
+      {/* Modal de detalles */}
       {renderModuleDetails()}
     </div>
   );

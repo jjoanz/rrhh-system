@@ -13,6 +13,7 @@ import PerfilModule from './components/modules/perfil/perfilModule';
 import EmpleadosModule from './components/modules/empleados/EmpleadosModule';
 import ConfiguracionModule from './components/modules/configuracion/ConfiguracionModule';
 
+
 const Sidebar = ({ isOpen, onClose }) => {
   const { user } = useAuth();
   const { activeSection, navigateToSection } = useApp();

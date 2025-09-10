@@ -13,12 +13,35 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  
+  // ✅ NUEVOS ESTADOS PARA RESET PASSWORD
+  const [resetMode, setResetMode] = useState(false);
+  const [resetToken, setResetTokenState] = useState('');
 
   const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+
+  // ✅ FUNCIÓN PARA DETECTAR TOKEN DE RESET EN LA URL
+  const checkForResetToken = () => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const token = urlParams.get('token');
+    if (token && window.location.pathname.includes('reset-password')) {
+      setResetMode(true);
+      setResetTokenState(token);
+      // Limpiar URL sin recargar la página
+      window.history.replaceState({}, document.title, window.location.pathname);
+      return true;
+    }
+    return false;
+  };
 
   useEffect(() => {
     const initializeAuth = async () => {
       try {
+        // ✅ VERIFICAR TOKEN DE RESET PRIMERO
+        if (checkForResetToken()) {
+          return setLoading(false);
+        }
+
         const token = localStorage.getItem('rrhh_token');
         if (!token) return setLoading(false);
 
@@ -130,7 +153,7 @@ export const AuthProvider = ({ children }) => {
         body: JSON.stringify({ email })
       });
       const data = await response.json();
-      return response.ok ? { success: true, resetToken: data.resetToken } : { success: false, error: data.message };
+      return response.ok ? { success: true, message: data.message } : { success: false, error: data.message };
     } catch (err) {
       console.error('Error en forgotPassword:', err);
       return { success: false, error: 'Error de conexión con el servidor' };
@@ -164,7 +187,13 @@ export const AuthProvider = ({ children }) => {
       authenticatedFetch,
       forgotPassword,
       resetPassword,
-      clearError: () => setError(null)
+      clearError: () => setError(null),
+      // ✅ NUEVAS PROPIEDADES PARA RESET
+      resetMode,
+      setResetMode,
+      resetToken,
+      setResetToken: setResetTokenState,
+      checkForResetToken
     }}>
       {children}
     </AuthContext.Provider>

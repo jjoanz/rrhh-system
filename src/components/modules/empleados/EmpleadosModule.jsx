@@ -71,80 +71,113 @@ useEffect(() => {
     try {
       setCargando(true);
 
-      // 🔹 Obtener empleados
-      const response = await fetch('http://localhost:5000/api/empleados/list');
-      const data = await response.json();
-      
-      console.log("Datos SIN mapear:", data[0]);
-      console.log("Fecha original ejemplo:", data[0]?.FECHAINGRESO);
+      // 🔹 Obtener el token de localStorage
+      const token = localStorage.getItem("rrhh_token");
+      if (!token) {
+        throw new Error("No hay token en localStorage, inicia sesión primero");
+      }
 
-      // Mapear empleados
-      const empleadosMapeados = data.map(emp => ({
+      // 🔹 Llamar API con token en headers
+      const response = await fetch("http://localhost:5000/api/empleados/list", {
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Error HTTP: ${response.status}`);
+      }
+
+      const data = await response.json();
+      console.log("📌 Respuesta cruda del backend:", data);
+
+      // ✅ Detectar si data es array o viene en { empleados: [...] }
+      const empleadosRaw = Array.isArray(data) ? data : data.empleados;
+
+      if (!empleadosRaw || empleadosRaw.length === 0) {
+        console.warn("⚠ No hay empleados disponibles en la respuesta");
+        setEmpleados([]);
+        setDepartamentos([]);
+        setPuestos([]);
+        return;
+      }
+
+      console.log("Datos SIN mapear:", empleadosRaw[0]);
+      console.log("Fecha original ejemplo:", empleadosRaw[0]?.FECHAINGRESO);
+
+      // 🔹 Mapear empleados
+      const empleadosMapeados = empleadosRaw.map(emp => ({
         id: emp.EmpleadoID,
-        codigo: `EMP${String(emp.EmpleadoID).padStart(3, '0')}`,
-        nombre: emp.NOMBRE || '',
-        apellido: emp.APELLIDO || '',
-        email: emp.Email || `${(emp.NOMBRE || 'empleado').split(' ')[0].toLowerCase()}${(emp.APELLIDO || 'empleado').split(' ')[0].toLowerCase()}@prodominicana.gob.do`,
-        telefono: emp.Telefono || '',
-        direccion: emp.Direccion || '',
-        // Usar el nombre del departamento del JOIN
-        departamento: emp.DEPARTAMENTO_NOMBRE || 'Sin departamento',
-        puesto: emp.CARGO || 'Sin puesto',
-        supervisor: '',
-        fechaIngreso: emp.FECHAINGRESO ? emp.FECHAINGRESO.split('T')[0] : '', // "2020-08-16"
-        fechaIngresoDisplay: emp.FECHAINGRESO ? 
-          (() => {
-            try {
-              const fecha = new Date(emp.FECHAINGRESO);
-              if (isNaN(fecha.getTime())) return 'Fecha no válida';
-              return fecha.toLocaleDateString('es-DO');
-            } catch (error) {
-              return 'Fecha no válida';
-            }
-          })() : 'Sin fecha',
+        codigo: `EMP${String(emp.EmpleadoID).padStart(3, "0")}`,
+        nombre: emp.NOMBRE || "",
+        apellido: emp.APELLIDO || "",
+        email:
+          emp.Email ||
+          `${(emp.NOMBRE || "empleado").split(" ")[0].toLowerCase()}${(emp.APELLIDO || "empleado")
+            .split(" ")[0]
+            .toLowerCase()}@prodominicana.gob.do`,
+        telefono: emp.Telefono || "",
+        direccion: emp.Direccion || "",
+        departamento: emp.DEPARTAMENTO_NOMBRE || "Sin departamento",
+        puesto: emp.CARGO || "Sin puesto",
+        supervisor: "",
+        fechaIngreso: emp.FECHAINGRESO ? emp.FECHAINGRESO.split("T")[0] : "",
+        fechaIngresoDisplay: emp.FECHAINGRESO
+          ? (() => {
+              try {
+                const fecha = new Date(emp.FECHAINGRESO);
+                if (isNaN(fecha.getTime())) return "Fecha no válida";
+                return fecha.toLocaleDateString("es-DO");
+              } catch (error) {
+                return "Fecha no válida";
+              }
+            })()
+          : "Sin fecha",
         salario: emp.Salario || 0,
-        // ESTADO viene como true/false desde el servidor
-        estado: emp.ESTADO === true ? 'activo' : 'inactivo',
-        foto: '/api/placeholder/80/80',
-        cedula: emp.CEDULA || ''
+        estado: emp.ESTADO === true ? "activo" : "inactivo",
+        foto: "/api/placeholder/80/80",
+        cedula: emp.CEDULA || "",
       }));
 
       console.log("Empleados mapeados:", empleadosMapeados[0]);
       setEmpleados(empleadosMapeados);
 
-      // 🔹 EXTRAER departamentos únicos de los empleados (no usar mock)
-      const departamentosUnicos = [...new Set(
-        empleadosMapeados
-          .map(emp => emp.departamento)
-          .filter(dept => dept && dept !== 'Sin departamento')
-      )];
-      
+      // 🔹 EXTRAER departamentos únicos
+      const departamentosUnicos = [
+        ...new Set(
+          empleadosMapeados
+            .map(emp => emp.departamento)
+            .filter(dept => dept && dept !== "Sin departamento")
+        ),
+      ];
+
       const departamentosReales = departamentosUnicos.map((nombre, index) => ({
         id: index + 1,
-        nombre: nombre
+        nombre,
       }));
 
       console.log("Departamentos únicos encontrados:", departamentosReales.length);
-      console.log("Departamentos:", departamentosReales);
       setDepartamentos(departamentosReales);
 
-      // 🔹 EXTRAER puestos únicos de los empleados
-      const puestosUnicos = [...new Set(
-        empleadosMapeados
-          .map(emp => emp.puesto)
-          .filter(puesto => puesto && puesto !== 'Sin puesto')
-      )];
-      
+      // 🔹 EXTRAER puestos únicos
+      const puestosUnicos = [
+        ...new Set(
+          empleadosMapeados
+            .map(emp => emp.puesto)
+            .filter(puesto => puesto && puesto !== "Sin puesto")
+        ),
+      ];
+
       const puestosReales = puestosUnicos.map((nombre, index) => ({
         id: index + 1,
-        nombre: nombre
+        nombre,
       }));
 
       console.log("Puestos únicos encontrados:", puestosReales.length);
       setPuestos(puestosReales);
-
     } catch (error) {
-      console.error("Error cargando empleados:", error);
+      console.error("❌ Error cargando empleados:", error);
       setEmpleados([]);
     } finally {
       setCargando(false);
@@ -153,6 +186,8 @@ useEffect(() => {
 
   fetchData();
 }, []);
+
+
 
 // 🔹 BUSCADOR ARREGLADO - Filtrado y búsqueda
 const empleadosFiltrados = useMemo(() => {
@@ -212,15 +247,17 @@ const estadisticas = useMemo(() => {
     }
     
     try {
-      // Intentar parsear la fecha en formato DD/MM/YYYY
-      const [dia, mes, año] = emp.fechaIngreso.split('/');
-      if (!dia || !mes || !año) return false;
-      
-      const fechaIngreso = new Date(parseInt(año), parseInt(mes) - 1, parseInt(dia));
-      if (isNaN(fechaIngreso.getTime())) return false;
-      
-      return fechaIngreso.getMonth() === mesActual && fechaIngreso.getFullYear() === añoActual;
-    } catch (error) {
+     // Parsear fecha en formato YYYY-MM-DD
+        const partes = emp.fechaIngreso.split('-'); // ["2020","08","16"]
+        if (partes.length !== 3) return false;
+
+        const [año, mes, dia] = partes.map(p => parseInt(p));
+        const fechaIngreso = new Date(año, mes - 1, dia);
+
+        if (isNaN(fechaIngreso.getTime())) return false;
+
+        return fechaIngreso.getMonth() === mesActual && fechaIngreso.getFullYear() === añoActual;
+            } catch (error) {
       return false;
     }
   }).length;

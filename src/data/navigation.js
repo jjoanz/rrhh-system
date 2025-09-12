@@ -21,7 +21,6 @@ export const NAVIGATION_CONFIG = {
       icon: Home,
       description: 'Resumen general de tu información'
     },
-    
     { 
       id: 'perfil', 
       label: 'Mi Perfil', 
@@ -40,7 +39,6 @@ export const NAVIGATION_CONFIG = {
       icon: Clock,
       description: 'Registro de entrada y salida'
     },
-    
     { 
       id: 'capacitacion', 
       label: 'Capacitación', 
@@ -354,6 +352,12 @@ export const NAVIGATION_CONFIG = {
       description: 'Gestión de usuarios del sistema'
     },
     { 
+      id: 'empleados', 
+      label: 'Empleados', 
+      icon: Users,
+      description: 'Gestión completa de personal'
+    },
+    { 
       id: 'vacaciones', 
       label: 'Vacaciones', 
       icon: Calendar,
@@ -400,6 +404,13 @@ export const NAVIGATION_CONFIG = {
       label: 'Logs', 
       icon: FileText,
       description: 'Registros del sistema'
+    },
+    // 🔹 Módulo AdminPermissions agregado
+    {
+      id: 'adminPermissions',
+      label: 'Admin Permisos',
+      icon: Settings,
+      description: 'Gestión de permisos administrativos'
     }
   ]
 };
@@ -411,61 +422,27 @@ export const getNavigationByRole = (role) => {
 
 // Configuración de permisos para el módulo de capacitación
 export const CAPACITACION_PERMISSIONS = {
-  // Quién puede ver el módulo
   canView: ['colaborador', 'gerente', 'director', 'rrhh', 'director_rrhh', 'gerente_rrhh', 'admin'],
-  
-  // Quién puede crear solicitudes de capacitación
   canCreateRequest: ['colaborador', 'gerente', 'director', 'rrhh', 'director_rrhh', 'gerente_rrhh'],
-  
-  // Quién puede aprobar solicitudes
   canApprove: ['director', 'rrhh', 'director_rrhh', 'gerente_rrhh', 'admin'],
-  
-  // Quién puede crear y gestionar cursos
   canManageCourses: ['rrhh', 'director_rrhh', 'gerente_rrhh', 'admin'],
-  
-  // Quién puede ver solicitudes de otros usuarios
   canViewAllRequests: ['gerente', 'director', 'rrhh', 'director_rrhh', 'gerente_rrhh', 'admin'],
-  
-  // Quién puede configurar presupuestos y políticas
   canConfigurePolicies: ['director_rrhh', 'admin'],
-  
-  // Quién puede generar reportes globales
   canGenerateReports: ['director', 'rrhh', 'director_rrhh', 'gerente_rrhh', 'admin']
 };
 
 // Configuración de permisos para el módulo de vacantes
 export const VACANTES_PERMISSIONS = {
-  // Quién puede ver el módulo
   canView: ['colaborador', 'gerente', 'director', 'rrhh', 'director_rrhh', 'gerente_rrhh', 'admin'],
-  
-  // Quién puede aplicar a vacantes
   canApply: ['colaborador', 'gerente', 'director'],
-  
-  // Quién puede referir candidatos
   canRefer: ['colaborador', 'gerente', 'director', 'rrhh', 'director_rrhh', 'gerente_rrhh'],
-  
-  // Quién puede crear vacantes
   canCreateJob: ['rrhh', 'director_rrhh', 'gerente_rrhh', 'admin'],
-  
-  // Quién puede gestionar vacantes (editar, pausar, cerrar)
   canManageJobs: ['rrhh', 'director_rrhh', 'gerente_rrhh', 'admin'],
-  
-  // Quién puede ver y gestionar procesos de selección
   canManageSelection: ['rrhh', 'director_rrhh', 'gerente_rrhh', 'admin'],
-  
-  // Quién puede ver todas las aplicaciones
   canViewAllApplications: ['gerente', 'director', 'rrhh', 'director_rrhh', 'gerente_rrhh', 'admin'],
-  
-  // Quién puede aprobar vacantes
   canApproveJobs: ['director', 'director_rrhh', 'admin'],
-  
-  // Quién puede generar reportes de reclutamiento
   canGenerateReports: ['director', 'rrhh', 'director_rrhh', 'gerente_rrhh', 'admin'],
-  
-  // Quién puede configurar políticas de reclutamiento
   canConfigurePolicies: ['director_rrhh', 'admin'],
-  
-  // Quién puede gestionar el programa de referidos
   canManageReferrals: ['rrhh', 'director_rrhh', 'gerente_rrhh', 'admin']
 };
 

@@ -1,5 +1,6 @@
 // src/context/AuthContext.jsx
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { CAPACITACION_PERMISSIONS, VACANTES_PERMISSIONS } from '../data/navigation';
 
 const AuthContext = createContext();
 
@@ -13,21 +14,19 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  
-  // ✅ NUEVOS ESTADOS PARA RESET PASSWORD
+
   const [resetMode, setResetMode] = useState(false);
   const [resetToken, setResetTokenState] = useState('');
 
   const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
 
-  // ✅ FUNCIÓN PARA DETECTAR TOKEN DE RESET EN LA URL
+  // Detectar token de reset en la URL
   const checkForResetToken = () => {
     const urlParams = new URLSearchParams(window.location.search);
     const token = urlParams.get('token');
     if (token && window.location.pathname.includes('reset-password')) {
       setResetMode(true);
       setResetTokenState(token);
-      // Limpiar URL sin recargar la página
       window.history.replaceState({}, document.title, window.location.pathname);
       return true;
     }
@@ -37,10 +36,7 @@ export const AuthProvider = ({ children }) => {
   useEffect(() => {
     const initializeAuth = async () => {
       try {
-        // ✅ VERIFICAR TOKEN DE RESET PRIMERO
-        if (checkForResetToken()) {
-          return setLoading(false);
-        }
+        if (checkForResetToken()) return setLoading(false);
 
         const token = localStorage.getItem('rrhh_token');
         if (!token) return setLoading(false);
@@ -55,7 +51,7 @@ export const AuthProvider = ({ children }) => {
           setUser({
             id: data.user.id,
             username: data.user.username,
-            name: data.user.nombre && data.user.apellido 
+            name: data.user.nombre && data.user.apellido
               ? `${data.user.nombre} ${data.user.apellido}`
               : data.user.username,
             role: data.user.rol.toLowerCase(),
@@ -85,14 +81,13 @@ export const AuthProvider = ({ children }) => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password })
       });
-
       const data = await response.json();
 
       if (response.ok) {
         const userData = {
           id: data.user.id,
           username: data.user.username,
-          name: data.user.nombre && data.user.apellido 
+          name: data.user.nombre && data.user.apellido
             ? `${data.user.nombre} ${data.user.apellido}`
             : data.user.username,
           role: data.user.rol.toLowerCase(),
@@ -135,16 +130,23 @@ export const AuthProvider = ({ children }) => {
     return response;
   };
 
-  const hasPermission = (requiredRole) => {
+  // Verificar permisos de módulos
+  const hasPermission = (permission, moduleType) => {
     if (!user) return false;
-    const roleHierarchy = { admin: 4, rrhh: 3, supervisor: 2, empleado: 1 };
-    return (roleHierarchy[user.role] || 0) >= (roleHierarchy[requiredRole] || 0);
+    const { role } = user;
+
+    if (moduleType === 'capacitacion') {
+      return CAPACITACION_PERMISSIONS[permission]?.includes(role) || false;
+    }
+    if (moduleType === 'vacantes') {
+      return VACANTES_PERMISSIONS[permission]?.includes(role) || false;
+    }
+    return false;
   };
 
   // ========================
-  // FUNCIONES DE CONTRASEÑA
+  // Funciones de contraseña
   // ========================
-  
   const forgotPassword = async (email) => {
     try {
       const response = await fetch(`${API_BASE_URL}/auth/forgot-password`, {
@@ -188,7 +190,6 @@ export const AuthProvider = ({ children }) => {
       forgotPassword,
       resetPassword,
       clearError: () => setError(null),
-      // ✅ NUEVAS PROPIEDADES PARA RESET
       resetMode,
       setResetMode,
       resetToken,

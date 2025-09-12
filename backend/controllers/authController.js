@@ -1,4 +1,4 @@
-import { getConnection, executeQuery } from '../db.js'; // ✅ USAR getConnection
+import { getConnection, executeQuery } from '../db.js';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
@@ -6,20 +6,19 @@ import { transporter } from '../mailer.js';
 import sql from 'mssql';
 
 // ======================================
-// LOGIN COMPLETAMENTE ACTUALIZADO
+// LOGIN CON PERMISOS ESTRUCTURADOS (CORREGIDO)
 // ======================================
 export const login = async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email, password, identifier } = req.body;
+    const loginIdentifier = identifier || email; // Compatibilidad con ambos formatos
 
-    // ✅ VALIDACIÓN DE ENTRADA
-    if (!email || !password) {
+    if (!loginIdentifier || !password) {
       return res.status(400).json({ 
-        message: 'Email y contraseña son requeridos' 
+        message: 'Email/Usuario y contraseña son requeridos' 
       });
     }
     
-    // ✅ USAR getConnection CON VALIDACIÓN
     const pool = await getConnection();
     if (!pool) {
       return res.status(503).json({ 
@@ -27,15 +26,14 @@ export const login = async (req, res) => {
       });
     }
 
-    // ✅ CONSULTA MEJORADA CON MANEJO DE ERRORES
     const result = await pool.request()
-      .input('email', sql.VarChar(255), email.toLowerCase().trim())
+      .input('identifier', sql.VarChar(255), loginIdentifier.toLowerCase().trim())
       .query(`
         SELECT u.UsuarioID, u.Username, u.Email, u.PasswordHash, u.Rol, u.Estado, u.EmpleadoID,
                e.NOMBRE, e.APELLIDO, u.UltimoLogin
         FROM Usuarios u
         LEFT JOIN Empleados e ON u.EmpleadoID = e.EmpleadoID
-        WHERE (LOWER(u.Email) = @email OR LOWER(u.Username) = @email)
+        WHERE (LOWER(u.Email) = @identifier OR LOWER(u.Username) = @identifier)
         AND u.Estado = 1
       `);
 
@@ -47,7 +45,6 @@ export const login = async (req, res) => {
 
     const user = result.recordset[0];
 
-    // ✅ VERIFICACIÓN MEJORADA DE CONTRASEÑA
     let validPassword;
     try {
       validPassword = await bcrypt.compare(password, user.PasswordHash);
@@ -64,10 +61,9 @@ export const login = async (req, res) => {
       });
     }
 
-    // ✅ OBTENER PERMISOS CON MANEJO DE ERRORES
-    const permisos = await getUserPermissions(user.Rol);
+    // ✅ OBTENER PERMISOS CON ESTRUCTURA CORREGIDA
+    const permisos = await getUserPermissions(user.UsuarioID);
 
-    // ✅ GENERAR TOKEN CON VALIDACIÓN
     const jwtSecret = process.env.JWT_SECRET;
     if (!jwtSecret) {
       console.error('JWT_SECRET no está configurado');
@@ -81,23 +77,23 @@ export const login = async (req, res) => {
         userId: user.UsuarioID, 
         rol: user.Rol, 
         empleadoId: user.EmpleadoID,
-        username: user.Username
+        username: user.Username,
+        email: user.Email
       },
       jwtSecret,
-      { expiresIn: '8h' }
+      { expiresIn: '24h' } // Cambiado de 50y a 24h por seguridad
     );
 
-    // ✅ ACTUALIZAR ÚLTIMO LOGIN CON MANEJO DE ERRORES
+    // Actualizar último login
     try {
       await pool.request()
         .input('userId', sql.Int, user.UsuarioID)
         .query('UPDATE Usuarios SET UltimoLogin = GETDATE() WHERE UsuarioID = @userId');
     } catch (updateError) {
       console.error('Error actualizando último login:', updateError);
-      // No bloquear el login por este error
     }
 
-    // ✅ RESPUESTA EXITOSA
+    // ✅ RESPUESTA COMPATIBLE CON FRONTEND
     res.json({
       success: true,
       token,
@@ -111,13 +107,12 @@ export const login = async (req, res) => {
         empleadoId: user.EmpleadoID,
         ultimoLogin: user.UltimoLogin
       },
-      permisos
+      permisos // Array de objetos para compatibilidad con el frontend
     });
 
   } catch (error) {
     console.error('Error en login:', error);
     
-    // ✅ MANEJO ESPECÍFICO DE DIFERENTES TIPOS DE ERROR
     if (error.code === 'ETIMEOUT') {
       return res.status(503).json({ 
         message: 'El servidor está temporalmente ocupado. Inténtalo de nuevo.' 
@@ -138,7 +133,7 @@ export const login = async (req, res) => {
 };
 
 // ======================================
-// VERIFICAR TOKEN ACTUALIZADO
+// VERIFICAR TOKEN CON PERMISOS (CORREGIDO)
 // ======================================
 export const verifyToken = async (req, res) => {
   try {
@@ -151,9 +146,9 @@ export const verifyToken = async (req, res) => {
     }
 
     // ✅ OBTENER PERMISOS ACTUALIZADOS
-    const permisos = await getUserPermissions(user.rol);
+    const permisos = await getUserPermissions(user.userId);
     
-    // ✅ VERIFICAR QUE EL USUARIO SIGA ACTIVO
+    // Verificar que el usuario siga activo
     const pool = await getConnection();
     if (pool) {
       try {
@@ -168,12 +163,12 @@ export const verifyToken = async (req, res) => {
         }
       } catch (dbError) {
         console.error('Error verificando estado del usuario:', dbError);
-        // Continuar con la verificación del token
       }
     }
 
     res.json({ 
       success: true,
+      valid: true,
       user, 
       permisos 
     });
@@ -187,29 +182,38 @@ export const verifyToken = async (req, res) => {
 };
 
 // ======================================
-// OBTENER PERMISOS ACTUALIZADO
+// FUNCIÓN EXPORTADA PARA OBTENER PERMISOS (CORREGIDA)
 // ======================================
-const getUserPermissions = async (rol) => {
+export const getUserPermissions = async (userId) => {
   try {
-    // ✅ USAR getConnection CON VALIDACIÓN
     const pool = await getConnection();
     if (!pool) {
       console.error('No hay conexión disponible para obtener permisos');
       return [];
     }
 
+    // ✅ CONSULTA CORREGIDA - Usar RolPermisos en lugar de Permisos
     const result = await pool.request()
-      .input('rol', sql.VarChar(50), rol)
+      .input('userId', sql.Int, userId)
       .query(`
-        SELECT m.NombreModulo, p.PuedeVer, p.PuedeCrear, p.PuedeEditar, p.PuedeEliminar
-        FROM Permisos p
+        SELECT 
+          p.ModuloID,
+          m.NombreModulo,
+          p.EstaVisible,
+          p.PuedeVer,
+          p.PuedeCrear,
+          p.PuedeEditar,
+          p.PuedeEliminar
+        FROM RolPermisos p
         INNER JOIN Roles r ON p.RolID = r.RolID
         INNER JOIN Modulos m ON p.ModuloID = m.ModuloID
-        WHERE r.NombreRol = @rol
+        INNER JOIN Usuarios u ON u.Rol = r.NombreRol
+        WHERE u.UsuarioID = @userId
         ORDER BY m.NombreModulo
       `);
 
-    return result.recordset || [];
+    // ✅ RETORNAR ARRAY PARA COMPATIBILIDAD CON MIDDLEWARE
+    return result.recordset;
 
   } catch (error) {
     console.error('Error obteniendo permisos:', error);
@@ -218,22 +222,390 @@ const getUserPermissions = async (rol) => {
 };
 
 // ======================================
-// FORGOT PASSWORD ACTUALIZADO
+// FUNCIÓN AUXILIAR PARA OBTENER ROL ID
+// ======================================
+export const getRoleId = async (roleName) => {
+  try {
+    const pool = await getConnection();
+    if (!pool) return null;
+
+    const result = await pool.request()
+      .input('roleName', sql.VarChar(50), roleName)
+      .query('SELECT RolID FROM Roles WHERE NombreRol = @roleName');
+    
+    return result.recordset[0]?.RolID || null;
+  } catch (error) {
+    console.error('Error obteniendo RolID:', error);
+    return null;
+  }
+};
+
+// ======================================
+// NUEVAS FUNCIONES PARA GESTIÓN DE ROLES Y PERMISOS
+// ======================================
+
+// Obtener todos los roles disponibles
+export const getRoles = async (req, res) => {
+  try {
+    const pool = await getConnection();
+    if (!pool) {
+      return res.status(503).json({ 
+        message: 'Base de datos temporalmente no disponible' 
+      });
+    }
+
+    const result = await pool.request()
+      .query(`
+        SELECT RolID, NombreRol, Descripcion, FechaCreacion
+        FROM Roles
+        ORDER BY NombreRol
+      `);
+
+    res.json({
+      success: true,
+      roles: result.recordset
+    });
+
+  } catch (error) {
+    console.error('Error obteniendo roles:', error);
+    res.status(500).json({ 
+      message: 'Error obteniendo roles' 
+    });
+  }
+};
+
+// Obtener todos los módulos disponibles
+export const getModulos = async (req, res) => {
+  try {
+    const pool = await getConnection();
+    if (!pool) {
+      return res.status(503).json({ 
+        message: 'Base de datos temporalmente no disponible' 
+      });
+    }
+
+    const result = await pool.request()
+      .query(`
+        SELECT ModuloID, NombreModulo, Descripcion, FechaCreacion
+        FROM Modulos
+        ORDER BY NombreModulo
+      `);
+
+    res.json({
+      success: true,
+      modulos: result.recordset
+    });
+
+  } catch (error) {
+    console.error('Error obteniendo módulos:', error);
+    res.status(500).json({ 
+      message: 'Error obteniendo módulos' 
+    });
+  }
+};
+
+// ======================================
+// Obtener permisos de un rol específico (CORREGIDO)
+// ======================================
+export const getPermisosByRol = async (req, res) => {
+  try {
+    const { rolId } = req.params;
+
+    if (!rolId) {
+      return res.status(400).json({ 
+        message: 'RolID es requerido' 
+      });
+    }
+
+    const pool = await getConnection();
+    if (!pool) {
+      return res.status(503).json({ 
+        message: 'Base de datos temporalmente no disponible' 
+      });
+    }
+
+    // ✅ CONSULTA CORREGIDA - Usar RolPermisos
+    const query = `
+      SELECT 
+        p.PermisoID,
+        p.RolID,
+        p.ModuloID,
+        m.NombreModulo,
+        m.Descripcion as DescripcionModulo,
+        p.EstaVisible,
+        p.PuedeVer,
+        p.PuedeCrear,
+        p.PuedeEditar,
+        p.PuedeEliminar
+      FROM RolPermisos p
+      JOIN Modulos m ON p.ModuloID = m.ModuloID
+      WHERE p.RolID = @rolId
+      ORDER BY m.NombreModulo
+    `;
+
+    const result = await pool.request()
+      .input('rolId', sql.Int, rolId)
+      .query(query);
+
+    res.json({ 
+      success: true, 
+      permisos: result.recordset 
+    });
+  } catch (error) {
+    console.error('Error obteniendo permisos:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: error.message 
+    });
+  }
+};
+
+// ======================================
+// Actualizar permisos de un rol (CORREGIDO)
+// ======================================
+export const updatePermisos = async (req, res) => {
+  try {
+    const { rolId } = req.params;
+    const { permisos } = req.body;
+
+    console.log('🔍 Datos recibidos:', { rolId, permisos });
+
+    if (!rolId || !permisos || !Array.isArray(permisos)) {
+      return res.status(400).json({ 
+        message: 'RolID y array de permisos son requeridos' 
+      });
+    }
+
+    const rolIdNum = parseInt(rolId);
+    if (isNaN(rolIdNum)) {
+      return res.status(400).json({ 
+        message: 'RolID debe ser un número válido' 
+      });
+    }
+
+    const pool = await getConnection();
+    if (!pool) {
+      return res.status(503).json({ 
+        message: 'Base de datos temporalmente no disponible' 
+      });
+    }
+
+    let permisosActualizados = 0;
+    let erroresEncontrados = [];
+
+    for (const permiso of permisos) {
+      const moduloId = permiso.moduloId || permiso.ModuloID;
+      
+      if (!moduloId && moduloId !== 0) {
+        const error = `ModuloID faltante en permiso para ${permiso.NombreModulo || 'módulo desconocido'}`;
+        console.error('❌', error);
+        erroresEncontrados.push(error);
+        continue;
+      }
+
+      const moduloIdNum = parseInt(moduloId);
+      if (isNaN(moduloIdNum)) {
+        const error = `ModuloID inválido: ${moduloId} para ${permiso.NombreModulo || 'módulo desconocido'}`;
+        console.error('❌', error);
+        erroresEncontrados.push(error);
+        continue;
+      }
+
+      const estaVisible = Boolean(permiso.estaVisible || permiso.EstaVisible);
+      const puedeVer = Boolean(permiso.puedeVer || permiso.PuedeVer);
+      const puedeCrear = Boolean(permiso.puedeCrear || permiso.PuedeCrear);
+      const puedeEditar = Boolean(permiso.puedeEditar || permiso.PuedeEditar);
+      const puedeEliminar = Boolean(permiso.puedeEliminar || permiso.PuedeEliminar);
+
+      console.log('🔄 Actualizando permiso:', {
+        rolId: rolIdNum,
+        moduloId: moduloIdNum,
+        nombreModulo: permiso.NombreModulo,
+        estaVisible,
+        puedeVer,
+        puedeCrear,
+        puedeEditar,
+        puedeEliminar
+      });
+
+      // ✅ CONSULTA CORREGIDA - Usar RolPermisos
+      const query = `
+        UPDATE RolPermisos 
+        SET 
+          EstaVisible = @estaVisible,
+          PuedeVer = @puedeVer,
+          PuedeCrear = @puedeCrear,
+          PuedeEditar = @puedeEditar,
+          PuedeEliminar = @puedeEliminar
+        WHERE RolID = @rolId AND ModuloID = @moduloId
+      `;
+
+      try {
+        const result = await pool.request()
+          .input('estaVisible', sql.Bit, estaVisible)
+          .input('puedeVer', sql.Bit, puedeVer)
+          .input('puedeCrear', sql.Bit, puedeCrear)
+          .input('puedeEditar', sql.Bit, puedeEditar)
+          .input('puedeEliminar', sql.Bit, puedeEliminar)
+          .input('rolId', sql.Int, rolIdNum)
+          .input('moduloId', sql.Int, moduloIdNum)
+          .query(query);
+
+        if (result.rowsAffected[0] > 0) {
+          permisosActualizados++;
+          console.log(`✅ Permiso actualizado para módulo ${permiso.NombreModulo || moduloIdNum}`);
+        } else {
+          const error = `No se encontró el permiso para RolID=${rolIdNum}, ModuloID=${moduloIdNum}`;
+          console.warn('⚠️', error);
+          erroresEncontrados.push(error);
+        }
+
+      } catch (queryError) {
+        const error = `Error actualizando permiso para módulo ${permiso.NombreModulo || moduloIdNum}: ${queryError.message}`;
+        console.error('❌', error);
+        erroresEncontrados.push(error);
+      }
+    }
+
+    const response = {
+      success: permisosActualizados > 0,
+      message: permisosActualizados > 0 
+        ? `${permisosActualizados} permisos actualizados correctamente`
+        : 'No se pudo actualizar ningún permiso',
+      permisosActualizados,
+      totalPermisos: permisos.length
+    };
+
+    if (erroresEncontrados.length > 0) {
+      response.errores = erroresEncontrados;
+      response.message += `. Se encontraron ${erroresEncontrados.length} errores.`;
+    }
+
+    const statusCode = permisosActualizados > 0 ? 200 : 400;
+    res.status(statusCode).json(response);
+
+  } catch (error) {
+    console.error('❌ Error actualizando permisos:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: `Error interno del servidor: ${error.message}` 
+    });
+  }
+};
+
+// Obtener todos los usuarios con sus roles
+export const getUsuariosConRoles = async (req, res) => {
+  try {
+    const pool = await getConnection();
+    if (!pool) {
+      return res.status(503).json({ 
+        message: 'Base de datos temporalmente no disponible' 
+      });
+    }
+
+    const result = await pool.request()
+      .query(`
+        SELECT 
+          u.UsuarioID,
+          u.Username,
+          u.Email,
+          u.Rol,
+          u.Estado,
+          u.EmpleadoID,
+          e.NOMBRE,
+          e.APELLIDO,
+          u.UltimoLogin,
+          u.FechaCreacion
+        FROM Usuarios u
+        LEFT JOIN Empleados e ON u.EmpleadoID = e.EmpleadoID
+        ORDER BY u.Username
+      `);
+
+    res.json({
+      success: true,
+      usuarios: result.recordset
+    });
+
+  } catch (error) {
+    console.error('Error obteniendo usuarios:', error);
+    res.status(500).json({ 
+      message: 'Error obteniendo usuarios' 
+    });
+  }
+};
+
+// Actualizar rol de un usuario
+export const updateUserRole = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { nuevoRol } = req.body;
+
+    if (!userId || !nuevoRol) {
+      return res.status(400).json({ 
+        message: 'UsuarioID y nuevo rol son requeridos' 
+      });
+    }
+
+    const pool = await getConnection();
+    if (!pool) {
+      return res.status(503).json({ 
+        message: 'Base de datos temporalmente no disponible' 
+      });
+    }
+
+    // Verificar que el rol existe
+    const rolResult = await pool.request()
+      .input('rol', sql.VarChar(50), nuevoRol)
+      .query('SELECT RolID FROM Roles WHERE NombreRol = @rol');
+
+    if (rolResult.recordset.length === 0) {
+      return res.status(400).json({ 
+        message: 'El rol especificado no existe' 
+      });
+    }
+
+    // Actualizar el rol del usuario
+    const result = await pool.request()
+      .input('userId', sql.Int, userId)
+      .input('nuevoRol', sql.VarChar(50), nuevoRol)
+      .query(`
+        UPDATE Usuarios 
+        SET Rol = @nuevoRol 
+        WHERE UsuarioID = @userId
+      `);
+
+    if (result.rowsAffected[0] === 0) {
+      return res.status(404).json({ 
+        message: 'Usuario no encontrado' 
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Rol actualizado correctamente'
+    });
+
+  } catch (error) {
+    console.error('Error actualizando rol:', error);
+    res.status(500).json({ 
+      message: 'Error actualizando rol' 
+    });
+  }
+};
+
+// ======================================
+// FUNCIONES PARA RECUPERACIÓN DE CONTRASEÑA
 // ======================================
 export const forgotPassword = async (req, res) => {
   try {
     const { email } = req.body;
 
-    // ✅ VALIDACIÓN DE ENTRADA
     if (!email) {
       return res.status(400).json({ 
         message: 'Email es requerido' 
       });
     }
 
-    const emailTrimmed = email.toLowerCase().trim();
-    
-    // ✅ USAR getConnection CON VALIDACIÓN
     const pool = await getConnection();
     if (!pool) {
       return res.status(503).json({ 
@@ -241,132 +613,80 @@ export const forgotPassword = async (req, res) => {
       });
     }
 
-    // ✅ BUSCAR USUARIO CON VALIDACIÓN DE ESTADO
     const result = await pool.request()
-      .input('email', sql.VarChar(255), emailTrimmed)
-      .query(`
-        SELECT UsuarioID, Username, Email 
-        FROM Usuarios 
-        WHERE LOWER(Email) = @email AND Estado = 1
-      `);
+      .input('email', sql.VarChar(255), email.toLowerCase().trim())
+      .query('SELECT UsuarioID, Email, Username FROM Usuarios WHERE LOWER(Email) = @email AND Estado = 1');
 
     if (result.recordset.length === 0) {
-      return res.status(404).json({ 
-        message: 'No se encontró una cuenta con ese email' 
+      return res.json({ 
+        success: true,
+        message: 'Si el email existe, se ha enviado un enlace de recuperación.' 
       });
     }
 
     const user = result.recordset[0];
 
-    // ✅ GENERAR TOKEN SEGURO
     const resetToken = crypto.randomBytes(32).toString('hex');
-    const hashedToken = crypto.createHash('sha256').update(resetToken).digest('hex');
-    const expires = new Date(Date.now() + 3600000); // 1 hora
+    const resetTokenExpiry = new Date(Date.now() + 3600000); // 1 hora
 
-    // ✅ GUARDAR TOKEN EN BASE DE DATOS
     await pool.request()
       .input('userId', sql.Int, user.UsuarioID)
-      .input('token', sql.VarChar(255), hashedToken)
-      .input('expires', sql.DateTime, expires)
+      .input('resetToken', sql.VarChar(255), resetToken)
+      .input('resetTokenExpiry', sql.DateTime, resetTokenExpiry)
       .query(`
         UPDATE Usuarios 
-        SET ResetPasswordToken = @token, ResetPasswordExpires = @expires 
+        SET ResetToken = @resetToken, ResetTokenExpiry = @resetTokenExpiry 
         WHERE UsuarioID = @userId
       `);
 
-    // ✅ CONSTRUIR URL DE RESET
-    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
-    const resetURL = `${frontendUrl}/reset-password?token=${resetToken}`;
+    const resetUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/reset-password/${resetToken}`;
+    
+    const mailOptions = {
+      to: user.Email,
+      subject: 'Recuperación de Contraseña - RRHH System',
+      html: `
+        <h2>Recuperación de Contraseña</h2>
+        <p>Hola ${user.Username},</p>
+        <p>Recibimos una solicitud para restablecer tu contraseña. Si no fuiste tú, puedes ignorar este email.</p>
+        <p>Para restablecer tu contraseña, haz clic en el siguiente enlace:</p>
+        <a href="${resetUrl}" style="background-color: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">Restablecer Contraseña</a>
+        <p>Este enlace expirará en 1 hora.</p>
+        <p>Si el botón no funciona, copia y pega este enlace en tu navegador:</p>
+        <p>${resetUrl}</p>
+      `
+    };
 
-    // ✅ VALIDAR CONFIGURACIÓN DE EMAIL
-    if (!transporter) {
-      console.error('Transporter de email no configurado');
-      return res.status(500).json({ 
-        message: 'Servicio de email no disponible' 
-      });
-    }
-
-    // ✅ ENVIAR EMAIL CON MANEJO DE ERRORES
-    try {
-      await transporter.sendMail({
-        from: `"ProDominicana - Sistema RRHH" <${process.env.SMTP_USER}>`,
-        to: user.Email,
-        subject: 'Restablecer contraseña - Sistema RRHH',
-        html: `
-          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-            <h2 style="color: #333;">Restablecer contraseña</h2>
-            <p>Hola <strong>${user.Username}</strong>,</p>
-            <p>Recibimos una solicitud para restablecer la contraseña de tu cuenta en el Sistema RRHH de ProDominicana.</p>
-            <p>Haz clic en el siguiente enlace para crear una nueva contraseña:</p>
-            <div style="text-align: center; margin: 30px 0;">
-              <a href="${resetURL}" 
-                 style="background-color: #007bff; color: white; padding: 12px 30px; 
-                        text-decoration: none; border-radius: 5px; display: inline-block;">
-                Restablecer Contraseña
-              </a>
-            </div>
-            <p><strong>Este enlace expirará en 1 hora.</strong></p>
-            <p>Si no solicitaste este cambio, puedes ignorar este correo de forma segura.</p>
-            <hr style="margin: 30px 0; border: 1px solid #eee;">
-            <p style="font-size: 12px; color: #666;">
-              Este es un correo automático del Sistema RRHH de ProDominicana. No respondas a este correo.
-            </p>
-          </div>
-        `
-      });
-
-      console.log(`Email de reset enviado a: ${user.Email}`);
-
-    } catch (emailError) {
-      console.error('Error enviando email:', emailError);
-      return res.status(500).json({ 
-        message: 'Error enviando correo de restablecimiento' 
-      });
-    }
+    await transporter.sendMail(mailOptions);
 
     res.json({ 
       success: true,
-      message: 'Se ha enviado un correo con las instrucciones para restablecer tu contraseña. Revisa tu bandeja de entrada.' 
+      message: 'Si el email existe, se ha enviado un enlace de recuperación.' 
     });
 
   } catch (error) {
-    console.error('Error en forgotPassword:', error);
-    
-    // ✅ MANEJO ESPECÍFICO DE TIMEOUTS
-    if (error.code === 'ETIMEOUT') {
-      return res.status(503).json({ 
-        message: 'El servidor está temporalmente ocupado. Inténtalo de nuevo.' 
-      });
-    }
-    
+    console.error('Error en forgot password:', error);
     res.status(500).json({ 
-      message: 'Error interno del servidor' 
+      message: 'Error procesando la solicitud' 
     });
   }
 };
 
-// ======================================
-// RESET PASSWORD ACTUALIZADO
-// ======================================
 export const resetPassword = async (req, res) => {
   try {
     const { token, newPassword } = req.body;
 
-    // ✅ VALIDACIÓN DE ENTRADA
     if (!token || !newPassword) {
       return res.status(400).json({ 
         message: 'Token y nueva contraseña son requeridos' 
       });
     }
 
-    // ✅ VALIDACIÓN DE CONTRASEÑA
-    if (newPassword.length < 8) {
+    if (newPassword.length < 6) {
       return res.status(400).json({ 
-        message: 'La contraseña debe tener al menos 8 caracteres' 
+        message: 'La contraseña debe tener al menos 6 caracteres' 
       });
     }
-    
-    // ✅ USAR getConnection CON VALIDACIÓN
+
     const pool = await getConnection();
     if (!pool) {
       return res.status(503).json({ 
@@ -374,15 +694,12 @@ export const resetPassword = async (req, res) => {
       });
     }
 
-    // ✅ VALIDAR TOKEN
-    const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
-
     const result = await pool.request()
-      .input('token', sql.VarChar(255), hashedToken)
+      .input('token', sql.VarChar(255), token)
       .query(`
-        SELECT UsuarioID, Username, ResetPasswordExpires
-        FROM Usuarios
-        WHERE ResetPasswordToken = @token AND Estado = 1
+        SELECT UsuarioID, ResetToken, ResetTokenExpiry 
+        FROM Usuarios 
+        WHERE ResetToken = @token AND ResetTokenExpiry > GETDATE() AND Estado = 1
       `);
 
     if (result.recordset.length === 0) {
@@ -392,79 +709,44 @@ export const resetPassword = async (req, res) => {
     }
 
     const user = result.recordset[0];
+    const hashedPassword = await bcrypt.hash(newPassword, 12);
 
-    // ✅ VERIFICAR EXPIRACIÓN
-    if (new Date(user.ResetPasswordExpires) < new Date()) {
-      return res.status(400).json({ 
-        message: 'El token ha expirado. Solicita un nuevo restablecimiento de contraseña.' 
-      });
-    }
-
-    // ✅ HASHEAR NUEVA CONTRASEÑA
-    let passwordHash;
-    try {
-      passwordHash = await bcrypt.hash(newPassword, 12);
-    } catch (hashError) {
-      console.error('Error hasheando contraseña:', hashError);
-      return res.status(500).json({ 
-        message: 'Error procesando nueva contraseña' 
-      });
-    }
-
-    // ✅ ACTUALIZAR CONTRASEÑA
     await pool.request()
       .input('userId', sql.Int, user.UsuarioID)
-      .input('passwordHash', sql.VarChar(255), passwordHash)
+      .input('hashedPassword', sql.VarChar(255), hashedPassword)
       .query(`
         UPDATE Usuarios 
-        SET PasswordHash = @passwordHash, 
-            ResetPasswordToken = NULL, 
-            ResetPasswordExpires = NULL,
-            UltimoLogin = NULL
+        SET PasswordHash = @hashedPassword, ResetToken = NULL, ResetTokenExpiry = NULL
         WHERE UsuarioID = @userId
       `);
 
-    console.log(`Contraseña actualizada para usuario: ${user.Username}`);
-
     res.json({ 
       success: true,
-      message: 'Tu contraseña ha sido actualizada correctamente. Ya puedes iniciar sesión con tu nueva contraseña.' 
+      message: 'Contraseña actualizada correctamente' 
     });
-    
+
   } catch (error) {
-    console.error('Error en resetPassword:', error);
-    
-    // ✅ MANEJO ESPECÍFICO DE TIMEOUTS
-    if (error.code === 'ETIMEOUT') {
-      return res.status(503).json({ 
-        message: 'El servidor está temporalmente ocupado. Inténtalo de nuevo.' 
-      });
-    }
-    
+    console.error('Error en reset password:', error);
     res.status(500).json({ 
-      message: 'Error interno del servidor' 
+      message: 'Error actualizando la contraseña' 
     });
   }
 };
 
-// ======================================
-// CAMBIAR CONTRASEÑA (NUEVO)
-// ======================================
 export const changePassword = async (req, res) => {
   try {
     const { currentPassword, newPassword } = req.body;
-    const userId = req.user.userId; // Del middleware de auth
+    const userId = req.user.userId;
 
-    // ✅ VALIDACIONES
     if (!currentPassword || !newPassword) {
       return res.status(400).json({ 
         message: 'Contraseña actual y nueva contraseña son requeridas' 
       });
     }
 
-    if (newPassword.length < 8) {
+    if (newPassword.length < 6) {
       return res.status(400).json({ 
-        message: 'La nueva contraseña debe tener al menos 8 caracteres' 
+        message: 'La nueva contraseña debe tener al menos 6 caracteres' 
       });
     }
 
@@ -475,31 +757,30 @@ export const changePassword = async (req, res) => {
       });
     }
 
-    // ✅ VERIFICAR CONTRASEÑA ACTUAL
-    const userResult = await pool.request()
+    const result = await pool.request()
       .input('userId', sql.Int, userId)
       .query('SELECT PasswordHash FROM Usuarios WHERE UsuarioID = @userId AND Estado = 1');
 
-    if (userResult.recordset.length === 0) {
+    if (result.recordset.length === 0) {
       return res.status(404).json({ 
         message: 'Usuario no encontrado' 
       });
     }
 
-    const validCurrentPassword = await bcrypt.compare(currentPassword, userResult.recordset[0].PasswordHash);
-    if (!validCurrentPassword) {
-      return res.status(401).json({ 
-        message: 'La contraseña actual es incorrecta' 
+    const user = result.recordset[0];
+    const validPassword = await bcrypt.compare(currentPassword, user.PasswordHash);
+    if (!validPassword) {
+      return res.status(400).json({ 
+        message: 'Contraseña actual incorrecta' 
       });
     }
 
-    // ✅ HASHEAR Y ACTUALIZAR NUEVA CONTRASEÑA
-    const passwordHash = await bcrypt.hash(newPassword, 12);
+    const hashedPassword = await bcrypt.hash(newPassword, 12);
 
     await pool.request()
       .input('userId', sql.Int, userId)
-      .input('passwordHash', sql.VarChar(255), passwordHash)
-      .query('UPDATE Usuarios SET PasswordHash = @passwordHash WHERE UsuarioID = @userId');
+      .input('hashedPassword', sql.VarChar(255), hashedPassword)
+      .query('UPDATE Usuarios SET PasswordHash = @hashedPassword WHERE UsuarioID = @userId');
 
     res.json({ 
       success: true,
@@ -509,7 +790,7 @@ export const changePassword = async (req, res) => {
   } catch (error) {
     console.error('Error cambiando contraseña:', error);
     res.status(500).json({ 
-      message: 'Error interno del servidor' 
+      message: 'Error actualizando la contraseña' 
     });
   }
 };

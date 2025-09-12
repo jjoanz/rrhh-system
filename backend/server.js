@@ -13,6 +13,7 @@ import asistenciaRoutes from './routes/asistenciaRoutes.js';
 import departamentosRoutes from './routes/departamentosRoutes.js';
 import puestosRoutes from './routes/puestosRoutes.js';
 import authRoutes from './routes/authRoutes.js';
+import adminRoutes from './routes/adminRoutes.js'; // ✅ NUEVO: Importar rutas de admin
 
 // ✅ Importar middleware de autenticación
 import { authenticateToken } from './middleware/auth.js';
@@ -56,6 +57,7 @@ app.use('/api/capacitacion', authenticateToken, capacitacionRoutes);
 app.use('/api/asistencia', authenticateToken, asistenciaRoutes);
 app.use('/api/departamentos', authenticateToken, departamentosRoutes);
 app.use('/api/puestos', authenticateToken, puestosRoutes);
+app.use('/api/admin', authenticateToken, adminRoutes); // ✅ NUEVO: Conectar rutas de admin
 
 // --- MANEJO DE ERRORES GLOBAL ---
 app.use((err, req, res, next) => {
@@ -84,4 +86,5 @@ app.listen(PORT, () => {
   console.log(`🚀 Servidor backend corriendo en http://localhost:${PORT}`);
   console.log(`📱 Frontend React en: http://localhost:3000`);
   console.log(`🔐 Endpoints de auth: http://localhost:${PORT}/api/auth`);
+  console.log(`🛡️  Endpoints de admin: http://localhost:${PORT}/api/admin`); // ✅ NUEVO log
 });

@@ -187,7 +187,33 @@ const AdminPermissions = () => {
       }));
 
       console.log('👥 Usuarios normalizados:', usuariosNormalizados);
-      setUsuarios(usuariosNormalizados);
+     // Obtener nombres completos de empleados
+        const usuariosConNombres = await Promise.all(
+          usuariosNormalizados.map(async (usuario) => {
+            if (usuario.empleadoId) {
+              try {
+                const resEmpleado = await fetch(`${API_BASE_URL}/empleados/${usuario.empleadoId}`, {
+                  headers: { 'Authorization': `Bearer ${getToken()}` }
+                });
+                if (resEmpleado.ok) {
+                  const empleadoData = await resEmpleado.json();
+                  const empleado = empleadoData.empleado || empleadoData;
+                  return {
+                    ...usuario,
+                    nombreCompleto: `${empleado.NOMBRE} ${empleado.APELLIDO}`.trim(),
+                    nombre: empleado.NOMBRE,
+                    apellido: empleado.APELLIDO
+                  };
+                }
+              } catch (err) {
+                console.error(`Error obteniendo empleado ${usuario.empleadoId}:`, err);
+              }
+            }
+            return usuario;
+          })
+        );
+
+        setUsuarios(usuariosConNombres);
 
     } catch (err) {
       console.error('💥 Error cargando usuarios:', err);
@@ -668,7 +694,7 @@ const AdminPermissions = () => {
                               </div>
                               <div className="ml-4">
                                 <div className="text-sm font-medium text-gray-900">
-                                  {usuario.username}
+                                 {usuario.email ? usuario.email.split('@')[0] : usuario.username}
                                 </div>
                                 <div className="text-sm text-gray-500">
                                   ID: {usuario.id}
@@ -697,13 +723,12 @@ const AdminPermissions = () => {
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
                             <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                              usuario.estado === 1 || usuario.estado === 2 || usuario.estado === 'activo'
-                                ? 'bg-green-100 text-green-800' 
-                                : 'bg-red-100 text-red-800'
-                            }`}>
-                              {usuario.estado === 1 || usuario.estado === 2 || usuario.estado === 'activo' ? 'Activo' : 'Inactivo'}
-                              <span className="ml-1 text-xs">({usuario.estado})</span>
-                            </span>
+                             usuario.estado === 'activo' || usuario.estado === 1 || usuario.estado === true
+                              ? 'bg-green-100 text-green-800' 
+                              : 'bg-red-100 text-red-800'
+                          }`}>
+                            {usuario.estado === 'activo' || usuario.estado === 1 || usuario.estado === true ? 'Activo' : 'Inactivo'}
+                          </span>
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
                             <div className="flex items-center gap-2">

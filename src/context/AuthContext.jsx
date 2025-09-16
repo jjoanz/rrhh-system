@@ -1,202 +1,209 @@
 // src/context/AuthContext.jsx
+// src/context/AuthContext.jsx
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { CAPACITACION_PERMISSIONS, VACANTES_PERMISSIONS } from '../data/navigation';
+import axios from 'axios';
 
 const AuthContext = createContext();
 
-export const useAuth = () => {
-  const context = useContext(AuthContext);
-  if (!context) throw new Error('useAuth debe ser usado dentro de un AuthProvider');
-  return context;
-};
-
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
+  const [permisos, setPermisos] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
 
-  const [resetMode, setResetMode] = useState(false);
-  const [resetToken, setResetTokenState] = useState('');
+  const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
 
-  const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
-
-  // Detectar token de reset en la URL
-  const checkForResetToken = () => {
-    const urlParams = new URLSearchParams(window.location.search);
-    const token = urlParams.get('token');
-    if (token && window.location.pathname.includes('reset-password')) {
-      setResetMode(true);
-      setResetTokenState(token);
-      window.history.replaceState({}, document.title, window.location.pathname);
+  // =========================
+  // VERIFICAR SI TOKEN ES VÁLIDO
+  // =========================
+  const isTokenValid = (token) => {
+    if (!token) return false;
+    
+    try {
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      const currentTime = Date.now() / 1000;
+      
+      // Verificar si el token ha expirado
+      if (payload.exp < currentTime) {
+        console.log('Token expirado');
+        return false;
+      }
+      
       return true;
+    } catch (error) {
+      console.error('Token malformado:', error);
+      return false;
     }
-    return false;
   };
 
-  useEffect(() => {
-    const initializeAuth = async () => {
-      try {
-        if (checkForResetToken()) return setLoading(false);
+  // =========================
+  // MAPEO DEL ESTADO (CORREGIDO PARA SQL SERVER BIT)
+  // =========================
+  const mapEstado = (estado) => {
+    // SQL Server bit: 1 = Activo, 0 = Inactivo
+    return (estado === 1 || estado === true) ? 'Activo' : 'Inactivo';
+  };
 
-        const token = localStorage.getItem('rrhh_token');
-        if (!token) return setLoading(false);
+  const formatUser = (userData) => ({
+    id: userData.id,
+    name: `${userData.nombre} ${userData.apellido}`.trim() || 'Usuario',
+    position: userData.puesto || userData.rol || '',
+    role: userData.rol || 'Sistema',
+    email: userData.email,
+    empleadoId: userData.empleadoId,
+    estado: mapEstado(userData.estado)
+  });
 
-        const response = await fetch(`${API_BASE_URL}/auth/verify`, {
-          method: 'GET',
-          headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' }
-        });
-
-        if (response.ok) {
-          const data = await response.json();
-          setUser({
-            id: data.user.id,
-            username: data.user.username,
-            name: data.user.nombre && data.user.apellido
-              ? `${data.user.nombre} ${data.user.apellido}`
-              : data.user.username,
-            role: data.user.rol.toLowerCase(),
-            empleadoId: data.user.empleadoId,
-            permisos: data.permisos
-          });
-        } else {
-          localStorage.removeItem('rrhh_token');
-        }
-      } catch (err) {
-        console.error('Error al verificar token:', err);
-        localStorage.removeItem('rrhh_token');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    initializeAuth();
-  }, [API_BASE_URL]);
-
+  // =========================
+  // LOGIN
+  // =========================
   const login = async (email, password) => {
-    setLoading(true);
-    setError(null);
     try {
-      const response = await fetch(`${API_BASE_URL}/auth/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password })
+      const res = await axios.post(`${API_URL}/auth/login`, { email, password });
+      const { token, user: userData, permisos: permisosData } = res.data;
+
+      localStorage.setItem('rrhh_token', token);
+
+      setUser(formatUser(userData));
+      setPermisos(permisosData || []);
+
+      return { success: true };
+    } catch (error) {
+      console.error('Login error:', error);
+      return {
+        success: false,
+        error: error.response?.data?.message || 'Error al iniciar sesión'
+      };
+    }
+  };
+
+  // =========================
+  // LOGOUT
+  // =========================
+  const logout = () => {
+    localStorage.removeItem('rrhh_token');
+    setUser(null);
+    setPermisos([]);
+  };
+
+  // =========================
+  // VERIFICAR TOKEN (CORREGIDO)
+  // =========================
+  const verifyUser = async () => {
+    const token = localStorage.getItem('rrhh_token');
+    
+    if (!token) {
+      setLoading(false);
+      return;
+    }
+
+    // Verificar si el token es válido antes de hacer la llamada
+    if (!isTokenValid(token)) {
+      console.log('Token inválido o expirado, limpiando localStorage');
+      logout();
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const res = await axios.get(`${API_URL}/auth/verify`, {
+        headers: { Authorization: `Bearer ${token}` }
       });
-      const data = await response.json();
 
-      if (response.ok) {
-        const userData = {
-          id: data.user.id,
-          username: data.user.username,
-          name: data.user.nombre && data.user.apellido
-            ? `${data.user.nombre} ${data.user.apellido}`
-            : data.user.username,
-          role: data.user.rol.toLowerCase(),
-          empleadoId: data.user.empleadoId,
-          permisos: data.permisos
-        };
+      const { user: userData, permisos: permisosData } = res.data;
 
-        localStorage.setItem('rrhh_token', data.token);
-        setUser(userData);
-        return { success: true, user: userData };
-      } else {
-        const errorMsg = data.message || 'Credenciales incorrectas';
-        setError(errorMsg);
-        return { success: false, error: errorMsg };
+      setUser(formatUser(userData));
+      setPermisos(permisosData || []);
+    } catch (error) {
+      console.error('Verify user error:', error);
+      
+      // Si es error 401 (no autorizado), limpiar token
+      if (error.response?.status === 401) {
+        console.log('Token rechazado por el servidor, limpiando localStorage');
       }
-    } catch (err) {
-      console.error('Error en login:', err);
-      const errorMsg = 'Error de conexión con el servidor';
-      setError(errorMsg);
-      return { success: false, error: errorMsg };
+      
+      logout();
     } finally {
       setLoading(false);
     }
   };
 
-  const logout = () => {
-    setUser(null);
-    setError(null);
-    localStorage.removeItem('rrhh_token');
-  };
-
-  const getToken = () => localStorage.getItem('rrhh_token');
-
-  const authenticatedFetch = async (url, options = {}) => {
-    const token = getToken();
-    const config = { ...options, headers: { 'Content-Type': 'application/json', ...options.headers } };
-    if (token) config.headers.Authorization = `Bearer ${token}`;
-    const response = await fetch(url, config);
-    if (response.status === 401) logout();
-    return response;
-  };
-
-  // Verificar permisos de módulos
-  const hasPermission = (permission, moduleType) => {
-    if (!user) return false;
-    const { role } = user;
-
-    if (moduleType === 'capacitacion') {
-      return CAPACITACION_PERMISSIONS[permission]?.includes(role) || false;
-    }
-    if (moduleType === 'vacantes') {
-      return VACANTES_PERMISSIONS[permission]?.includes(role) || false;
-    }
-    return false;
-  };
-
-  // ========================
-  // Funciones de contraseña
-  // ========================
+  // =========================
+  // FORGOT PASSWORD
+  // =========================
   const forgotPassword = async (email) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/auth/forgot-password`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email })
-      });
-      const data = await response.json();
-      return response.ok ? { success: true, message: data.message } : { success: false, error: data.message };
-    } catch (err) {
-      console.error('Error en forgotPassword:', err);
-      return { success: false, error: 'Error de conexión con el servidor' };
+      const res = await axios.post(`${API_URL}/auth/forgot-password`, { email });
+      return res.data;
+    } catch (error) {
+      console.error('Forgot password error:', error);
+      return { success: false, error: error.response?.data?.message || 'Error al enviar email' };
     }
   };
 
+  // =========================
+  // RESET PASSWORD
+  // =========================
   const resetPassword = async (token, newPassword) => {
     try {
-      const response = await fetch(`${API_BASE_URL}/auth/reset-password`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token, newPassword })
-      });
-      const data = await response.json();
-      return response.ok ? { success: true, message: data.message } : { success: false, error: data.message };
-    } catch (err) {
-      console.error('Error en resetPassword:', err);
-      return { success: false, error: 'Error de conexión con el servidor' };
+      const res = await axios.post(`${API_URL}/auth/reset-password`, { token, newPassword });
+      return res.data;
+    } catch (error) {
+      console.error('Reset password error:', error);
+      return { success: false, error: error.response?.data?.message || 'Error al restablecer contraseña' };
     }
   };
 
+  // =========================
+  // CAMBIO DE CONTRASEÑA (USER LOGUEADO)
+  // =========================
+  const changePassword = async (currentPassword, newPassword) => {
+    const token = localStorage.getItem('rrhh_token');
+    
+    if (!token || !isTokenValid(token)) {
+      return { success: false, error: 'No estás autenticado o tu sesión ha expirado' };
+    }
+
+    try {
+      const res = await axios.post(
+        `${API_URL}/auth/change-password`,
+        { currentPassword, newPassword },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      return res.data;
+    } catch (error) {
+      console.error('Change password error:', error);
+      
+      // Si es error 401, limpiar token
+      if (error.response?.status === 401) {
+        logout();
+        return { success: false, error: 'Tu sesión ha expirado. Por favor, inicia sesión nuevamente.' };
+      }
+      
+      return { success: false, error: error.response?.data?.message || 'Error cambiando contraseña' };
+    }
+  };
+
+  useEffect(() => {
+    verifyUser();
+  }, []);
+
   return (
-    <AuthContext.Provider value={{
-      user,
-      loading,
-      error,
-      login,
-      logout,
-      hasPermission,
-      getToken,
-      authenticatedFetch,
-      forgotPassword,
-      resetPassword,
-      clearError: () => setError(null),
-      resetMode,
-      setResetMode,
-      resetToken,
-      setResetToken: setResetTokenState,
-      checkForResetToken
-    }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        permisos,
+        login,
+        logout,
+        forgotPassword,
+        resetPassword,
+        changePassword,
+        loading,
+        isTokenValid
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );
 };
+
+export const useAuth = () => useContext(AuthContext);

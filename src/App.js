@@ -1,10 +1,9 @@
-// App.js
 import React from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { AppProvider, useApp } from './context/AppContext';
 import LoginPage from './components/auth/LoginPage';
-import { Building2, Menu, LogOut } from 'lucide-react';
-import { getNavigationByRole } from './data/navigation';
+import { Menu, LogOut, Building2 } from 'lucide-react';
+import { getNavigationByRoleAndPermissions } from './data/navigation';
 
 import VacacionesModule from './components/modules/vacaciones/VacacionesModule';
 import NominaModule from './components/modules/nomina/NominaModule';
@@ -18,9 +17,9 @@ import AdminPermissions from './components/Admin/AdminPermissions';
 
 // ===================== SIDEBAR =====================
 const Sidebar = ({ isOpen, onClose }) => {
-  const { user } = useAuth();
+  const { user, permisos } = useAuth();
   const { activeSection, navigateToSection } = useApp();
-  const navigation = user ? getNavigationByRole(user.role) : [];
+  const navigation = user ? getNavigationByRoleAndPermissions(user, permisos) : [];
 
   return (
     <>
@@ -109,8 +108,8 @@ const Header = () => {
 
 // ===================== DASHBOARD =====================
 const Dashboard = () => {
-  const { user } = useAuth();
-  const navigation = user ? getNavigationByRole(user.role) : [];
+  const { user, permisos } = useAuth();
+  const navigation = user ? getNavigationByRoleAndPermissions(user, permisos) : [];
 
   return (
     <div style={{ padding:'1.5rem' }}>
@@ -146,12 +145,12 @@ const MainApp = () => {
       case 'vacaciones': return <VacacionesModule />;
       case 'nomina': return <NominaModule />;
       case 'asistencia': return <AsistenciaModule />;
-      case 'capacitacion': return <CapacitacionModule />;
+      case 'capacitaciones': return <CapacitacionModule />;
       case 'vacantes': return <VacantesModule />;
       case 'perfil': return <PerfilModule />;
       case 'empleados': return <EmpleadosModule />;
       case 'configuracion': return <ConfiguracionModule />;
-      case 'adminPermissions': return <AdminPermissions />;
+      case 'admin': return <AdminPermissions />;
       default: return <Dashboard />;
     }
   };
@@ -179,7 +178,3 @@ function App() {
 }
 
 export default App;
-
-
-
-

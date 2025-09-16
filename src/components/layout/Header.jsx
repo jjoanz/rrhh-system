@@ -10,7 +10,7 @@ const Header = () => {
   return (
     <header style={{
       background: 'white',
-      boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1)',
+      boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
       borderBottom: '1px solid #e5e7eb'
     }}>
       <div style={{
@@ -19,30 +19,45 @@ const Header = () => {
         justifyContent: 'space-between',
         padding: '0.75rem 1rem'
       }}>
+        {/* Izquierda */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          <button onClick={toggleSidebar} style={{
-            padding: '0.5rem',
-            borderRadius: '0.5rem',
-            border: 'none',
-            background: 'transparent',
-            cursor: 'pointer'
-          }}>
+          <button onClick={toggleSidebar} style={{ padding: '0.5rem', border: 'none', background: 'transparent', cursor: 'pointer' }}>
             <Menu style={{ width: '1.25rem', height: '1.25rem' }} />
           </button>
-          <h1 style={{ fontSize: '1.125rem', fontWeight: 'bold', color: '#111827', margin: 0 }}>
-            RRHH Pro
-          </h1>
+          <h1 style={{ fontSize: '1.125rem', fontWeight: 'bold', color: '#111827', margin: 0 }}>RRHH Pro</h1>
         </div>
 
+        {/* Derecha */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          <div style={{ textAlign: 'right' }}>
-            <p style={{ fontSize: '0.875rem', fontWeight: '500', color: '#111827', margin: 0 }}>
-              {user.name}
-            </p>
-            <p style={{ fontSize: '0.75rem', color: '#6b7280', margin: 0 }}>
-              {user.position}
-            </p>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            {/* Avatar */}
+            <div style={{
+              width: '35px',
+              height: '35px',
+              borderRadius: '50%',
+              backgroundColor: '#667eea',
+              color: 'white',
+              display: 'flex',
+              justifyContent: 'center',
+              alignItems: 'center',
+              fontWeight: 'bold',
+              fontSize: '0.875rem',
+              textTransform: 'uppercase'
+            }}>
+              {user?.nombre?.[0] || 'U'}
+            </div>
+
+            {/* Nombre y puesto */}
+            <div style={{ textAlign: 'left' }}>
+              <p style={{ fontSize: '0.875rem', fontWeight: '500', color: '#111827', margin: 0 }}>
+                {user?.nombre || 'Usuario'}
+              </p>
+              <p style={{ fontSize: '0.75rem', color: '#6b7280', margin: 0 }}>
+                {user?.puesto || 'Puesto'}
+              </p>
+            </div>
           </div>
+
           <button onClick={logout} style={{
             display: 'flex',
             alignItems: 'center',
@@ -64,3 +79,4 @@ const Header = () => {
 };
 
 export default Header;
+

@@ -1,13 +1,32 @@
-import { poolPromise } from './db.js';
+import sql from 'mssql';
+import dotenv from 'dotenv';
+dotenv.config();
 
-async function testQuery() {
+const config = {
+  server: process.env.DB_SERVER,
+  port: parseInt(process.env.DB_PORT, 10),
+  database: process.env.DB_DATABASE,
+  user: process.env.DB_USER,
+  password: process.env.DB_PASSWORD,
+  options: {
+    encrypt: false,
+    trustServerCertificate: true
+  }
+};
+
+async function testConnection() {
   try {
-    const pool = await poolPromise;
-    const result = await pool.request().query('SELECT 1 AS result');
-    console.log('✅ Query de prueba exitosa:', result.recordset);
+    const pool = await sql.connect(config);
+    console.log('✅ Conexión exitosa a SQL Server');
+    
+    const result = await pool.request().query('SELECT 1 AS test');
+    console.log('Resultado prueba:', result.recordset);
+
+    await pool.close();
   } catch (err) {
-    console.error('❌ Error en query de prueba:', err);
+    console.error('❌ Error conectando a SQL Server:', err.message);
   }
 }
 
-testQuery();
+testConnection();
+

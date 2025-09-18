@@ -1,5 +1,6 @@
+// src/App.js
 import React from 'react';
-import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
+import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { AppProvider, useApp } from './context/AppContext';
 import LoginPage from './components/auth/LoginPage';
@@ -16,6 +17,8 @@ import PerfilModule from './components/modules/perfil/perfilModule';
 import EmpleadosModule from './components/modules/empleados/EmpleadosModule';
 import ConfiguracionModule from './components/modules/configuracion/ConfiguracionModule';
 import AdminPermissions from './components/Admin/AdminPermissions';
+import PostulacionesModule from './components/modules/postulaciones/PostulacionesModule';
+import DepartamentosModule from './components/modules/departamentos/DepartamentosModule';
 
 // ===================== SIDEBAR =====================
 const Sidebar = ({ isOpen, onClose }) => {
@@ -138,21 +141,7 @@ const Dashboard = () => {
 const ProtectedRoute = ({ children }) => {
   const { user, loading } = useAuth();
 
-  if (loading) {
-    return (
-      <div style={{ 
-        display: 'flex', 
-        justifyContent: 'center', 
-        alignItems: 'center', 
-        height: '100vh',
-        fontSize: '1.2rem',
-        color: '#6b7280'
-      }}>
-        Cargando...
-      </div>
-    );
-  }
-
+  if (loading) return <div style={{ display:'flex', justifyContent:'center', alignItems:'center', height:'100vh', fontSize:'1.2rem', color:'#6b7280' }}>Cargando...</div>;
   return user ? children : <Navigate to="/login" replace />;
 };
 
@@ -172,6 +161,8 @@ const MainLayout = () => {
       case 'empleados': return <EmpleadosModule />;
       case 'configuracion': return <ConfiguracionModule />;
       case 'admin': return <AdminPermissions />;
+      case 'postulaciones': return <PostulacionesModule />;
+      case 'departamentos': return <DepartamentosModule />;
       default: return <Dashboard />;
     }
   };
@@ -191,63 +182,35 @@ const MainLayout = () => {
 const AppRouter = () => {
   const { user, loading } = useAuth();
 
-  if (loading) {
-    return (
-      <div style={{ 
-        display: 'flex', 
-        justifyContent: 'center', 
-        alignItems: 'center', 
-        height: '100vh',
-        fontSize: '1.2rem',
-        color: '#6b7280'
-      }}>
-        Cargando...
-      </div>
-    );
-  }
+  if (loading) return <div style={{ display:'flex', justifyContent:'center', alignItems:'center', height:'100vh', fontSize:'1.2rem', color:'#6b7280' }}>Cargando...</div>;
 
   return (
     <Routes>
       {/* Rutas públicas */}
-      <Route 
-        path="/login" 
-        element={user ? <Navigate to="/dashboard" replace /> : <LoginPage />} 
-      />
-      <Route 
-        path="/reset-password/:token" 
-        element={user ? <Navigate to="/dashboard" replace /> : <ResetPassword />} 
-      />
-      
+      <Route path="/login" element={user ? <Navigate to="/dashboard" replace /> : <LoginPage />} />
+      <Route path="/reset-password/:token" element={user ? <Navigate to="/dashboard" replace /> : <ResetPassword />} />
+
       {/* Rutas protegidas */}
-      <Route 
-        path="/dashboard" 
-        element={
-          <ProtectedRoute>
-            <AppProvider>
-              <MainLayout />
-            </AppProvider>
-          </ProtectedRoute>
-        } 
-      />
-      
-      {/* Redirecciones */}
-      <Route 
-        path="/" 
-        element={<Navigate to={user ? "/dashboard" : "/login"} replace />} 
-      />
-      
-      {/* Ruta 404 */}
-      <Route 
-        path="*" 
-        element={<Navigate to={user ? "/dashboard" : "/login"} replace />} 
-      />
+      <Route path="/*" element={
+        <ProtectedRoute>
+          <AppProvider>
+            <MainLayout />
+          </AppProvider>
+        </ProtectedRoute>
+      } />
     </Routes>
   );
 };
 
 // ===================== MAIN APP =====================
 function App() {
-  return <AppRouter />;
+  return (
+    <AuthProvider>
+      <AppRouter />
+    </AuthProvider>
+  );
 }
 
 export default App;
+
+

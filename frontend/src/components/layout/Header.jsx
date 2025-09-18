@@ -1,3 +1,4 @@
+// C:\Users\josemontedeoca\rrhh-system\frontend\src\components\layout\Header.jsx
 import React from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useApp } from '../../context/AppContext';
@@ -21,10 +22,15 @@ const Header = () => {
       }}>
         {/* Izquierda */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          <button onClick={toggleSidebar} style={{ padding: '0.5rem', border: 'none', background: 'transparent', cursor: 'pointer' }}>
+          <button 
+            onClick={toggleSidebar} 
+            style={{ padding: '0.5rem', border: 'none', background: 'transparent', cursor: 'pointer' }}
+          >
             <Menu style={{ width: '1.25rem', height: '1.25rem' }} />
           </button>
-          <h1 style={{ fontSize: '1.125rem', fontWeight: 'bold', color: '#111827', margin: 0 }}>RRHH Pro</h1>
+          <h1 style={{ fontSize: '1.125rem', fontWeight: 'bold', color: '#111827', margin: 0 }}>
+            RRHH Pro
+          </h1>
         </div>
 
         {/* Derecha */}
@@ -79,4 +85,5 @@ const Header = () => {
 };
 
 export default Header;
+
 

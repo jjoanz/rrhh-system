@@ -20,6 +20,7 @@ import AdminPermissions from './components/Admin/AdminPermissions';
 import PostulacionesModule from './components/modules/postulaciones/PostulacionesModule';
 import DepartamentosModule from './components/modules/departamentos/DepartamentosModule';
 
+
 // ===================== SIDEBAR =====================
 const Sidebar = ({ isOpen, onClose }) => {
   const { user, permisos } = useAuth();

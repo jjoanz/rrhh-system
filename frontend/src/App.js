@@ -1,7 +1,9 @@
 import React from 'react';
+import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { AppProvider, useApp } from './context/AppContext';
 import LoginPage from './components/auth/LoginPage';
+import ResetPassword from './components/auth/ResetPassword';
 import { Menu, LogOut, Building2 } from 'lucide-react';
 import { getNavigationByRoleAndPermissions } from './data/navigation';
 
@@ -109,6 +111,7 @@ const Header = () => {
 // ===================== DASHBOARD =====================
 const Dashboard = () => {
   const { user, permisos } = useAuth();
+  const { navigateToSection } = useApp();
   const navigation = user ? getNavigationByRoleAndPermissions(user, permisos) : [];
 
   return (
@@ -120,7 +123,7 @@ const Dashboard = () => {
           const Icon = item.icon;
           return (
             <div key={item.id} style={{ display:'flex', alignItems:'center', gap:'0.75rem', padding:'1rem', background:'#f9fafb', borderRadius:'0.5rem', border:'1px solid #e5e7eb', cursor:'pointer' }}
-              onClick={() => console.log(`Ir a módulo ${item.id}`)}>
+              onClick={() => navigateToSection(item.id)}>
               <Icon style={{ width:'1.5rem', height:'1.5rem', color:'#3b82f6' }} />
               <span style={{ fontSize:'0.875rem', fontWeight:'500', color:'#374151' }}>{item.label}</span>
             </div>
@@ -131,13 +134,31 @@ const Dashboard = () => {
   );
 };
 
-// ===================== MAIN APP =====================
-const MainApp = () => {
+// ===================== PROTECTED ROUTE =====================
+const ProtectedRoute = ({ children }) => {
   const { user, loading } = useAuth();
-  const { sidebarOpen, closeSidebar, activeSection } = useApp();
 
-  if (loading) return <p>Cargando...</p>;
-  if (!user) return <LoginPage />;
+  if (loading) {
+    return (
+      <div style={{ 
+        display: 'flex', 
+        justifyContent: 'center', 
+        alignItems: 'center', 
+        height: '100vh',
+        fontSize: '1.2rem',
+        color: '#6b7280'
+      }}>
+        Cargando...
+      </div>
+    );
+  }
+
+  return user ? children : <Navigate to="/login" replace />;
+};
+
+// ===================== MAIN LAYOUT =====================
+const MainLayout = () => {
+  const { sidebarOpen, closeSidebar, activeSection } = useApp();
 
   const renderModule = () => {
     switch (activeSection) {
@@ -166,15 +187,67 @@ const MainApp = () => {
   );
 };
 
-// ===================== APP =====================
-function App() {
+// ===================== APP ROUTER =====================
+const AppRouter = () => {
+  const { user, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div style={{ 
+        display: 'flex', 
+        justifyContent: 'center', 
+        alignItems: 'center', 
+        height: '100vh',
+        fontSize: '1.2rem',
+        color: '#6b7280'
+      }}>
+        Cargando...
+      </div>
+    );
+  }
+
   return (
-    <AuthProvider>
-      <AppProvider>
-        <MainApp />
-      </AppProvider>
-    </AuthProvider>
+    <Routes>
+      {/* Rutas públicas */}
+      <Route 
+        path="/login" 
+        element={user ? <Navigate to="/dashboard" replace /> : <LoginPage />} 
+      />
+      <Route 
+        path="/reset-password/:token" 
+        element={user ? <Navigate to="/dashboard" replace /> : <ResetPassword />} 
+      />
+      
+      {/* Rutas protegidas */}
+      <Route 
+        path="/dashboard" 
+        element={
+          <ProtectedRoute>
+            <AppProvider>
+              <MainLayout />
+            </AppProvider>
+          </ProtectedRoute>
+        } 
+      />
+      
+      {/* Redirecciones */}
+      <Route 
+        path="/" 
+        element={<Navigate to={user ? "/dashboard" : "/login"} replace />} 
+      />
+      
+      {/* Ruta 404 */}
+      <Route 
+        path="*" 
+        element={<Navigate to={user ? "/dashboard" : "/login"} replace />} 
+      />
+    </Routes>
   );
+};
+
+// ===================== MAIN APP =====================
+function App() {
+  return <AppRouter />;
 }
 
 export default App;

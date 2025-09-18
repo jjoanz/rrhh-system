@@ -68,29 +68,45 @@ const EmpleadosModule = () => {
 // Inicialización
 useEffect(() => {
   const fetchData = async () => {
+    console.log('🔍 API_URL env var:', process.env.REACT_APP_API_URL);
+    
     try {
       setCargando(true);
 
       // 🔹 Obtener el token de localStorage
       const token = localStorage.getItem("rrhh_token");
+      console.log('🔍 Token exists:', !!token);
+      console.log('🔍 Token preview:', token ? token.substring(0, 20) + '...' : 'No token');
+      
       if (!token) {
         throw new Error("No hay token en localStorage, inicia sesión primero");
       }
 
       // 🔹 Llamar API con token en headers
-      const response = await fetch("http://192.168.1.239:5000/api/empleados/list", {
+      const API_URL = process.env.REACT_APP_API_URL || 'http://192.168.0.239:5000/api';
+      console.log('🔍 API_URL final:', API_URL);
+      console.log('🔍 URL completa:', `${API_URL}/empleados/list`);
+      
+      const response = await fetch(`${API_URL}/empleados/list`, {
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
       });
 
+      console.log('🔍 Response status:', response.status);
+      console.log('🔍 Response URL:', response.url);
+      console.log('🔍 Response ok:', response.ok);
+
       // 🔹 Manejo de errores HTTP
       if (!response.ok) {
         if (response.status === 401) {
+          console.error('❌ Token inválido o expirado');
           throw new Error("Token inválido o expirado. Por favor inicia sesión nuevamente.");
         }
-        throw new Error(`Error HTTP: ${response.status}`);
+        const errorText = await response.text();
+        console.error('❌ Error HTTP:', response.status, errorText);
+        throw new Error(`Error HTTP: ${response.status} - ${errorText}`);
       }
 
       const data = await response.json();
@@ -182,6 +198,7 @@ useEffect(() => {
       setPuestos(puestosReales);
     } catch (error) {
       console.error("❌ Error cargando empleados:", error);
+      console.error("❌ Error stack:", error.stack);
       // 🔹 Limpieza de estados en caso de error
       setEmpleados([]);
       setDepartamentos([]);

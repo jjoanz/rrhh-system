@@ -8,8 +8,8 @@ export const AuthProvider = ({ children }) => {
   const [permisos, setPermisos] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // ✅ API_URL relativo (sirve para backend + frontend en producción)
-  const API_URL = process.env.REACT_APP_API_URL || '/api';
+  // ✅ API_URL configurado correctamente
+  const API_URL = process.env.REACT_APP_API_URL || 'http://192.168.0.239:5000/api';
 
   const isTokenValid = (token) => {
     if (!token) return false;
@@ -78,7 +78,10 @@ export const AuthProvider = ({ children }) => {
 
     try {
       const res = await fetch(`${API_URL}/auth/verify`, {
-        headers: { Authorization: `Bearer ${token}` },
+        headers: { 
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}` 
+        },
       });
 
       if (!res.ok) {
@@ -95,6 +98,7 @@ export const AuthProvider = ({ children }) => {
       setPermisos(data.permisos || []);
     } catch (error) {
       console.error('Verify user error:', error);
+      logout();
     } finally {
       setLoading(false);
     }
@@ -108,18 +112,20 @@ export const AuthProvider = ({ children }) => {
         body: JSON.stringify({ email }),
       });
 
+      const data = await res.json();
+
       if (!res.ok) {
-        const errData = await res.json();
-        throw new Error(errData.message || 'Error al enviar email');
+        throw new Error(data.message || 'Error al enviar email');
       }
 
-      return await res.json();
+      return { success: true, message: data.message || 'Email enviado correctamente' };
     } catch (error) {
       console.error('Forgot password error:', error);
       return { success: false, error: error.message };
     }
   };
 
+  // ✅ Función resetPassword solo para el contexto (opcional, ya que ResetPassword la maneja internamente)
   const resetPassword = async (token, newPassword) => {
     try {
       const res = await fetch(`${API_URL}/auth/reset-password`, {
@@ -128,12 +134,13 @@ export const AuthProvider = ({ children }) => {
         body: JSON.stringify({ token, newPassword }),
       });
 
+      const data = await res.json();
+
       if (!res.ok) {
-        const errData = await res.json();
-        throw new Error(errData.message || 'Error al restablecer contraseña');
+        throw new Error(data.message || 'Error al restablecer contraseña');
       }
 
-      return await res.json();
+      return { success: true, message: data.message || 'Contraseña actualizada correctamente' };
     } catch (error) {
       console.error('Reset password error:', error);
       return { success: false, error: error.message };
@@ -147,17 +154,21 @@ export const AuthProvider = ({ children }) => {
     try {
       const res = await fetch(`${API_URL}/auth/change-password`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        headers: { 
+          'Content-Type': 'application/json', 
+          Authorization: `Bearer ${token}` 
+        },
         body: JSON.stringify({ currentPassword, newPassword }),
       });
 
+      const data = await res.json();
+
       if (!res.ok) {
         if (res.status === 401) logout();
-        const errData = await res.json();
-        throw new Error(errData.message || 'Error cambiando contraseña');
+        throw new Error(data.message || 'Error cambiando contraseña');
       }
 
-      return await res.json();
+      return { success: true, message: data.message || 'Contraseña cambiada correctamente' };
     } catch (error) {
       console.error('Change password error:', error);
       return { success: false, error: error.message };
@@ -187,5 +198,10 @@ export const AuthProvider = ({ children }) => {
   );
 };
 
-export const useAuth = () => useContext(AuthContext);
-
+export const useAuth = () => {
+  const context = useContext(AuthContext);
+  if (!context) {
+    throw new Error('useAuth debe usarse dentro de un AuthProvider');
+  }
+  return context;
+};

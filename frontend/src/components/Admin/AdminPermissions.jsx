@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { Users, Settings, Shield, Check, X, Save, AlertCircle, Eye, Plus, Edit, Trash2, EyeOff } from 'lucide-react';
 
-// 🔑 URLs de API
-const API_BASE_URL = 'http://localhost:5000/api';
+// 🔑 URLs de API actualizadas
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://192.168.0.239:5000/api';
 const AUTH_API_URL = `${API_BASE_URL}/auth`;
 const ADMIN_API_URL = `${API_BASE_URL}/admin`;
 

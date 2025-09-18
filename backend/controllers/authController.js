@@ -635,12 +635,14 @@ export const forgotPassword = async (req, res) => {
       .input('resetTokenExpiry', sql.DateTime, resetTokenExpiry)
       .query(`
         UPDATE Usuarios 
-        SET ResetToken = @resetToken, ResetTokenExpiry = @resetTokenExpiry 
+        SET ResetPasswordToken = @resetToken, ResetPasswordExpires = @resetTokenExpiry 
         WHERE UsuarioID = @userId
       `);
 
-    const resetUrl = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/reset-password/${resetToken}`;
-    
+    // forgotPassword
+    // forgotPassword
+    const resetUrl = `${process.env.FRONTEND_URL || 'http://192.168.0.239:5000'}/reset-password/${resetToken}`;
+
     const mailOptions = {
       to: user.Email,
       subject: 'Recuperación de Contraseña - RRHH System',
@@ -697,9 +699,9 @@ export const resetPassword = async (req, res) => {
     const result = await pool.request()
       .input('token', sql.VarChar(255), token)
       .query(`
-        SELECT UsuarioID, ResetToken, ResetTokenExpiry 
+        SELECT UsuarioID, ResetPasswordToken, ResetPasswordExpires 
         FROM Usuarios 
-        WHERE ResetToken = @token AND ResetTokenExpiry > GETDATE() AND Estado = 1
+        WHERE ResetPasswordToken = @token AND ResetPasswordExpires > GETDATE() AND Estado = 1
       `);
 
     if (result.recordset.length === 0) {
@@ -716,7 +718,7 @@ export const resetPassword = async (req, res) => {
       .input('hashedPassword', sql.VarChar(255), hashedPassword)
       .query(`
         UPDATE Usuarios 
-        SET PasswordHash = @hashedPassword, ResetToken = NULL, ResetTokenExpiry = NULL
+        SET PasswordHash = @hashedPassword, ResetPasswordToken = NULL, ResetPasswordExpires = NULL
         WHERE UsuarioID = @userId
       `);
 

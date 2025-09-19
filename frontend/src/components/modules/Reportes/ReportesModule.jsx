@@ -1,46 +1,45 @@
-// src/components/modules/Reportes/ReportesModule.jsx
-import React, { useState, useEffect, useMemo } from "react";
-import axios from "axios";
+// src/modules/ReportesModule.jsx
+import React, { useState, useEffect } from "react";
 import { DndProvider, useDrag, useDrop } from "react-dnd";
 import { HTML5Backend } from "react-dnd-html5-backend";
-import { BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer } from "recharts";
+import {
+  BarChart, Bar, XAxis, YAxis, Tooltip, Legend,
+  ResponsiveContainer, LineChart, Line, PieChart, Pie
+} from "recharts";
+import {
+  Play, Save, Plus, Database,
+  Filter, FileText, BarChart3, GripVertical
+} from "lucide-react";
 import { useAuth } from "../../../context/AuthContext";
 
-// ------------------ CONFIG ------------------
-const API_URL = process.env.REACT_APP_API_URL || "http://192.168.0.239:5000/api";
-const apiClient = axios.create({ baseURL: API_URL, timeout: 10000 });
-const setupAxiosInterceptors = (getStoredToken, logout) => {
-  apiClient.interceptors.request.use((config) => {
-    const token = getStoredToken?.();
-    if (token) config.headers.Authorization = `Bearer ${token}`;
-    return config;
-  });
-  apiClient.interceptors.response.use(
-    (res) => res,
-    (err) => { if (err.response?.status === 401) logout?.(); return Promise.reject(err); }
-  );
-};
 
-// ------------------ DRAG & DROP ------------------
-const DraggableCard = ({ name, table }) => {
+const API_URL = process.env.REACT_APP_API_URL || "http://192.168.0.239:5000/api";
+
+
+// Componente para campos arrastrables
+const DraggableField = ({ name, table, type = "text" }) => {
   const [{ isDragging }, drag] = useDrag(() => ({
     type: "FIELD",
-    item: { name, table },
+    item: { name, table, type },
     collect: (monitor) => ({ isDragging: !!monitor.isDragging() }),
   }));
   return (
     <div
       ref={drag}
-      className={`p-2 m-1 border rounded shadow cursor-move bg-white text-sm ${
-        isDragging ? "opacity-50" : "opacity-100"
+      className={`flex items-center gap-2 p-2 m-1 border rounded-lg shadow-sm cursor-move bg-white hover:bg-gray-50 transition-all ${
+        isDragging ? "opacity-50 scale-95" : "opacity-100"
       }`}
+      title={`${table}.${name} (${type})`}
     >
-      {table}.{name}
+      <GripVertical className="w-4 h-4 text-gray-400" />
+      <span className="text-xs text-gray-600 font-mono">{table}.</span>
+      <span className="text-sm font-medium">{name}</span>
     </div>
   );
 };
 
-const DropZoneCards = ({ title, fields, onDrop }) => {
+// DropZone para filas, columnas y métricas
+const DropZone = ({ title, fields, onDrop, onRemove, icon }) => {
   const [{ isOver }, drop] = useDrop(() => ({
     accept: "FIELD",
     drop: (item) => onDrop(item),
@@ -49,238 +48,369 @@ const DropZoneCards = ({ title, fields, onDrop }) => {
   return (
     <div
       ref={drop}
-      className={`min-h-[80px] p-2 rounded border mb-4 ${
-        isOver ? "bg-green-100" : "bg-gray-50"
+      className={`min-h-[100px] p-3 rounded-lg border-2 border-dashed transition-all ${
+        isOver ? "bg-blue-50 border-blue-400" : "border-gray-300 bg-gray-50"
       }`}
     >
-      <h4 className="font-semibold mb-2">{title}</h4>
-      <div className="flex flex-wrap">{fields.map((f, i) => (
-        <span key={i} className="px-2 py-1 m-1 bg-blue-200 rounded">{f.table}.{f.name}</span>
-      ))}</div>
+      <div className="flex items-center gap-2 mb-3">
+        {icon}
+        <h4 className="font-semibold text-gray-700">{title}</h4>
+        <span className="text-xs text-gray-500">({fields.length})</span>
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {fields.length === 0 ? (
+          <p className="text-sm text-gray-400 italic">Arrastra campos aquí</p>
+        ) : (
+          fields.map((field, index) => (
+            <div
+              key={`${field.table}-${field.name}-${index}`}
+              className="flex items-center gap-2 px-3 py-1 bg-blue-100 border border-blue-200 rounded-full text-sm"
+            >
+              <span className="font-mono text-xs text-gray-600">{field.table}.</span>
+              <span>{field.name}</span>
+              <button
+                onClick={() => onRemove(index)}
+                className="text-red-500 hover:text-red-700 ml-1"
+                type="button"
+                aria-label="Quitar campo"
+              >
+                ×
+              </button>
+            </div>
+          ))
+        )}
+      </div>
     </div>
   );
 };
 
-// ------------------ MODAL NUEVO REPORTE ------------------
-const NuevoReporteModal = ({ show, onClose, onGuardar, metadata }) => {
-  const [nombre, setNombre] = useState("");
-  const [origen, setOrigen] = useState("");
-  const [predeterminado, setPredeterminado] = useState(false);
-  const [eliminarDuplicados, setEliminarDuplicados] = useState(false);
+// Modal para crear un nuevo reporte
+const NuevoReporteModal = ({ show, onClose, onSave, metadata }) => {
+  const [formData, setFormData] = useState({
+    nombre: "",
+    origen: "",
+    descripcion: "",
+  });
+
+  const handleSave = () => {
+    if (!formData.nombre.trim() || !formData.origen) {
+      alert("Nombre y origen son requeridos");
+      return;
+    }
+    onSave(formData);
+    setFormData({ nombre: "", origen: "", descripcion: "" });
+  };
+
   if (!show) return null;
 
-  const fuentes = Object.keys(metadata);
-
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-start pt-20 z-50">
-      <div className="bg-white p-6 rounded shadow w-96">
-        <h3 className="text-lg font-bold mb-4">Nuevo Reporte</h3>
-        <div className="mb-2">
-          <label className="block font-semibold mb-1">Nombre</label>
-          <input value={nombre} onChange={(e) => setNombre(e.target.value)} className="w-full border p-2 rounded"/>
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50">
+      <div className="bg-white p-6 rounded-lg shadow-xl w-96">
+        <div className="flex items-center gap-2 mb-4">
+          <Plus className="w-5 h-5 text-green-600" />
+          <h3 className="text-lg font-bold">Nuevo Reporte</h3>
         </div>
-        <div className="mb-2">
-          <label className="block font-semibold mb-1">Origen del informe</label>
-          <select value={origen} onChange={(e) => setOrigen(e.target.value)} className="w-full border p-2 rounded">
-            <option value="">Seleccionar</option>
-            {fuentes.map(f => <option key={f} value={f}>{f}</option>)}
-          </select>
+        <div className="space-y-4">
+          <div>
+            <label className="block font-medium mb-1">Nombre *</label>
+            <input
+              type="text"
+              value={formData.nombre}
+              onChange={(e) => setFormData({ ...formData, nombre: e.target.value })}
+              className="w-full border p-2 rounded"
+            />
+          </div>
+          <div>
+            <label className="block font-medium mb-1">Origen *</label>
+            <select
+              value={formData.origen}
+              onChange={(e) => setFormData({ ...formData, origen: e.target.value })}
+              className="w-full border p-2 rounded"
+            >
+              <option value="">Seleccionar</option>
+              {Object.keys(metadata).map((table) => (
+                <option key={table} value={table}>{table}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block font-medium mb-1">Descripción</label>
+            <textarea
+              value={formData.descripcion}
+              onChange={(e) => setFormData({ ...formData, descripcion: e.target.value })}
+              className="w-full border p-2 rounded"
+              rows={3}
+            />
+          </div>
         </div>
-        <div className="mb-2">
-          <label className="flex items-center gap-2">
-            <input type="checkbox" checked={predeterminado} onChange={() => setPredeterminado(!predeterminado)}/> Incluir configuración predeterminada
-          </label>
-          <label className="flex items-center gap-2 mt-1">
-            <input type="checkbox" checked={eliminarDuplicados} onChange={() => setEliminarDuplicados(!eliminarDuplicados)}/> Eliminar filas duplicadas
-          </label>
-        </div>
-        <div className="flex justify-end gap-2 mt-4">
-          <button onClick={onClose} className="px-4 py-1 bg-gray-300 rounded">Cancelar</button>
-          <button onClick={() => onGuardar({ nombre, origen, predeterminado, eliminarDuplicados })} className="px-4 py-1 bg-blue-500 text-white rounded">Guardar</button>
+        <div className="flex justify-end gap-2 mt-6">
+          <button onClick={onClose} className="px-4 py-2 bg-gray-300 rounded" type="button">
+            Cancelar
+          </button>
+          <button
+            onClick={handleSave}
+            className="px-4 py-2 bg-blue-600 text-white rounded flex items-center gap-2"
+            type="button"
+          >
+            <Save className="w-4 h-4" /> Crear
+          </button>
         </div>
       </div>
     </div>
   );
 };
 
-// ------------------ MODULO PRINCIPAL ------------------
+
+// Módulo principal de reportes
 const ReportesModule = () => {
-  const { user, getStoredToken, logout } = useAuth();
+  const { user, getStoredToken } = useAuth();
   const [metadata, setMetadata] = useState({});
+  const [reportes, setReportes] = useState([]);
+  const [showModal, setShowModal] = useState(false);
   const [rows, setRows] = useState([]);
-  const [cols, setCols] = useState([]);
+  const [columns, setColumns] = useState([]);
   const [metrics, setMetrics] = useState([]);
-  const [data, setData] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const [reportesGuardados, setReportesGuardados] = useState([]);
-  const [showNuevoModal, setShowNuevoModal] = useState(false);
   const [sqlQuery, setSqlQuery] = useState("");
+  const [customSql, setCustomSql] = useState("");
+  const [data, setData] = useState([]);
+  const [chartType, setChartType] = useState("bar");
+  const [loading, setLoading] = useState(false);
 
-  useEffect(() => setupAxiosInterceptors(getStoredToken, logout), [getStoredToken, logout]);
-
+  // Cargar metadata y reportes guardados
   useEffect(() => {
-    if (!user) return;
-    const loadData = async () => {
+    const fetchData = async () => {
       try {
-        setLoading(true);
-        const resMeta = await apiClient.get("/reportes/metadata");
-        setMetadata(resMeta.data);
-        const resReportes = await apiClient.get("/reportes/guardados");
-        setReportesGuardados(resReportes.data);
+        const token = getStoredToken();
+        const [metaRes, repRes] = await Promise.all([
+          fetch(`${API_URL}/reportes/metadata`, { headers: { Authorization: `Bearer ${token}` } }),
+          fetch(`${API_URL}/reportes`, { headers: { Authorization: `Bearer ${token}` } }),
+        ]);
+        const meta = await metaRes.json();
+        const reps = await repRes.json();
+        setMetadata(meta);
+        setReportes(reps);
       } catch (err) {
-        setError(err.response?.data?.message || "Error cargando datos");
-      } finally { setLoading(false); }
+        console.error("Error cargando datos:", err);
+      }
     };
-    loadData();
-  }, [user]);
+    fetchData();
+  }, [getStoredToken]);
 
-  const addUnique = (arr, item) => (!arr.find(f => f.table === item.table && f.name === item.name) ? [...arr, item] : arr);
+  // Generar SQL dinámico
+  useEffect(() => {
+    if (rows.length === 0 && columns.length === 0 && metrics.length === 0) return;
+    const allFields = [...rows, ...columns, ...metrics];
+    const tables = [...new Set(allFields.map((f) => f.table))];
+    const selectFields = allFields.map((f) => `${f.table}.${f.name}`).join(", ");
+    let query = `SELECT ${selectFields} FROM ${tables.join(", ")}`;
+    if (rows.length || columns.length) {
+      query += ` GROUP BY ${[...rows, ...columns].map((f) => `${f.table}.${f.name}`).join(", ")}`;
+    }
+    setSqlQuery(query);
+  }, [rows, columns, metrics]);
 
-  const generarSQL = () => {
-    if (!rows.length || !metrics.length) return "";
-    const tablas = Array.from(new Set([...rows, ...cols, ...metrics].map(f => f.table)));
-    const select = [...rows, ...cols, ...metrics].map(f => `${f.table}.${f.name}`);
-    return `SELECT ${select.join(", ")} FROM ${tablas.join(", ")} /* relaciones automáticas */`;
-  };
-
+  // Ejecutar reporte
   const ejecutarReporte = async () => {
-    const query = generarSQL();
-    if (!query) return setError("Selecciona al menos una fila y una métrica");
+    const query = customSql || sqlQuery;
+    if (!query.trim()) return alert("No hay consulta para ejecutar");
+    setLoading(true);
     try {
-      setLoading(true);
-      const res = await apiClient.post("/reportes/custom", { sqlQuery: query });
-      setData(res.data);
-    } catch { setError("Error al ejecutar reporte dinámico"); } finally { setLoading(false); }
+      const res = await fetch(`${API_URL}/reportes/ejecutar`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${getStoredToken()}`,
+        },
+        body: JSON.stringify({ sql: query }),
+      });
+      const result = await res.json();
+      setData(result);
+    } catch (err) {
+      console.error("Error ejecutando reporte:", err);
+    } finally {
+      setLoading(false);
+    }
   };
 
+  // Guardar reporte
   const guardarReporte = async (nuevo) => {
-    if (!nuevo.nombre || !nuevo.origen) return setError("Nombre y origen son requeridos");
     try {
-      setLoading(true);
-      const res = await apiClient.post("/reportes/guardados", nuevo);
-      setReportesGuardados([...reportesGuardados, res.data]);
-      setShowNuevoModal(false);
-    } catch { setError("Error guardando reporte"); } finally { setLoading(false); }
+      const res = await fetch(`${API_URL}/reportes`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${getStoredToken()}`,
+        },
+        body: JSON.stringify({
+          ...nuevo,
+          configuracion: { rows, columns, metrics, sqlQuery: customSql || sqlQuery },
+        }),
+      });
+      const saved = await res.json();
+      setReportes([...reportes, saved]);
+      setShowModal(false);
+    } catch (err) {
+      console.error("Error guardando reporte:", err);
+    }
   };
 
-  const exportar = async (formato) => {
-    try {
-      setLoading(true);
-      const res = await apiClient.post("/reportes/export", { formato, data }, { responseType: "blob" });
-      const url = window.URL.createObjectURL(new Blob([res.data]));
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `reporte.${formato}`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
-    } catch { setError("Error exportando el reporte"); } finally { setLoading(false); }
+  // Renderizar gráfico según tipo
+  const renderChart = () => {
+    if (data.length === 0) return null;
+    const keys = Object.keys(data[0] || {});
+    if (keys.length < 2) return null;
+    switch (chartType) {
+      case "line":
+        return (
+          <LineChart data={data} width={600} height={300}>
+            <XAxis dataKey={keys[0]} />
+            <YAxis />
+            <Tooltip />
+            <Legend />
+            <Line dataKey={keys[1]} stroke="#8884d8" />
+          </LineChart>
+        );
+      case "pie":
+        return (
+          <PieChart width={600} height={300}>
+            <Pie data={data} dataKey={keys[1]} nameKey={keys[0]} label />
+            <Tooltip />
+          </PieChart>
+        );
+      default:
+        return (
+          <BarChart data={data} width={600} height={300}>
+            <XAxis dataKey={keys[0]} />
+            <YAxis />
+            <Tooltip />
+            <Legend />
+            <Bar dataKey={keys[1]} fill="#8884d8" />
+          </BarChart>
+        );
+    }
   };
-
-  const memoMetadata = useMemo(() => Object.entries(metadata), [metadata]);
 
   return (
     <DndProvider backend={HTML5Backend}>
       <div className="p-6">
-        <h2 className="text-2xl font-bold mb-4">Reportes Visuales</h2>
-
-        {error && <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded">{error} <button onClick={() => setError(null)}>×</button></div>}
-        {loading && <div className="mb-4 p-3 bg-blue-100 border border-blue-400 text-blue-700 rounded">Cargando...</div>}
-
-        {/* Lista reportes guardados */}
-        <div className="mb-6 flex justify-between items-center">
-          <h3 className="font-semibold">Reportes Guardados</h3>
-          <button onClick={() => setShowNuevoModal(true)} className="px-4 py-1 bg-green-500 text-white rounded">Nuevo Reporte</button>
+        {/* Header */}
+        <div className="flex justify-between items-center mb-6">
+          <h1 className="text-2xl font-bold flex items-center gap-2">
+            <BarChart3 className="w-7 h-7 text-blue-600" /> Generador de Reportes
+          </h1>
+          <button
+            onClick={() => setShowModal(true)}
+            className="bg-green-600 text-white px-4 py-2 rounded flex items-center gap-2"
+            type="button"
+          >
+            <Plus className="w-4 h-4" /> Nuevo Reporte
+          </button>
         </div>
-        <table className="table-auto border-collapse border border-gray-400 w-full mb-6">
-          <thead className="bg-gray-200">
-            <tr>
-              <th className="border px-2 py-1">Nombre</th>
-              <th className="border px-2 py-1">Origen</th>
-              <th className="border px-2 py-1">Creación</th>
-              <th className="border px-2 py-1">Modificación</th>
-              <th className="border px-2 py-1">Modificado por</th>
-            </tr>
-          </thead>
-          <tbody>
-            {reportesGuardados.map((r,i) => (
-              <tr key={i}>
-                <td className="border px-2 py-1">{r.nombre}</td>
-                <td className="border px-2 py-1">{r.origen}</td>
-                <td className="border px-2 py-1">{r.fechaCreacion}</td>
-                <td className="border px-2 py-1">{r.fechaModificacion}</td>
-                <td className="border px-2 py-1">{r.modificadoPor}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
 
-        {/* SQL + Constructor visual */}
-        <div className="flex gap-4">
+        {/* Tabla de reportes guardados */}
+        <div className="bg-white rounded-lg shadow mb-6">
+          <div className="p-4 border-b flex items-center gap-2">
+            <FileText className="w-5 h-5 text-gray-600" /> Reportes Guardados ({reportes.length})
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="p-2 text-left">Nombre</th>
+                  <th className="p-2 text-left">Origen</th>
+                  <th className="p-2 text-left">Descripción</th>
+                  <th className="p-2 text-left">Acciones</th>
+                </tr>
+              </thead>
+              <tbody>
+                {reportes.map((r) => (
+                  <tr key={r.id} className="hover:bg-gray-50">
+                    <td className="p-2">{r.nombre}</td>
+                    <td className="p-2">{r.origen}</td>
+                    <td className="p-2">{r.descripcion}</td>
+                    <td className="p-2 flex gap-1">
+                      <button className="text-blue-600 hover:underline" type="button">Ver</button>
+                      <button className="text-green-600 hover:underline" type="button">Editar</button>
+                      <button className="text-red-600 hover:underline" type="button">Eliminar</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Editor SQL */}
+        <div className="bg-white rounded-lg shadow p-4 mb-6">
+          <h3 className="font-semibold mb-2 flex items-center gap-2">
+            <Database className="w-5 h-5" /> Editor SQL
+          </h3>
           <textarea
-            rows={16}
-            className="border w-1/3 p-2 h-[400px] resize-none"
-            placeholder="SQL generado automáticamente..."
-            value={generarSQL()}
+            value={sqlQuery}
             readOnly
+            className="w-full border p-2 mb-2 text-sm font-mono bg-gray-50"
+            rows={3}
           />
-          <div className="flex-1 grid grid-cols-1 gap-2">
-            <div className="border p-2 rounded h-[400px] overflow-auto">
-              <h4 className="font-semibold mb-2">Campos disponibles</h4>
-              {memoMetadata.length === 0 ? <p className="text-gray-500">Cargando...</p>
-                : memoMetadata.map(([table, fields]) => (
-                  <div key={table} className="mb-2">
-                    <h4 className="font-bold">{table}</h4>
-                    {fields.map(f => <DraggableCard key={f} table={table} name={f} />)}
-                  </div>
-                ))
-              }
-            </div>
+          <textarea
+            value={customSql}
+            onChange={(e) => setCustomSql(e.target.value)}
+            className="w-full border p-2 mb-4 text-sm font-mono"
+            rows={3}
+          />
+          <button
+            onClick={ejecutarReporte}
+            disabled={loading}
+            className="bg-blue-600 text-white px-4 py-2 rounded flex items-center gap-2"
+            type="button"
+          >
+            <Play className="w-4 h-4" /> Ejecutar
+          </button>
+        </div>
 
-            <DropZoneCards title="Filas" fields={rows} onDrop={(item) => setRows(addUnique(rows,item))} />
-            <DropZoneCards title="Columnas" fields={cols} onDrop={(item) => setCols(addUnique(cols,item))} />
-            <DropZoneCards title="Métricas" fields={metrics} onDrop={(item) => setMetrics(addUnique(metrics,item))} />
+        {/* Campos disponibles y DropZones */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="bg-white rounded-lg shadow p-4">
+            <h3 className="font-semibold mb-2 flex items-center gap-2">
+              <GripVertical className="w-5 h-5" /> Campos
+            </h3>
+            {Object.entries(metadata).map(([table, fields]) => (
+              <div key={table} className="mb-4">
+                <h4 className="font-medium">{table}</h4>
+                {fields.map((f) => (
+                  <DraggableField key={f} table={table} name={f} />
+                ))}
+              </div>
+            ))}
+          </div>
 
-            <button onClick={ejecutarReporte} className="px-4 py-2 bg-blue-600 text-white rounded">Generar Reporte</button>
+          <div className="lg:col-span-2 space-y-4">
+            <DropZone title="Filas" fields={rows} onDrop={(f) => setRows([...rows, f])} onRemove={(i) => setRows(rows.filter((_, idx) => idx !== i))} icon={<Filter className="w-4 h-4" />} />
+            <DropZone title="Columnas" fields={columns} onDrop={(f) => setColumns([...columns, f])} onRemove={(i) => setColumns(columns.filter((_, idx) => idx !== i))} icon={<BarChart3 className="w-4 h-4" />} />
+            <DropZone title="Métricas" fields={metrics} onDrop={(f) => setMetrics([...metrics, f])} onRemove={(i) => setMetrics(metrics.filter((_, idx) => idx !== i))} icon={<Database className="w-4 h-4" />} />
           </div>
         </div>
 
         {/* Resultados */}
         {data.length > 0 && (
-          <div>
-            <div className="mb-4 flex gap-2">
-              <button onClick={() => exportar("csv")} className="px-4 py-1 bg-gray-600 text-white rounded">CSV</button>
-              <button onClick={() => exportar("excel")} className="px-4 py-1 bg-yellow-600 text-white rounded">Excel</button>
-              <button onClick={() => exportar("pdf")} className="px-4 py-1 bg-red-600 text-white rounded">PDF</button>
+          <div className="bg-white rounded-lg shadow p-4 mt-6">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="font-semibold">Resultados</h3>
+              <select value={chartType} onChange={(e) => setChartType(e.target.value)} className="border p-1 rounded text-sm">
+                <option value="bar">Barras</option>
+                <option value="line">Líneas</option>
+                <option value="pie">Circular</option>
+              </select>
             </div>
-
-            <table className="table-auto border-collapse border border-gray-400 w-full mb-6">
-              <thead>
-                <tr>{Object.keys(data[0]).map(k => <th key={k} className="border px-2 py-1">{k}</th>)}</tr>
-              </thead>
-              <tbody>{data.map((r,i) => <tr key={i}>{Object.values(r).map((v,j) => <td key={j} className="border px-2 py-1">{v}</td>)}</tr>)}</tbody>
-            </table>
-
-            <div style={{ width:"100%", height:400 }}>
-              <ResponsiveContainer>
-                <BarChart data={data}>
-                  <XAxis dataKey={Object.keys(data[0])[0]} />
-                  <YAxis />
-                  <Tooltip />
-                  <Legend />
-                  <Bar dataKey={Object.keys(data[0])[1]} fill="#8884d8" />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
+            <ResponsiveContainer width="100%" height={300}>{renderChart()}</ResponsiveContainer>
           </div>
         )}
 
-        <NuevoReporteModal show={showNuevoModal} onClose={() => setShowNuevoModal(false)} onGuardar={guardarReporte} metadata={metadata} />
+        {/* Modal */}
+        <NuevoReporteModal show={showModal} onClose={() => setShowModal(false)} onSave={guardarReporte} metadata={metadata} />
       </div>
     </DndProvider>
   );
 };
 
 export default ReportesModule;
+

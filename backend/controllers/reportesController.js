@@ -2,28 +2,62 @@
 import ExcelJS from "exceljs";
 import { Parser } from "json2csv";
 import PDFDocument from "pdfkit";
+import jwt from "jsonwebtoken";
 import { executeQuery, getConnection } from "../db.js";
+import fs from "fs/promises";
+import path from "path";
+
+// ===================== CONFIGURACIÓN =====================
+const JWT_SECRET = process.env.JWT_SECRET || "tu-secreto-jwt-muy-seguro";
+const MAX_QUERY_LENGTH = 5000;
+const MAX_RESULTS = 10000;
+
+// ===================== UTILIDADES =====================
+const logActivity = (userId, action, details = "") => {
+  console.log(`[${new Date().toISOString()}] Usuario ${userId}: ${action} - ${details}`);
+};
+
+const validateQuerySafety = (query) => {
+  const queryLower = query.toLowerCase().trim();
+  
+  // Debe empezar con SELECT
+  if (!queryLower.startsWith("select")) {
+    throw new Error("Solo se permiten consultas SELECT");
+  }
+
+  // Palabras prohibidas
+  const prohibidas = [
+    'drop', 'delete', 'insert', 'update', 'truncate', 'alter', 'create',
+    'exec', 'execute', 'xp_', 'sp_', 'grant', 'revoke', 'shutdown'
+  ];
+  
+  for (const palabra of prohibidas) {
+    if (queryLower.includes(palabra)) {
+      throw new Error(`Operación no permitida: ${palabra}`);
+    }
+  }
+
+  // Verificar longitud
+  if (query.length > MAX_QUERY_LENGTH) {
+    throw new Error(`Query muy largo. Máximo ${MAX_QUERY_LENGTH} caracteres`);
+  }
+
+  return true;
+};
 
 // ===================== MIDDLEWARE DE AUTENTICACIÓN =====================
 export const verificarToken = (req, res, next) => {
   try {
     const authHeader = req.headers.authorization;
     
-    if (!authHeader) {
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
       return res.status(401).json({ 
         error: "Token de acceso requerido",
-        details: "No se encontró el header Authorization"
+        details: "Header Authorization con formato 'Bearer <token>' requerido"
       });
     }
 
-    if (!authHeader.startsWith('Bearer ')) {
-      return res.status(401).json({ 
-        error: "Formato de token inválido",
-        details: "El token debe tener el formato 'Bearer <token>'"
-      });
-    }
-
-    const token = authHeader.substring(7); // Remover 'Bearer '
+    const token = authHeader.substring(7);
     
     if (!token) {
       return res.status(401).json({ 
@@ -32,23 +66,24 @@ export const verificarToken = (req, res, next) => {
       });
     }
 
-    // Aquí deberías verificar el token con JWT o tu sistema de auth
-    // Por ejemplo:
-    // const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    // req.user = decoded;
-    
-    // Por ahora, simplemente validamos que el token existe
-    // REEMPLAZA ESTO con tu lógica de verificación real
-    if (token === 'invalid' || token.length < 10) {
-      return res.status(401).json({ 
-        error: "Token inválido",
-        details: "El token proporcionado no es válido"
-      });
+    // Verificar JWT
+    try {
+      const decoded = jwt.verify(token, JWT_SECRET);
+      req.user = decoded;
+      logActivity(req.user.id, "Token verificado", `Rol: ${req.user.role || 'N/A'}`);
+      next();
+    } catch (jwtError) {
+      // Fallback para tokens simples (compatibilidad temporal)
+      if (token.length >= 10 && !token.includes('.')) {
+        req.user = { id: 'demo', role: 'user', name: 'Usuario Demo' };
+        next();
+      } else {
+        return res.status(401).json({ 
+          error: "Token inválido",
+          details: "Token expirado o malformado"
+        });
+      }
     }
-
-    // Si llegamos aquí, el token es válido
-    req.user = { id: 1, role: 'user' }; // Datos del usuario decodificados
-    next();
     
   } catch (error) {
     console.error('Error en verificación de token:', error);
@@ -59,120 +94,478 @@ export const verificarToken = (req, res, next) => {
   }
 };
 
+// ===================== REPORTES GUARDADOS =====================
+export const getReportesGuardados = async (req, res) => {
+  try {
+    logActivity(req.user.id, "Consultando reportes guardados");
+
+    const query = `
+      SELECT 
+        r.ReporteID as id,
+        r.Nombre as nombre,
+        r.Origen as origen,
+        r.Descripcion as descripcion,
+        r.Configuracion as configuracion,
+        r.FechaCreacion as fechaCreacion,
+        r.FechaModificacion as fechaModificacion,
+        u.Username as modificadoPor,
+        r.EsPredeterminado as predeterminado,
+        r.EliminarDuplicados as eliminarDuplicados
+      FROM ReportesPersonalizados r
+      LEFT JOIN Usuarios u ON r.ModificadoPor = u.UsuarioID
+      WHERE r.Estado = 1
+      ORDER BY r.FechaModificacion DESC
+    `;
+
+    const result = await executeQuery(query);
+    
+    // Procesar configuración JSON
+    const reportes = result.recordset.map(reporte => ({
+      ...reporte,
+      configuracion: reporte.configuracion ? JSON.parse(reporte.configuracion) : null,
+      fechaCreacion: reporte.fechaCreacion?.toISOString().split('T')[0],
+      fechaModificacion: reporte.fechaModificacion?.toISOString().split('T')[0]
+    }));
+
+    logActivity(req.user.id, "Reportes obtenidos", `${reportes.length} encontrados`);
+    res.json(reportes);
+
+  } catch (error) {
+    console.error("Error en getReportesGuardados:", error);
+    res.status(500).json({ 
+      error: "Error al obtener reportes guardados",
+      details: error.message
+    });
+  }
+};
+
+export const guardarReporte = async (req, res) => {
+  try {
+    const { nombre, origen, descripcion, predeterminado, eliminarDuplicados, configuracion } = req.body;
+
+    if (!nombre?.trim() || !origen?.trim()) {
+      return res.status(400).json({ 
+        error: "Datos incompletos",
+        details: "Nombre y origen son requeridos"
+      });
+    }
+
+    logActivity(req.user.id, "Guardando reporte", nombre);
+
+    const query = `
+      INSERT INTO ReportesPersonalizados 
+      (Nombre, Origen, Descripcion, Configuracion, EsPredeterminado, EliminarDuplicados, 
+       FechaCreacion, FechaModificacion, ModificadoPor, Estado)
+      OUTPUT INSERTED.ReporteID
+      VALUES (?, ?, ?, ?, ?, ?, GETDATE(), GETDATE(), ?, 1)
+    `;
+
+    const configuracionJson = configuracion ? JSON.stringify(configuracion) : null;
+    
+    const result = await executeQuery(query, [
+      nombre.trim(),
+      origen.trim(),
+      descripcion?.trim() || null,
+      configuracionJson,
+      predeterminado || false,
+      eliminarDuplicados || false,
+      req.user.id
+    ]);
+
+    const nuevoReporte = {
+      id: result.recordset[0].ReporteID,
+      nombre: nombre.trim(),
+      origen: origen.trim(),
+      descripcion: descripcion?.trim(),
+      fechaCreacion: new Date().toISOString().split('T')[0],
+      fechaModificacion: new Date().toISOString().split('T')[0],
+      modificadoPor: req.user.name || 'Usuario',
+      predeterminado: predeterminado || false,
+      eliminarDuplicados: eliminarDuplicados || false,
+      configuracion
+    };
+
+    logActivity(req.user.id, "Reporte guardado", `ID: ${nuevoReporte.id}`);
+    res.status(201).json(nuevoReporte);
+
+  } catch (error) {
+    console.error("Error en guardarReporte:", error);
+    res.status(500).json({ 
+      error: "Error al guardar el reporte",
+      details: error.message
+    });
+  }
+};
+
+export const actualizarReporte = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { nombre, descripcion, configuracion } = req.body;
+
+    if (!id || !nombre?.trim()) {
+      return res.status(400).json({ 
+        error: "Datos incompletos",
+        details: "ID y nombre son requeridos"
+      });
+    }
+
+    logActivity(req.user.id, "Actualizando reporte", `ID: ${id}`);
+
+    const query = `
+      UPDATE ReportesPersonalizados 
+      SET Nombre = ?, Descripcion = ?, Configuracion = ?, 
+          FechaModificacion = GETDATE(), ModificadoPor = ?
+      WHERE ReporteID = ? AND Estado = 1
+    `;
+
+    const configuracionJson = configuracion ? JSON.stringify(configuracion) : null;
+    
+    await executeQuery(query, [
+      nombre.trim(),
+      descripcion?.trim() || null,
+      configuracionJson,
+      req.user.id,
+      id
+    ]);
+
+    logActivity(req.user.id, "Reporte actualizado", `ID: ${id}`);
+    res.json({ message: "Reporte actualizado correctamente" });
+
+  } catch (error) {
+    console.error("Error en actualizarReporte:", error);
+    res.status(500).json({ 
+      error: "Error al actualizar el reporte",
+      details: error.message
+    });
+  }
+};
+
+export const eliminarReporte = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    if (!id) {
+      return res.status(400).json({ 
+        error: "ID requerido",
+        details: "Se debe proporcionar el ID del reporte"
+      });
+    }
+
+    logActivity(req.user.id, "Eliminando reporte", `ID: ${id}`);
+
+    // Eliminación lógica
+    const query = `
+      UPDATE ReportesPersonalizados 
+      SET Estado = 0, FechaModificacion = GETDATE(), ModificadoPor = ?
+      WHERE ReporteID = ?
+    `;
+    
+    await executeQuery(query, [req.user.id, id]);
+
+    logActivity(req.user.id, "Reporte eliminado", `ID: ${id}`);
+    res.json({ message: "Reporte eliminado correctamente" });
+
+  } catch (error) {
+    console.error("Error en eliminarReporte:", error);
+    res.status(500).json({ 
+      error: "Error al eliminar el reporte",
+      details: error.message
+    });
+  }
+};
+
 // ===================== REPORTES PREDEFINIDOS =====================
 export const getPredefinidos = async (req, res) => {
   const { tipo } = req.params;
-  let query = "";
+  
+  logActivity(req.user.id, "Ejecutando reporte predefinido", tipo);
 
-  console.log(`Usuario ${req.user?.id} solicitando reporte: ${tipo}`);
-
-  switch (tipo) {
-    case "empleados_por_departamento":
-      query = `
-        SELECT d.Nombre AS Departamento, COUNT(e.EmpleadoID) AS Total
+  const reportesPredefinidos = {
+    empleados_por_departamento: {
+      query: `
+        SELECT 
+          d.Nombre AS departamento,
+          COUNT(e.EmpleadoID) AS total_empleados,
+          AVG(CAST(e.Salario AS FLOAT)) AS salario_promedio
         FROM Empleados e
-        JOIN Departamentos d ON e.DepartamentoID = d.DepartamentoID
-        GROUP BY d.Nombre
-        ORDER BY Total DESC
-      `;
-      break;
-    case "vacantes_abiertas":
-      query = `
-        SELECT Puesto, COUNT(*) AS Total 
-        FROM Vacantes 
-        WHERE Estado = 'Abierta'
-        GROUP BY Puesto
-        ORDER BY Total DESC
-      `;
-      break;
-    default:
-      return res.status(400).json({ 
-        error: "Reporte no definido",
-        tiposDisponibles: ["empleados_por_departamento", "vacantes_abiertas"]
-      });
+        INNER JOIN Departamentos d ON e.DepartamentoID = d.DepartamentoID
+        WHERE e.Estado = 1
+        GROUP BY d.Nombre, d.DepartamentoID
+        ORDER BY total_empleados DESC
+      `,
+      descripcion: "Distribución de empleados por departamento con salario promedio"
+    },
+    
+    vacantes_abiertas: {
+      query: `
+        SELECT 
+          v.Puesto,
+          COUNT(*) AS total_vacantes,
+          MIN(v.FechaPublicacion) AS primera_publicacion,
+          MAX(v.FechaPublicacion) AS ultima_publicacion
+        FROM Vacantes v
+        WHERE v.Estado = 'Abierta'
+        GROUP BY v.Puesto
+        ORDER BY total_vacantes DESC
+      `,
+      descripcion: "Vacantes abiertas agrupadas por puesto"
+    },
+
+    contrataciones_mensuales: {
+      query: `
+        SELECT 
+          FORMAT(e.FechaIngreso, 'yyyy-MM') AS mes,
+          COUNT(*) AS contrataciones,
+          STRING_AGG(d.Nombre, ', ') AS departamentos
+        FROM Empleados e
+        INNER JOIN Departamentos d ON e.DepartamentoID = d.DepartamentoID
+        WHERE e.FechaIngreso >= DATEADD(MONTH, -12, GETDATE())
+        GROUP BY FORMAT(e.FechaIngreso, 'yyyy-MM')
+        ORDER BY mes DESC
+      `,
+      descripcion: "Contrataciones por mes en los últimos 12 meses"
+    }
+  };
+
+  const reporte = reportesPredefinidos[tipo];
+  
+  if (!reporte) {
+    return res.status(400).json({ 
+      error: "Reporte no encontrado",
+      tiposDisponibles: Object.keys(reportesPredefinidos),
+      descriptions: Object.fromEntries(
+        Object.entries(reportesPredefinidos).map(([key, value]) => [key, value.descripcion])
+      )
+    });
   }
 
   try {
-    console.log('Ejecutando query:', query);
-    const result = await executeQuery(query);
+    const result = await executeQuery(reporte.query);
     
     if (!result.recordset) {
-      return res.status(500).json({ error: "No se obtuvieron resultados de la consulta" });
+      return res.status(500).json({ error: "No se obtuvieron resultados" });
     }
 
-    console.log(`Reporte generado exitosamente. Registros: ${result.recordset.length}`);
-    res.json(result.recordset);
-  } catch (err) {
-    console.error("Error en getPredefinidos:", err.message);
+    logActivity(req.user.id, "Reporte predefinido ejecutado", 
+      `${tipo} - ${result.recordset.length} registros`);
+    
+    res.json({
+      tipo,
+      descripcion: reporte.descripcion,
+      data: result.recordset,
+      total: result.recordset.length,
+      fechaEjecucion: new Date().toISOString()
+    });
+
+  } catch (error) {
+    console.error(`Error en reporte predefinido ${tipo}:`, error);
     res.status(500).json({ 
-      error: "Error al generar el reporte",
-      details: err.message
+      error: "Error al generar el reporte predefinido",
+      details: error.message,
+      tipo
     });
   }
 };
 
 // ===================== REPORTES SQL PERSONALIZADOS =====================
 export const ejecutarQuery = async (req, res) => {
-  const { sqlQuery } = req.body;
-
-  console.log(`Usuario ${req.user?.id} ejecutando query personalizado`);
-
-  if (!sqlQuery || typeof sqlQuery !== 'string') {
-    return res.status(400).json({ 
-      error: "Query SQL requerido",
-      details: "Debe proporcionarse un string con la consulta SQL"
-    });
-  }
-
-  // Validaciones de seguridad
-  const queryLower = sqlQuery.toLowerCase().trim();
-  
-  if (!queryLower.startsWith("select")) {
-    return res.status(400).json({ 
-      error: "Solo se permiten consultas SELECT",
-      details: "Por seguridad, solo se permiten consultas de lectura"
-    });
-  }
-
-  // Palabras peligrosas que no deberían estar en un SELECT
-  const palabrasPeligrosas = ['drop', 'delete', 'insert', 'update', 'truncate', 'alter', 'create'];
-  const tienePalabrasPeligrosas = palabrasPeligrosas.some(palabra => 
-    queryLower.includes(palabra)
-  );
-
-  if (tienePalabrasPeligrosas) {
-    return res.status(400).json({ 
-      error: "Query contiene operaciones no permitidas",
-      details: "Solo se permiten consultas de lectura (SELECT)"
-    });
-  }
-
   try {
-    console.log('Ejecutando query personalizado:', sqlQuery);
-    const result = await executeQuery(sqlQuery);
+    const { sqlQuery, limite = 1000 } = req.body;
+
+    if (!sqlQuery?.trim()) {
+      return res.status(400).json({ 
+        error: "Query SQL requerido",
+        details: "Debe proporcionarse una consulta SQL válida"
+      });
+    }
+
+    logActivity(req.user.id, "Ejecutando query personalizado", 
+      `Longitud: ${sqlQuery.length} chars`);
+
+    // Validar seguridad
+    validateQuerySafety(sqlQuery);
+
+    // Agregar límite si no existe
+    let queryFinal = sqlQuery.trim();
+    if (!queryFinal.toLowerCase().includes('top ') && 
+        !queryFinal.toLowerCase().includes('limit ')) {
+      
+      const selectMatch = queryFinal.match(/^select\s+/i);
+      if (selectMatch) {
+        queryFinal = queryFinal.replace(/^select\s+/i, 
+          `SELECT TOP ${Math.min(limite, MAX_RESULTS)} `);
+      }
+    }
+
+    console.log('Ejecutando query:', queryFinal);
+
+    const startTime = Date.now();
+    const result = await executeQuery(queryFinal);
+    const executionTime = Date.now() - startTime;
     
     if (!result.recordset) {
       return res.status(500).json({ error: "No se obtuvieron resultados de la consulta" });
     }
 
-    console.log(`Query ejecutado exitosamente. Registros: ${result.recordset.length}`);
-    res.json(result.recordset);
-  } catch (err) {
-    console.error("Error en ejecutarQuery:", err.message);
-    res.status(500).json({ 
+    logActivity(req.user.id, "Query ejecutado exitosamente", 
+      `${result.recordset.length} registros en ${executionTime}ms`);
+
+    res.json({
+      data: result.recordset,
+      total: result.recordset.length,
+      executionTime,
+      query: queryFinal,
+      fechaEjecucion: new Date().toISOString()
+    });
+
+  } catch (error) {
+    console.error("Error en ejecutarQuery:", error);
+    
+    // Diferentes tipos de error
+    let statusCode = 500;
+    if (error.message.includes('no permitida') || 
+        error.message.includes('Query muy largo')) {
+      statusCode = 400;
+    }
+
+    res.status(statusCode).json({ 
       error: "Error al ejecutar la consulta",
-      details: err.message
+      details: error.message,
+      query: req.body.sqlQuery
+    });
+  }
+};
+
+// ===================== METADATOS PARA CONSTRUCTOR =====================
+export const getMetadata = async (req, res) => {
+  try {
+    logActivity(req.user.id, "Consultando metadata de DB");
+    
+    const connection = await getConnection();
+    if (!connection) {
+      throw new Error("No se pudo establecer conexión con la base de datos");
+    }
+
+    const query = `
+      SELECT 
+        t.TABLE_NAME,
+        c.COLUMN_NAME,
+        c.DATA_TYPE,
+        c.IS_NULLABLE,
+        c.COLUMN_DEFAULT,
+        c.CHARACTER_MAXIMUM_LENGTH,
+        c.NUMERIC_PRECISION,
+        c.NUMERIC_SCALE,
+        CASE WHEN pk.COLUMN_NAME IS NOT NULL THEN 'YES' ELSE 'NO' END as IS_PRIMARY_KEY
+      FROM INFORMATION_SCHEMA.TABLES t
+      INNER JOIN INFORMATION_SCHEMA.COLUMNS c ON t.TABLE_NAME = c.TABLE_NAME
+      LEFT JOIN (
+        SELECT ku.TABLE_NAME, ku.COLUMN_NAME
+        FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc
+        INNER JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE ku
+          ON tc.CONSTRAINT_NAME = ku.CONSTRAINT_NAME
+        WHERE tc.CONSTRAINT_TYPE = 'PRIMARY KEY'
+      ) pk ON c.TABLE_NAME = pk.TABLE_NAME AND c.COLUMN_NAME = pk.COLUMN_NAME
+      WHERE t.TABLE_SCHEMA = 'dbo' 
+        AND t.TABLE_TYPE = 'BASE TABLE'
+        AND t.TABLE_NAME NOT LIKE 'sys%'
+      ORDER BY t.TABLE_NAME, c.ORDINAL_POSITION
+    `;
+
+    const result = await connection.request().query(query);
+
+    if (!result.recordset) {
+      throw new Error("No se pudo obtener la estructura de la base de datos");
+    }
+
+    // Estructurar datos
+    const tablas = {};
+    const relacionesQuery = `
+      SELECT 
+        fk.name AS ForeignKey,
+        tp.name AS ParentTable,
+        cp.name AS ParentColumn,
+        tr.name AS ReferencedTable,
+        cr.name AS ReferencedColumn
+      FROM sys.foreign_keys fk
+      INNER JOIN sys.foreign_key_columns fkc ON fk.object_id = fkc.constraint_object_id
+      INNER JOIN sys.tables tp ON fkc.parent_object_id = tp.object_id
+      INNER JOIN sys.columns cp ON fkc.parent_object_id = cp.object_id AND fkc.parent_column_id = cp.column_id
+      INNER JOIN sys.tables tr ON fkc.referenced_object_id = tr.object_id
+      INNER JOIN sys.columns cr ON fkc.referenced_object_id = cr.object_id AND fkc.referenced_column_id = cr.column_id
+    `;
+
+    const relacionesResult = await connection.request().query(relacionesQuery);
+
+    // Procesar columnas
+    result.recordset.forEach(row => {
+      if (!tablas[row.TABLE_NAME]) {
+        tablas[row.TABLE_NAME] = {
+          columns: [],
+          relationships: []
+        };
+      }
+      
+      tablas[row.TABLE_NAME].columns.push({
+        name: row.COLUMN_NAME,
+        type: row.DATA_TYPE,
+        nullable: row.IS_NULLABLE === 'YES',
+        isPrimaryKey: row.IS_PRIMARY_KEY === 'YES',
+        maxLength: row.CHARACTER_MAXIMUM_LENGTH,
+        precision: row.NUMERIC_PRECISION,
+        scale: row.NUMERIC_SCALE,
+        defaultValue: row.COLUMN_DEFAULT
+      });
+    });
+
+    // Procesar relaciones
+    if (relacionesResult.recordset) {
+      relacionesResult.recordset.forEach(rel => {
+        if (tablas[rel.ParentTable]) {
+          tablas[rel.ParentTable].relationships.push({
+            type: 'foreign_key',
+            column: rel.ParentColumn,
+            referencedTable: rel.ReferencedTable,
+            referencedColumn: rel.ReferencedColumn,
+            name: rel.ForeignKey
+          });
+        }
+      });
+    }
+
+    // Para compatibilidad con frontend actual
+    const estructuraSimplificada = {};
+    Object.keys(tablas).forEach(tabla => {
+      estructuraSimplificada[tabla] = tablas[tabla].columns.map(col => col.name);
+    });
+
+    logActivity(req.user.id, "Metadata obtenida", 
+      `${Object.keys(tablas).length} tablas, ${result.recordset.length} columnas`);
+
+    res.json({
+      simplified: estructuraSimplificada,
+      detailed: tablas,
+      stats: {
+        totalTables: Object.keys(tablas).length,
+        totalColumns: result.recordset.length,
+        totalRelationships: relacionesResult.recordset?.length || 0
+      }
+    });
+
+  } catch (error) {
+    console.error("Error en getMetadata:", error);
+    res.status(500).json({ 
+      error: "Error al obtener la estructura de la base de datos",
+      details: error.message
     });
   }
 };
 
 // ===================== EXPORTAR REPORTES =====================
 export const exportarReporte = async (req, res) => {
-  const { formato, data } = req.body;
-
-  console.log(`Usuario ${req.user?.id} exportando reporte en formato: ${formato}`);
-
   try {
+    const { formato, data, nombre = "reporte" } = req.body;
+
     if (!data || !Array.isArray(data) || data.length === 0) {
       return res.status(400).json({ 
         error: "No hay datos para exportar",
@@ -180,7 +573,10 @@ export const exportarReporte = async (req, res) => {
       });
     }
 
-    const formatosPermitidos = ['csv', 'excel', 'pdf'];
+    logActivity(req.user.id, `Exportando reporte en ${formato}`, 
+      `${data.length} registros`);
+
+    const formatosPermitidos = ['csv', 'excel', 'pdf', 'json'];
     if (!formatosPermitidos.includes(formato)) {
       return res.status(400).json({ 
         error: "Formato no soportado",
@@ -188,138 +584,794 @@ export const exportarReporte = async (req, res) => {
       });
     }
 
-    if (formato === "csv") {
-      const parser = new Parser();
-      const csv = parser.parse(data);
-      
-      res.header("Content-Type", "text/csv; charset=utf-8");
-      res.header("Content-Disposition", "attachment; filename=reporte.csv");
-      return res.send('\uFEFF' + csv); // BOM para UTF-8
-    }
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const fileName = `${nombre}_${timestamp}`;
 
-    if (formato === "excel") {
-      const workbook = new ExcelJS.Workbook();
-      const sheet = workbook.addWorksheet("Reporte");
-
-      // Configurar columnas basadas en el primer registro
-      sheet.columns = Object.keys(data[0]).map(key => ({ 
-        header: key, 
-        key,
-        width: Math.max(key.length + 5, 15) // Ancho mínimo
-      }));
-      
-      // Agregar datos
-      sheet.addRows(data);
-
-      // Estilo para encabezados
-      sheet.getRow(1).font = { bold: true };
-      sheet.getRow(1).fill = {
-        type: 'pattern',
-        pattern: 'solid',
-        fgColor: { argb: 'FFE6E6FA' }
-      };
-
-      res.header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-      res.header("Content-Disposition", "attachment; filename=reporte.xlsx");
-      
-      await workbook.xlsx.write(res);
-      return res.end();
-    }
-
-    if (formato === "pdf") {
-      const doc = new PDFDocument({ 
-        margin: 30, 
-        size: "A4",
-        bufferPages: true
-      });
-      
-      res.header("Content-Type", "application/pdf");
-      res.header("Content-Disposition", "attachment; filename=reporte.pdf");
-      doc.pipe(res);
-
-      // Título
-      doc.fontSize(16).text('Reporte de Datos', { align: 'center' });
-      doc.moveDown();
-
-      // Fecha de generación
-      doc.fontSize(10).text(`Generado: ${new Date().toLocaleString()}`, { align: 'right' });
-      doc.moveDown();
-
-      // Datos
-      doc.fontSize(10);
-      data.forEach((row, index) => {
-        doc.text(`${index + 1}. ${JSON.stringify(row, null, 2)}`);
-        doc.moveDown(0.5);
+    switch (formato) {
+      case "csv":
+        const parser = new Parser({ 
+          delimiter: ',',
+          header: true,
+          encoding: 'utf8'
+        });
+        const csv = parser.parse(data);
         
-        // Nueva página cada 30 registros
-        if ((index + 1) % 30 === 0 && index < data.length - 1) {
-          doc.addPage();
-        }
-      });
+        res.setHeader("Content-Type", "text/csv; charset=utf-8");
+        res.setHeader("Content-Disposition", `attachment; filename="${fileName}.csv"`);
+        res.setHeader("Cache-Control", "no-cache");
+        
+        return res.send('\uFEFF' + csv); // BOM para UTF-8
 
-      doc.end();
-      return;
+      case "json":
+        const jsonData = JSON.stringify({
+          data,
+          metadata: {
+            totalRecords: data.length,
+            exportDate: new Date().toISOString(),
+            exportedBy: req.user.name || req.user.id
+          }
+        }, null, 2);
+        
+        res.setHeader("Content-Type", "application/json");
+        res.setHeader("Content-Disposition", `attachment; filename="${fileName}.json"`);
+        
+        return res.send(jsonData);
+
+      case "excel":
+        const workbook = new ExcelJS.Workbook();
+        workbook.creator = req.user.name || 'Sistema RRHH';
+        workbook.created = new Date();
+        
+        const sheet = workbook.addWorksheet("Reporte", {
+          properties: { tabColor: { argb: 'FF0066CC' } }
+        });
+
+        // Configurar columnas
+        const columns = Object.keys(data[0]).map(key => ({ 
+          header: key.toUpperCase().replace(/_/g, ' '), 
+          key,
+          width: Math.min(Math.max(key.length + 5, 15), 30)
+        }));
+        
+        sheet.columns = columns;
+        
+        // Agregar datos
+        sheet.addRows(data);
+
+        // Estilos
+        sheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+        sheet.getRow(1).fill = {
+          type: 'pattern',
+          pattern: 'solid',
+          fgColor: { argb: 'FF0066CC' }
+        };
+
+        // Bordes y formato
+        sheet.eachRow((row, rowNumber) => {
+          row.eachCell((cell) => {
+            cell.border = {
+              top: { style: 'thin' },
+              left: { style: 'thin' },
+              bottom: { style: 'thin' },
+              right: { style: 'thin' }
+            };
+            
+            if (rowNumber > 1) {
+              // Formatear números
+              if (typeof cell.value === 'number') {
+                cell.numFmt = '#,##0.00';
+              }
+              // Formatear fechas
+              if (cell.value instanceof Date) {
+                cell.numFmt = 'dd/mm/yyyy';
+              }
+            }
+          });
+        });
+
+        // Auto-filtro
+        sheet.autoFilter = {
+          from: 'A1',
+          to: `${String.fromCharCode(65 + columns.length - 1)}1`
+        };
+
+        res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        res.setHeader("Content-Disposition", `attachment; filename="${fileName}.xlsx"`);
+        
+        await workbook.xlsx.write(res);
+        return res.end();
+
+      case "pdf":
+        const doc = new PDFDocument({ 
+          margin: 30, 
+          size: "A4",
+          bufferPages: true,
+          autoFirstPage: false
+        });
+        
+        res.setHeader("Content-Type", "application/pdf");
+        res.setHeader("Content-Disposition", `attachment; filename="${fileName}.pdf"`);
+        doc.pipe(res);
+
+        doc.addPage();
+        
+        // Encabezado
+        doc.fontSize(18).fillColor('#0066CC').text('Reporte de Datos', { align: 'center' });
+        doc.moveDown(0.5);
+        doc.fontSize(10).fillColor('black')
+           .text(`Generado: ${new Date().toLocaleString()}`, { align: 'right' });
+        doc.text(`Total de registros: ${data.length}`, { align: 'right' });
+        doc.text(`Exportado por: ${req.user.name || req.user.id}`, { align: 'right' });
+        doc.moveDown();
+
+        // Línea separadora
+        doc.moveTo(30, doc.y).lineTo(565, doc.y).stroke();
+        doc.moveDown();
+
+        // Datos en formato tabla simplificada
+        doc.fontSize(8);
+        const itemsPerPage = 25;
+        let currentPage = 0;
+
+        data.forEach((row, index) => {
+          if (index % itemsPerPage === 0 && index > 0) {
+            doc.addPage();
+          }
+
+          const y = 100 + (index % itemsPerPage) * 20;
+          
+          // Fila con datos clave
+          const rowText = Object.entries(row)
+            .slice(0, 4) // Primeras 4 columnas
+            .map(([key, value]) => `${key}: ${value}`)
+            .join(' | ');
+            
+          doc.text(`${index + 1}. ${rowText}`, 30, y, {
+            width: 535,
+            ellipsis: true
+          });
+        });
+
+        // Pie de página en cada página
+        const pageCount = doc.bufferedPageRange().count;
+        for (let i = 0; i < pageCount; i++) {
+          doc.switchToPage(i);
+          doc.fontSize(8).fillColor('gray')
+             .text(`Página ${i + 1} de ${pageCount}`, 30, 750, { align: 'center' });
+        }
+
+        doc.end();
+        return;
+
+      default:
+        throw new Error("Formato no implementado");
     }
 
-  } catch (err) {
-    console.error("Error en exportarReporte:", err.message);
+  } catch (error) {
+    console.error("Error en exportarReporte:", error);
     res.status(500).json({ 
       error: "Error al exportar el reporte",
-      details: err.message
+      details: error.message,
+      formato
     });
   }
 };
 
-// ===================== METADATOS PARA CONSTRUCTOR DE REPORTES =====================
-export const getMetadata = async (req, res) => {
-  console.log(`Usuario ${req.user?.id} solicitando metadata de DB`);
-  
+// ===================== ESTADÍSTICAS Y UTILIDADES =====================
+export const getEstadisticas = async (req, res) => {
   try {
+    logActivity(req.user.id, "Consultando estadísticas");
+
+    const queries = {
+      reportesGuardados: "SELECT COUNT(*) as total FROM ReportesPersonalizados WHERE Estado = 1",
+      reportesEjecutadosHoy: `
+        SELECT COUNT(*) as total FROM LogReportes 
+        WHERE CAST(FechaEjecucion AS DATE) = CAST(GETDATE() AS DATE)
+      `,
+      usuariosActivos: "SELECT COUNT(*) as total FROM Usuarios WHERE Estado = 1",
+      tablasDisponibles: `
+        SELECT COUNT(*) as total FROM INFORMATION_SCHEMA.TABLES 
+        WHERE TABLE_SCHEMA = 'dbo' AND TABLE_TYPE = 'BASE TABLE'
+      `
+    };
+
+    const resultados = {};
+    
+    for (const [key, query] of Object.entries(queries)) {
+      try {
+        const result = await executeQuery(query);
+        resultados[key] = result.recordset[0]?.total || 0;
+      } catch (error) {
+        console.warn(`Error en consulta ${key}:`, error.message);
+        resultados[key] = 0;
+      }
+    }
+
+    logActivity(req.user.id, "Estadísticas obtenidas", JSON.stringify(resultados));
+    
+    res.json({
+      ...resultados,
+      fechaConsulta: new Date().toISOString()
+    });
+
+  } catch (error) {
+    console.error("Error en getEstadisticas:", error);
+    res.status(500).json({ 
+      error: "Error al obtener estadísticas",
+      details: error.message
+    });
+  }
+};
+
+// ===================== VALIDACIÓN DE CONSULTAS =====================
+export const validarQuery = async (req, res) => {
+  try {
+    const { sqlQuery } = req.body;
+
+    if (!sqlQuery?.trim()) {
+      return res.status(400).json({ 
+        error: "Query requerido",
+        details: "Debe proporcionarse una consulta SQL para validar"
+      });
+    }
+
+    logActivity(req.user.id, "Validando query", `Longitud: ${sqlQuery.length}`);
+
+    // Validar sintaxis básica
+    const validationResult = {
+      isValid: false,
+      errors: [],
+      warnings: [],
+      suggestions: []
+    };
+
+    try {
+      // Validar seguridad
+      validateQuerySafety(sqlQuery);
+      
+      // Análisis básico de sintaxis
+      const queryLower = sqlQuery.toLowerCase().trim();
+      
+      // Verificar estructura básica
+      if (!queryLower.includes('from')) {
+        validationResult.warnings.push("Query no contiene cláusula FROM");
+      }
+      
+      // Verificar posibles problemas de rendimiento
+      if (queryLower.includes('select *')) {
+        validationResult.warnings.push("Usar SELECT * puede afectar el rendimiento. Considera especificar columnas exactas.");
+      }
+      
+      if (!queryLower.includes('top ') && !queryLower.includes('limit')) {
+        validationResult.suggestions.push("Considera agregar TOP N para limitar resultados");
+      }
+
+      // Si llegamos aquí, la validación básica pasó
+      validationResult.isValid = true;
+      
+    } catch (error) {
+      validationResult.errors.push(error.message);
+    }
+
+    logActivity(req.user.id, "Query validado", 
+      `Válido: ${validationResult.isValid}, Errores: ${validationResult.errors.length}`);
+
+    res.json(validationResult);
+
+  } catch (error) {
+    console.error("Error en validarQuery:", error);
+    res.status(500).json({ 
+      error: "Error al validar la consulta",
+      details: error.message
+    });
+  }
+};
+
+// ===================== HISTORIAL DE REPORTES =====================
+export const getHistorialReportes = async (req, res) => {
+  try {
+    const { page = 1, limit = 50 } = req.query;
+    const offset = (page - 1) * limit;
+
+    logActivity(req.user.id, "Consultando historial de reportes", `Página: ${page}`);
+
+    const query = `
+      SELECT 
+        h.HistorialID,
+        h.TipoReporte,
+        h.NombreReporte,
+        h.SqlEjecutado,
+        h.TotalRegistros,
+        h.TiempoEjecucion,
+        h.FechaEjecucion,
+        u.Username as EjecutadoPor,
+        h.Estado
+      FROM HistorialReportes h
+      LEFT JOIN Usuarios u ON h.UsuarioID = u.UsuarioID
+      WHERE h.UsuarioID = ?
+      ORDER BY h.FechaEjecucion DESC
+      OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
+    `;
+
+    const countQuery = `
+      SELECT COUNT(*) as total 
+      FROM HistorialReportes 
+      WHERE UsuarioID = ?
+    `;
+
+    const [historialResult, countResult] = await Promise.all([
+      executeQuery(query, [req.user.id, offset, parseInt(limit)]),
+      executeQuery(countQuery, [req.user.id])
+    ]);
+
+    const historial = historialResult.recordset.map(item => ({
+      ...item,
+      FechaEjecucion: item.FechaEjecucion?.toISOString(),
+      SqlEjecutado: item.SqlEjecutado?.substring(0, 200) + (item.SqlEjecutado?.length > 200 ? '...' : '')
+    }));
+
+    const total = countResult.recordset[0]?.total || 0;
+
+    res.json({
+      historial,
+      pagination: {
+        currentPage: parseInt(page),
+        totalPages: Math.ceil(total / limit),
+        totalRecords: total,
+        recordsPerPage: parseInt(limit)
+      }
+    });
+
+  } catch (error) {
+    console.error("Error en getHistorialReportes:", error);
+    res.status(500).json({ 
+      error: "Error al obtener el historial",
+      details: error.message
+    });
+  }
+};
+
+// ===================== PLANTILLAS DE REPORTES =====================
+export const getPlantillas = async (req, res) => {
+  try {
+    logActivity(req.user.id, "Consultando plantillas de reportes");
+
+    const plantillas = [
+      {
+        id: 'empleados_basico',
+        nombre: 'Listado Básico de Empleados',
+        descripcion: 'Lista todos los empleados activos con información básica',
+        categoria: 'Recursos Humanos',
+        sql: `SELECT 
+          e.EmpleadoID,
+          e.Nombre,
+          e.Apellido,
+          e.Email,
+          e.Puesto,
+          d.Nombre as Departamento,
+          e.FechaIngreso
+        FROM Empleados e
+        INNER JOIN Departamentos d ON e.DepartamentoID = d.DepartamentoID
+        WHERE e.Estado = 1
+        ORDER BY e.Apellido, e.Nombre`,
+        campos: ['EmpleadoID', 'Nombre', 'Apellido', 'Email', 'Puesto', 'Departamento', 'FechaIngreso']
+      },
+      {
+        id: 'departamentos_resumen',
+        nombre: 'Resumen por Departamentos',
+        descripcion: 'Estadísticas agregadas por departamento',
+        categoria: 'Análisis',
+        sql: `SELECT 
+          d.Nombre as Departamento,
+          COUNT(e.EmpleadoID) as TotalEmpleados,
+          AVG(CAST(e.Salario as FLOAT)) as SalarioPromedio,
+          MIN(e.FechaIngreso) as PrimeraContratacion,
+          MAX(e.FechaIngreso) as UltimaContratacion
+        FROM Departamentos d
+        LEFT JOIN Empleados e ON d.DepartamentoID = e.DepartamentoID AND e.Estado = 1
+        GROUP BY d.DepartamentoID, d.Nombre
+        ORDER BY TotalEmpleados DESC`,
+        campos: ['Departamento', 'TotalEmpleados', 'SalarioPromedio', 'PrimeraContratacion', 'UltimaContratacion']
+      },
+      {
+        id: 'vacantes_resumen',
+        nombre: 'Estado de Vacantes',
+        descripcion: 'Resumen del estado actual de todas las vacantes',
+        categoria: 'Reclutamiento',
+        sql: `SELECT 
+          v.Estado,
+          COUNT(*) as TotalVacantes,
+          AVG(DATEDIFF(day, v.FechaPublicacion, GETDATE())) as DiasPromedioAbiertas
+        FROM Vacantes v
+        GROUP BY v.Estado
+        ORDER BY TotalVacantes DESC`,
+        campos: ['Estado', 'TotalVacantes', 'DiasPromedioAbiertas']
+      }
+    ];
+
+    res.json({
+      plantillas,
+      total: plantillas.length,
+      categorias: [...new Set(plantillas.map(p => p.categoria))]
+    });
+
+  } catch (error) {
+    console.error("Error en getPlantillas:", error);
+    res.status(500).json({ 
+      error: "Error al obtener plantillas",
+      details: error.message
+    });
+  }
+};
+
+export const aplicarPlantilla = async (req, res) => {
+  try {
+    const { plantillaId, parametros = {} } = req.body;
+
+    if (!plantillaId) {
+      return res.status(400).json({ 
+        error: "ID de plantilla requerido",
+        details: "Debe especificar qué plantilla aplicar"
+      });
+    }
+
+    logActivity(req.user.id, "Aplicando plantilla", plantillaId);
+
+    // En una implementación real, estas plantillas estarían en la base de datos
+    const plantillasResult = await executeQuery(`
+      SELECT 
+        PlantillaID,
+        Nombre,
+        SqlTemplate,
+        Parametros
+      FROM PlantillasReporte 
+      WHERE PlantillaID = ? AND Estado = 1
+    `, [plantillaId]);
+
+    if (plantillasResult.recordset.length === 0) {
+      return res.status(404).json({ 
+        error: "Plantilla no encontrada",
+        details: `No existe una plantilla con ID: ${plantillaId}`
+      });
+    }
+
+    const plantilla = plantillasResult.recordset[0];
+    
+    // Reemplazar parámetros en la plantilla SQL
+    let sqlFinal = plantilla.SqlTemplate;
+    Object.entries(parametros).forEach(([key, value]) => {
+      const placeholder = `{{${key}}}`;
+      sqlFinal = sqlFinal.replace(new RegExp(placeholder, 'g'), value);
+    });
+
+    // Ejecutar la consulta
+    const result = await executeQuery(sqlFinal);
+
+    logActivity(req.user.id, "Plantilla aplicada", 
+      `${plantillaId} - ${result.recordset.length} registros`);
+
+    res.json({
+      plantilla: {
+        id: plantilla.PlantillaID,
+        nombre: plantilla.Nombre
+      },
+      data: result.recordset,
+      total: result.recordset.length,
+      sqlEjecutado: sqlFinal,
+      parametrosUsados: parametros
+    });
+
+  } catch (error) {
+    console.error("Error en aplicarPlantilla:", error);
+    res.status(500).json({ 
+      error: "Error al aplicar plantilla",
+      details: error.message
+    });
+  }
+};
+
+// ===================== CONFIGURACIÓN Y PREFERENCIAS =====================
+export const getConfiguracion = async (req, res) => {
+  try {
+    logActivity(req.user.id, "Consultando configuración de usuario");
+
+    const query = `
+      SELECT 
+        ConfiguracionKey,
+        ConfiguracionValue,
+        FechaModificacion
+      FROM ConfiguracionUsuario 
+      WHERE UsuarioID = ?
+    `;
+
+    const result = await executeQuery(query, [req.user.id]);
+    
+    // Convertir a objeto de configuración
+    const configuracion = {};
+    result.recordset.forEach(config => {
+      try {
+        configuracion[config.ConfiguracionKey] = JSON.parse(config.ConfiguracionValue);
+      } catch {
+        configuracion[config.ConfiguracionKey] = config.ConfiguracionValue;
+      }
+    });
+
+    // Configuración por defecto si no existe
+    const configDefecto = {
+      exportFormat: 'excel',
+      maxRows: 1000,
+      chartType: 'bar',
+      autoSave: true,
+      notifications: true,
+      ...configuracion
+    };
+
+    res.json(configDefecto);
+
+  } catch (error) {
+    console.error("Error en getConfiguracion:", error);
+    res.status(500).json({ 
+      error: "Error al obtener configuración",
+      details: error.message
+    });
+  }
+};
+
+export const actualizarConfiguracion = async (req, res) => {
+  try {
+    const { configuracion } = req.body;
+
+    if (!configuracion || typeof configuracion !== 'object') {
+      return res.status(400).json({ 
+        error: "Configuración requerida",
+        details: "Debe proporcionar un objeto con la configuración"
+      });
+    }
+
+    logActivity(req.user.id, "Actualizando configuración", 
+      `${Object.keys(configuracion).length} elementos`);
+
+    // Actualizar cada elemento de configuración
+    for (const [key, value] of Object.entries(configuracion)) {
+      const query = `
+        MERGE ConfiguracionUsuario AS target
+        USING (SELECT ? as UsuarioID, ? as ConfigKey, ? as ConfigValue) AS source
+        ON target.UsuarioID = source.UsuarioID AND target.ConfiguracionKey = source.ConfigKey
+        WHEN MATCHED THEN 
+          UPDATE SET ConfiguracionValue = source.ConfigValue, FechaModificacion = GETDATE()
+        WHEN NOT MATCHED THEN
+          INSERT (UsuarioID, ConfiguracionKey, ConfiguracionValue, FechaCreacion, FechaModificacion)
+          VALUES (source.UsuarioID, source.ConfigKey, source.ConfigValue, GETDATE(), GETDATE());
+      `;
+
+      await executeQuery(query, [
+        req.user.id, 
+        key, 
+        typeof value === 'object' ? JSON.stringify(value) : value
+      ]);
+    }
+
+    logActivity(req.user.id, "Configuración actualizada exitosamente");
+    
+    res.json({ 
+      message: "Configuración actualizada correctamente",
+      elementosActualizados: Object.keys(configuracion).length
+    });
+
+  } catch (error) {
+    console.error("Error en actualizarConfiguracion:", error);
+    res.status(500).json({ 
+      error: "Error al actualizar configuración",
+      details: error.message
+    });
+  }
+};
+
+// ===================== LIMPIEZA Y MANTENIMIENTO =====================
+export const limpiarHistorial = async (req, res) => {
+  try {
+    const { diasAntiguedad = 30 } = req.body;
+
+    logActivity(req.user.id, "Iniciando limpieza de historial", `${diasAntiguedad} días`);
+
+    const query = `
+      DELETE FROM HistorialReportes 
+      WHERE UsuarioID = ? 
+        AND FechaEjecucion < DATEADD(day, -?, GETDATE())
+    `;
+
+    const result = await executeQuery(query, [req.user.id, diasAntiguedad]);
+    
+    const registrosEliminados = result.rowsAffected[0] || 0;
+    
+    logActivity(req.user.id, "Limpieza completada", `${registrosEliminados} registros eliminados`);
+
+    res.json({
+      message: "Historial limpiado exitosamente",
+      registrosEliminados,
+      diasAntiguedad
+    });
+
+  } catch (error) {
+    console.error("Error en limpiarHistorial:", error);
+    res.status(500).json({ 
+      error: "Error al limpiar historial",
+      details: error.message
+    });
+  }
+};
+
+// ===================== VERIFICACIÓN DE CONECTIVIDAD =====================
+export const verificarConexionDB = async (req, res) => {
+  try {
+    logActivity(req.user.id, "Verificando conexión a base de datos");
+
     const connection = await getConnection();
     if (!connection) {
-      return res.status(500).json({ 
-        error: "Error de conexión a la base de datos",
-        details: "No se pudo establecer conexión con la base de datos"
-      });
+      throw new Error("No se pudo establecer conexión con la base de datos");
     }
 
-    const result = await connection.request().query(`
-      SELECT TABLE_NAME, COLUMN_NAME, DATA_TYPE, IS_NULLABLE
-      FROM INFORMATION_SCHEMA.COLUMNS
-      WHERE TABLE_SCHEMA = 'dbo'
-      ORDER BY TABLE_NAME, ORDINAL_POSITION
-    `);
-
-    if (!result.recordset) {
-      return res.status(500).json({ error: "No se pudo obtener la estructura de la base de datos" });
-    }
-
-    const estructura = {};
-    result.recordset.forEach(row => {
-      if (!estructura[row.TABLE_NAME]) {
-        estructura[row.TABLE_NAME] = [];
-      }
-      estructura[row.TABLE_NAME].push({
-        name: row.COLUMN_NAME,
-        type: row.DATA_TYPE,
-        nullable: row.IS_NULLABLE === 'YES'
-      });
-    });
-
-    console.log(`Metadata enviada. Tablas encontradas: ${Object.keys(estructura).length}`);
+    // Prueba simple de conectividad
+    const testQuery = "SELECT GETDATE() as fechaServidor, @@VERSION as versionSQL";
+    const result = await executeQuery(testQuery);
     
-    // Para compatibilidad con el frontend actual, enviar solo los nombres
-    const estructuraSimplificada = {};
-    Object.keys(estructura).forEach(tabla => {
-      estructuraSimplificada[tabla] = estructura[tabla].map(col => col.name);
+    const info = {
+      estado: "conectado",
+      fechaServidor: result.recordset[0].fechaServidor,
+      versionSQL: result.recordset[0].versionSQL.split('\n')[0], // Solo primera línea
+      timestamp: new Date().toISOString(),
+      usuario: req.user.name || req.user.id
+    };
+
+    logActivity(req.user.id, "Conexión DB verificada exitosamente");
+    
+    res.json({
+      message: "Conexión a base de datos verificada correctamente",
+      ...info
     });
 
-    res.json(estructuraSimplificada);
-  } catch (err) {
-    console.error("Error en getMetadata:", err.message);
+  } catch (error) {
+    console.error("Error en verificarConexionDB:", error);
+    
+    logActivity(req.user.id, "Error en verificación DB", error.message);
+    
     res.status(500).json({ 
-      error: "Error al obtener la estructura de la base de datos",
-      details: err.message
+      error: "Error al verificar la conexión",
+      details: error.message,
+      estado: "desconectado",
+      timestamp: new Date().toISOString()
+    });
+  }
+};
+
+// ===================== CACHÉ Y OPTIMIZACIÓN =====================
+export const limpiarCache = async (req, res) => {
+  try {
+    logActivity(req.user.id, "Limpiando caché del sistema");
+
+    // Simular limpieza de caché (en una implementación real podrías usar Redis, etc.)
+    const cacheKeys = ['metadata', 'plantillas', 'estadisticas'];
+    
+    res.json({
+      message: "Caché limpiado exitosamente",
+      keysCleaned: cacheKeys,
+      timestamp: new Date().toISOString()
+    });
+
+    logActivity(req.user.id, "Caché limpiado exitosamente");
+
+  } catch (error) {
+    console.error("Error en limpiarCache:", error);
+    res.status(500).json({ 
+      error: "Error al limpiar el caché",
+      details: error.message
+    });
+  }
+};
+
+// ===================== EXPORTACIONES POR LOTES =====================
+export const exportarLote = async (req, res) => {
+  try {
+    const { reportes, formato = 'excel' } = req.body;
+
+    if (!reportes || !Array.isArray(reportes) || reportes.length === 0) {
+      return res.status(400).json({ 
+        error: "Lista de reportes requerida",
+        details: "Debe proporcionar un array con los IDs de reportes a exportar"
+      });
+    }
+
+    logActivity(req.user.id, "Iniciando exportación por lotes", 
+      `${reportes.length} reportes en formato ${formato}`);
+
+    const resultados = [];
+    
+    for (const reporteId of reportes) {
+      try {
+        // Obtener configuración del reporte
+        const reporteQuery = `
+          SELECT Nombre, Configuracion 
+          FROM ReportesPersonalizados 
+          WHERE ReporteID = ? AND Estado = 1
+        `;
+        
+        const reporteResult = await executeQuery(reporteQuery, [reporteId]);
+        
+        if (reporteResult.recordset.length === 0) {
+          resultados.push({
+            reporteId,
+            error: "Reporte no encontrado"
+          });
+          continue;
+        }
+
+        const reporte = reporteResult.recordset[0];
+        const config = JSON.parse(reporte.Configuracion || '{}');
+        
+        // Ejecutar consulta del reporte
+        if (config.sqlQuery) {
+          const dataResult = await executeQuery(config.sqlQuery);
+          
+          resultados.push({
+            reporteId,
+            nombre: reporte.Nombre,
+            registros: dataResult.recordset.length,
+            data: dataResult.recordset
+          });
+        }
+        
+      } catch (error) {
+        resultados.push({
+          reporteId,
+          error: error.message
+        });
+      }
+    }
+
+    // Crear archivo único con todos los reportes
+    if (formato === 'excel') {
+      const workbook = new ExcelJS.Workbook();
+      
+      resultados.forEach(resultado => {
+        if (resultado.data && resultado.data.length > 0) {
+          const sheet = workbook.addWorksheet(
+            resultado.nombre.substring(0, 31) // Límite de Excel
+          );
+          
+          sheet.columns = Object.keys(resultado.data[0]).map(key => ({
+            header: key,
+            key,
+            width: 15
+          }));
+          
+          sheet.addRows(resultado.data);
+        }
+      });
+
+      const fileName = `reportes_lote_${Date.now()}.xlsx`;
+      
+      res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+      res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
+      
+      await workbook.xlsx.write(res);
+      res.end();
+    } else {
+      res.json({
+        message: "Exportación por lotes completada",
+        totalReportes: reportes.length,
+        exitosos: resultados.filter(r => !r.error).length,
+        fallidos: resultados.filter(r => r.error).length,
+        resultados
+      });
+    }
+
+    logActivity(req.user.id, "Exportación por lotes completada");
+
+  } catch (error) {
+    console.error("Error en exportarLote:", error);
+    res.status(500).json({ 
+      error: "Error en exportación por lotes",
+      details: error.message
     });
   }
 };

@@ -13,8 +13,10 @@ import capacitacionRoutes from './routes/capacitacionRoutes.js';
 import asistenciaRoutes from './routes/asistenciaRoutes.js';
 import departamentosRoutes from './routes/departamentosRoutes.js';
 import puestosRoutes from './routes/puestosRoutes.js';
+import postulacionesRoutes from './routes/postulacionesRoutes.js';
 import authRoutes from './routes/authRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
+import reportesRoutes from "./routes/reportesRoutes.js";
 
 // Importar middleware de autenticación
 import { authenticateToken } from './middleware/auth.js';
@@ -69,14 +71,16 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-// Conectar los módulos PROTEGIDOS
+// --- CONECTAR LOS MÓDULOS PROTEGIDOS ---
 app.use('/api/nomina', authenticateToken, nominaRoutes);
 app.use('/api/empleados', authenticateToken, empleadosRoutes);
 app.use('/api/capacitacion', authenticateToken, capacitacionRoutes);
 app.use('/api/asistencia', authenticateToken, asistenciaRoutes);
 app.use('/api/departamentos', authenticateToken, departamentosRoutes);
 app.use('/api/puestos', authenticateToken, puestosRoutes);
+app.use('/api/postulaciones', authenticateToken, postulacionesRoutes);
 app.use('/api/admin', authenticateToken, adminRoutes);
+app.use("/api/reportes", authenticateToken, reportesRoutes);
 
 // --- MANEJO DE ERRORES GLOBAL ---
 app.use((err, req, res, next) => {
@@ -138,6 +142,9 @@ if (fs.existsSync(frontendBuildPath)) {
           admin: '/api/admin',
           nomina: '/api/nomina',
           empleados: '/api/empleados',
+          puestos: '/api/puestos',
+          postulaciones: '/api/postulaciones',
+          reportes: '/api/reportes',
         },
       });
     }
@@ -174,5 +181,6 @@ const gracefulShutdown = async () => {
 
 process.on('SIGINT', gracefulShutdown);
 process.on('SIGTERM', gracefulShutdown);
+
 
 

@@ -8,6 +8,7 @@ import ResetPassword from './components/auth/ResetPassword';
 import { Menu, LogOut, Building2 } from 'lucide-react';
 import { getNavigationByRoleAndPermissions } from './data/navigation';
 
+// ===================== MÓDULOS =====================
 import VacacionesModule from './components/modules/vacaciones/VacacionesModule';
 import NominaModule from './components/modules/nomina/NominaModule';
 import AsistenciaModule from './components/modules/asistencia/AsistenciaModule';
@@ -16,10 +17,13 @@ import VacantesModule from './components/modules/vacantes/VacantesModule';
 import PerfilModule from './components/modules/perfil/perfilModule';
 import EmpleadosModule from './components/modules/empleados/EmpleadosModule';
 import ConfiguracionModule from './components/modules/configuracion/ConfiguracionModule';
-import AdminPermissions from './components/Admin/AdminPermissions';
 import PostulacionesModule from './components/modules/postulaciones/PostulacionesModule';
 import DepartamentosModule from './components/modules/departamentos/DepartamentosModule';
+import PuestosModule from './components/modules/puestos/PuestosModule';
+import ReportesModule from './components/modules/Reportes/ReportesModule';
 
+// ===================== ADMIN =====================
+import AdminPermissions from './components/Admin/AdminPermissions';
 
 // ===================== SIDEBAR =====================
 const Sidebar = ({ isOpen, onClose }) => {
@@ -164,6 +168,8 @@ const MainLayout = () => {
       case 'admin': return <AdminPermissions />;
       case 'postulaciones': return <PostulacionesModule />;
       case 'departamentos': return <DepartamentosModule />;
+      case 'puestos': return <PuestosModule />;
+      case 'reportes': return <ReportesModule />;
       default: return <Dashboard />;
     }
   };
@@ -213,5 +219,7 @@ function App() {
 }
 
 export default App;
+
+
 
 

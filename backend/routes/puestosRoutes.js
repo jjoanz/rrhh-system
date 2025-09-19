@@ -1,8 +1,11 @@
-import express from 'express';
-import { getPuestos } from '../controllers/puestosController.js';
+// backend/routes/puestosRoutes.js
+import express from "express";
+import { getPuestos, createPuesto, deletePuesto } from "../controllers/puestosController.js";
 
 const router = express.Router();
 
-router.get('/list', getPuestos);
+router.get("/", getPuestos);
+router.post("/", createPuesto);
+router.delete("/:id", deletePuesto);
 
 export default router;

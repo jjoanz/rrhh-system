@@ -20,17 +20,28 @@ const NAVIGATION_ITEMS = [
   { id: 'admin', label: 'Administración', icon: Settings, modulo: 'admin', path: '/admin' }
 ];
 
+/**
+ * Devuelve los elementos de navegación que un usuario puede ver según su rol y permisos
+ * @param {Object} user - Usuario autenticado
+ * @param {Array} permisos - Lista de permisos con {NombreModulo, EstaVisible, PuedeVer}
+ * @returns {Array} Navegación filtrada
+ */
 export const getNavigationByRoleAndPermissions = (user, permisos = []) => {
-  if (!user) return [NAVIGATION_ITEMS[0]];
+  if (!user) return [NAVIGATION_ITEMS[0]]; // Solo dashboard si no hay usuario
 
+  // Admin ve todo
   if (user?.rol === 'admin') return NAVIGATION_ITEMS;
 
+  // Otros roles ven solo módulos con permisos visibles
   return NAVIGATION_ITEMS.filter(item => {
-    if (!item.modulo) return true;
-    const permiso = permisos.find(p => p.NombreModulo?.toLowerCase() === item.modulo?.toLowerCase());
-    return permiso && permiso.EstaVisible && permiso.PuedeVer;
+    if (!item.modulo) return true; // Siempre mostrar dashboard
+    const permiso = permisos.find(
+      p => p.NombreModulo?.toLowerCase() === item.modulo?.toLowerCase()
+    );
+    return permiso?.EstaVisible && permiso?.PuedeVer;
   });
 };
 
 export default NAVIGATION_ITEMS;
+
 

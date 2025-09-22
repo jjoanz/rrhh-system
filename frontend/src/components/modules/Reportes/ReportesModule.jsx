@@ -1,156 +1,275 @@
-// src/modules/ReportesModule.jsx - Con funcionalidad de exportación
 import React, { useState, useEffect } from "react";
-import { DndProvider, useDrag, useDrop } from "react-dnd";
-import { HTML5Backend } from "react-dnd-html5-backend";
-import {
-  BarChart, Bar, XAxis, YAxis, Tooltip, Legend,
-  ResponsiveContainer, LineChart, Line, PieChart, Pie
-} from "recharts";
-import {
-  Play, Save, Plus, Database, Download,
-  Filter, FileText, BarChart3, GripVertical
-} from "lucide-react";
+import { BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, LineChart, Line } from "recharts";
+import { Play, Save, Plus, Database, Download, FileText, BarChart3, X, Users, Building } from "lucide-react";
 import { useAuth } from "../../../context/AuthContext";
 
 const API_URL = process.env.REACT_APP_API_URL || "http://192.168.0.239:5000/api";
 
-// Componente para campos arrastrables
-const DraggableField = ({ name, table, type = "text" }) => {
-  const [{ isDragging }, drag] = useDrag(() => ({
-    type: "FIELD",
-    item: { name, table, type },
-    collect: (monitor) => ({ isDragging: !!monitor.isDragging() }),
-  }));
-  return (
-    <div
-      ref={drag}
-      className={`flex items-center gap-2 p-2 m-1 border rounded-lg shadow-sm cursor-move bg-white hover:bg-gray-50 transition-all ${
-        isDragging ? "opacity-50 scale-95" : "opacity-100"
-      }`}
-      title={`${table}.${name} (${type})`}
-    >
-      <GripVertical className="w-4 h-4 text-gray-400" />
-      <span className="text-xs text-gray-600 font-mono">{table}.</span>
-      <span className="text-sm font-medium">{name}</span>
-    </div>
-  );
-};
+// Plantillas predefinidas para RRHH
+const PLANTILLAS_RRHH = [
+  {
+    id: "empleados_activos",
+    nombre: "Empleados Activos",
+    descripcion: "Lista de todos los empleados activos",
+    sql: "SELECT e.Nombre, e.Apellido, e.Email, e.Cargo as Puesto, d.Nombre as Departamento FROM Empleados e LEFT JOIN Departamentos d ON e.DepartamentoID = d.DepartamentoID WHERE e.Estado = 1"
+  },
+  {
+    id: "empleados_por_departamento", 
+    nombre: "Empleados por Departamento",
+    descripcion: "Cantidad de empleados por departamento",
+    sql: "SELECT d.Nombre as Departamento, COUNT(e.EmpleadoID) as Total_Empleados FROM Departamentos d LEFT JOIN Empleados e ON d.DepartamentoID = e.DepartamentoID WHERE e.Estado = 1 GROUP BY d.Nombre ORDER BY Total_Empleados DESC"
+  },
+  {
+    id: "contrataciones_recientes",
+    nombre: "Contrataciones Recientes", 
+    descripcion: "Empleados contratados en los últimos 90 días",
+    sql: "SELECT e.Nombre, e.Apellido, e.Email, e.Cargo as Puesto, e.FechaIngreso, d.Nombre as Departamento FROM Empleados e LEFT JOIN Departamentos d ON e.DepartamentoID = d.DepartamentoID WHERE e.FechaIngreso >= DATEADD(day, -90, GETDATE()) ORDER BY e.FechaIngreso DESC"
+  },
+  {
+    id: "salarios_promedio",
+    nombre: "Salarios Promedio por Departamento",
+    descripcion: "Salario promedio por departamento",
+    sql: "SELECT d.Nombre as Departamento, AVG(CAST(e.Salario AS FLOAT)) as Salario_Promedio, COUNT(e.EmpleadoID) as Cantidad_Empleados FROM Departamentos d LEFT JOIN Empleados e ON d.DepartamentoID = e.DepartamentoID WHERE e.Estado = 1 GROUP BY d.Nombre ORDER BY Salario_Promedio DESC"
+  },
+   {
+  id: "Severance",
+  nombre: "Reporte Severance",
+  descripcion: "Detalle de Preaviso, Cesantía, Vacaciones, Regalía y Total por empleado",
+  sql: `
+    SELECT 
+        ROW_NUMBER() OVER (ORDER BY e.Cedula) AS No,
+        e.Nombre + ' ' + e.Apellido AS [Colaborador (a)],
+        e.Cedula,
+        e.Cargo AS Puesto, 
+        FORMAT(e.FechaIngreso, 'dd-MMM-yy', 'es-DO') AS [Fecha de Ingreso],
+        e.Salario,
 
-// DropZone para filas, columnas y métricas
-const DropZone = ({ title, fields, onDrop, onRemove, icon }) => {
-  const [{ isOver }, drop] = useDrop(() => ({
-    accept: "FIELD",
-    drop: (item) => onDrop(item),
-    collect: (monitor) => ({ isOver: !!monitor.isOver() }),
-  }));
-  return (
-    <div
-      ref={drop}
-      className={`min-h-[100px] p-3 rounded-lg border-2 border-dashed transition-all ${
-        isOver ? "bg-blue-50 border-blue-400" : "border-gray-300 bg-gray-50"
-      }`}
-    >
-      <div className="flex items-center gap-2 mb-3">
-        {icon}
-        <h4 className="font-semibold text-gray-700">{title}</h4>
-        <span className="text-xs text-gray-500">({fields.length})</span>
-      </div>
-      <div className="flex flex-wrap gap-2">
-        {fields.length === 0 ? (
-          <p className="text-sm text-gray-400 italic">Arrastra campos aquí</p>
-        ) : (
-          fields.map((field, index) => (
-            <div
-              key={`${field.table}-${field.name}-${index}`}
-              className="flex items-center gap-2 px-3 py-1 bg-blue-100 border border-blue-200 rounded-full text-sm"
-            >
-              <span className="font-mono text-xs text-gray-600">{field.table}.</span>
-              <span>{field.name}</span>
-              <button
-                onClick={() => onRemove(index)}
-                className="text-red-500 hover:text-red-700 ml-1"
-                type="button"
-                aria-label="Quitar campo"
-              >
-                ×
-              </button>
-            </div>
-          ))
-        )}
-      </div>
-    </div>
-  );
-};
+        -- Preaviso (según años de servicio)
+        CASE 
+            WHEN DATEDIFF(MONTH, e.FechaIngreso, GETDATE()) < 3 THEN 0
+            WHEN DATEDIFF(MONTH, e.FechaIngreso, GETDATE()) < 6 THEN ROUND((e.Salario / 30) * 7, 2)
+            WHEN DATEDIFF(MONTH, e.FechaIngreso, GETDATE()) < 12 THEN ROUND((e.Salario / 30) * 14, 2)
+            ELSE ROUND((e.Salario / 30) * 28, 2)
+        END AS Preaviso,
 
-// Modal para crear un nuevo reporte
-const NuevoReporteModal = ({ show, onClose, onSave, metadata }) => {
+        -- Cesantía (según años de servicio)
+        CASE 
+            WHEN DATEDIFF(MONTH, e.FechaIngreso, GETDATE()) < 3 THEN 0
+            WHEN DATEDIFF(MONTH, e.FechaIngreso, GETDATE()) BETWEEN 3 AND 5 
+                THEN ROUND((e.Salario / 30) * 6 * DATEDIFF(YEAR, e.FechaIngreso, GETDATE()), 2)
+            WHEN DATEDIFF(YEAR, e.FechaIngreso, GETDATE()) < 1 
+                THEN ROUND((e.Salario / 30) * 13, 2)
+            WHEN DATEDIFF(YEAR, e.FechaIngreso, GETDATE()) BETWEEN 1 AND 5 
+                THEN ROUND((e.Salario / 30) * 21 * DATEDIFF(YEAR, e.FechaIngreso, GETDATE()), 2)
+            ELSE ROUND((e.Salario / 30) * 23 * DATEDIFF(YEAR, e.FechaIngreso, GETDATE()), 2)
+        END AS Cesantia,
+
+        -- Vacaciones (14 días de salario por año trabajado)
+        ROUND((e.Salario / 30) * 14, 2) AS Vacaciones,
+
+        -- Regalía (2/3 de salario, ajusta a 1.0 si quieres salario completo)
+        ROUND(e.Salario * 0.6667, 2) AS Regalia,
+
+        -- Total beneficios
+        (
+            CASE 
+                WHEN DATEDIFF(MONTH, e.FechaIngreso, GETDATE()) < 3 THEN 0
+                WHEN DATEDIFF(MONTH, e.FechaIngreso, GETDATE()) < 6 THEN ROUND((e.Salario / 30) * 7, 2)
+                WHEN DATEDIFF(MONTH, e.FechaIngreso, GETDATE()) < 12 THEN ROUND((e.Salario / 30) * 14, 2)
+                ELSE ROUND((e.Salario / 30) * 28, 2)
+            END 
+            +
+            CASE 
+                WHEN DATEDIFF(MONTH, e.FechaIngreso, GETDATE()) < 3 THEN 0
+                WHEN DATEDIFF(MONTH, e.FechaIngreso, GETDATE()) BETWEEN 3 AND 5 
+                    THEN ROUND((e.Salario / 30) * 6 * DATEDIFF(YEAR, e.FechaIngreso, GETDATE()), 2)
+                WHEN DATEDIFF(YEAR, e.FechaIngreso, GETDATE()) < 1 
+                    THEN ROUND((e.Salario / 30) * 13, 2)
+                WHEN DATEDIFF(YEAR, e.FechaIngreso, GETDATE()) BETWEEN 1 AND 5 
+                    THEN ROUND((e.Salario / 30) * 21 * DATEDIFF(YEAR, e.FechaIngreso, GETDATE()), 2)
+                ELSE ROUND((e.Salario / 30) * 23 * DATEDIFF(YEAR, e.FechaIngreso, GETDATE()), 2)
+            END 
+            + ROUND((e.Salario / 30) * 14, 2)
+            + ROUND(e.Salario * 0.6667, 2)
+        ) AS Total
+
+    FROM dbo.Empleados e
+    WHERE e.Estado = 1
+    ORDER BY e.Cedula;
+  `
+}
+
+  
+];
+
+// Modal para crear nuevo reporte
+const NuevoReporteModal = ({ show, onClose, onSave }) => {
   const [formData, setFormData] = useState({
     nombre: "",
-    origen: "",
     descripcion: "",
+    plantilla: "",
+    sqlPersonalizado: ""
   });
 
+  const [usarPlantilla, setUsarPlantilla] = useState(true);
+
   const handleSave = () => {
-    if (!formData.nombre.trim() || !formData.origen) {
-      alert("Nombre y origen son requeridos");
+    if (!formData.nombre.trim()) {
+      alert("El nombre del reporte es obligatorio");
       return;
     }
-    onSave(formData);
-    setFormData({ nombre: "", origen: "", descripcion: "" });
+
+    let sqlFinal = "";
+    if (usarPlantilla && formData.plantilla) {
+      const plantilla = PLANTILLAS_RRHH.find(p => p.id === formData.plantilla);
+      sqlFinal = plantilla ? plantilla.sql : "";
+    } else {
+      sqlFinal = formData.sqlPersonalizado;
+    }
+
+    if (!sqlFinal.trim()) {
+      alert("Debe seleccionar una plantilla o escribir SQL personalizado");
+      return;
+    }
+
+    const reporte = {
+      nombre: formData.nombre.trim(),
+      descripcion: formData.descripcion.trim(),
+      origen: "personalizado",
+      configuracion: {
+        tipo: usarPlantilla ? 'plantilla' : 'personalizado',
+        plantillaId: formData.plantilla,
+        sqlQuery: sqlFinal
+      }
+    };
+
+    onSave(reporte);
+    resetForm();
+  };
+
+  const resetForm = () => {
+    setFormData({
+      nombre: "",
+      descripcion: "", 
+      plantilla: "",
+      sqlPersonalizado: ""
+    });
+    setUsarPlantilla(true);
+  };
+
+  const handleClose = () => {
+    resetForm();
+    onClose();
   };
 
   if (!show) return null;
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50">
-      <div className="bg-white p-6 rounded-lg shadow-xl w-96">
-        <div className="flex items-center gap-2 mb-4">
-          <Plus className="w-5 h-5 text-green-600" />
-          <h3 className="text-lg font-bold">Nuevo Reporte</h3>
+      <div className="bg-white p-6 rounded-lg shadow-xl w-[600px] max-h-[90vh] overflow-y-auto">
+        <div className="flex justify-between items-center mb-6">
+          <h3 className="text-xl font-bold text-gray-800">Crear Nuevo Reporte</h3>
+          <button onClick={handleClose} className="text-gray-500 hover:text-gray-700">
+            <X className="w-6 h-6" />
+          </button>
         </div>
+
         <div className="space-y-4">
+          {/* Información básica */}
           <div>
-            <label className="block font-medium mb-1">Nombre *</label>
+            <label className="block font-medium mb-2 text-gray-700">Nombre del Reporte *</label>
             <input
               type="text"
               value={formData.nombre}
-              onChange={(e) => setFormData({ ...formData, nombre: e.target.value })}
-              className="w-full border p-2 rounded"
+              onChange={(e) => setFormData(prev => ({ ...prev, nombre: e.target.value }))}
+              className="w-full border border-gray-300 p-3 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              placeholder="Ej: Reporte Mensual de Empleados"
             />
           </div>
+
           <div>
-            <label className="block font-medium mb-1">Origen *</label>
-            <select
-              value={formData.origen}
-              onChange={(e) => setFormData({ ...formData, origen: e.target.value })}
-              className="w-full border p-2 rounded"
-            >
-              <option value="">Seleccionar</option>
-              {Object.keys(metadata).map((table) => (
-                <option key={table} value={table}>{table}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block font-medium mb-1">Descripción</label>
+            <label className="block font-medium mb-2 text-gray-700">Descripción</label>
             <textarea
               value={formData.descripcion}
-              onChange={(e) => setFormData({ ...formData, descripcion: e.target.value })}
-              className="w-full border p-2 rounded"
+              onChange={(e) => setFormData(prev => ({ ...prev, descripcion: e.target.value }))}
+              className="w-full border border-gray-300 p-3 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
               rows={3}
+              placeholder="Describe brevemente este reporte..."
             />
           </div>
+
+          {/* Selector de tipo */}
+          <div className="border-t pt-4">
+            <label className="block font-medium mb-3 text-gray-700">Tipo de Reporte</label>
+            <div className="flex gap-4">
+              <label className="flex items-center cursor-pointer">
+                <input
+                  type="radio"
+                  checked={usarPlantilla}
+                  onChange={() => setUsarPlantilla(true)}
+                  className="mr-2"
+                />
+                <span>Usar plantilla predefinida</span>
+              </label>
+              <label className="flex items-center cursor-pointer">
+                <input
+                  type="radio"
+                  checked={!usarPlantilla}
+                  onChange={() => setUsarPlantilla(false)}
+                  className="mr-2"
+                />
+                <span>SQL personalizado</span>
+              </label>
+            </div>
+          </div>
+
+          {/* Plantillas predefinidas */}
+          {usarPlantilla && (
+            <div>
+              <label className="block font-medium mb-2 text-gray-700">Seleccionar Plantilla *</label>
+              <select
+                value={formData.plantilla}
+                onChange={(e) => setFormData(prev => ({ ...prev, plantilla: e.target.value }))}
+                className="w-full border border-gray-300 p-3 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              >
+                <option value="">-- Seleccione una plantilla --</option>
+                {PLANTILLAS_RRHH.map(plantilla => (
+                  <option key={plantilla.id} value={plantilla.id}>
+                    {plantilla.nombre} - {plantilla.descripcion}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* SQL personalizado */}
+          {!usarPlantilla && (
+            <div>
+              <label className="block font-medium mb-2 text-gray-700">Consulta SQL *</label>
+              <textarea
+                value={formData.sqlPersonalizado}
+                onChange={(e) => setFormData(prev => ({ ...prev, sqlPersonalizado: e.target.value }))}
+                className="w-full border border-gray-300 p-3 rounded-lg font-mono text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                rows={6}
+                placeholder="SELECT columna1, columna2 FROM tabla WHERE condicion..."
+              />
+            </div>
+          )}
         </div>
-        <div className="flex justify-end gap-2 mt-6">
-          <button onClick={onClose} className="px-4 py-2 bg-gray-300 rounded" type="button">
+
+        <div className="flex justify-end gap-3 mt-6 pt-4 border-t">
+          <button 
+            onClick={handleClose} 
+            className="px-6 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 transition-colors"
+          >
             Cancelar
           </button>
           <button
             onClick={handleSave}
-            className="px-4 py-2 bg-blue-600 text-white rounded flex items-center gap-2"
-            type="button"
+            className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
           >
-            <Save className="w-4 h-4" /> Crear
+            <Save className="w-4 h-4" />
+            Crear Reporte
           </button>
         </div>
       </div>
@@ -158,514 +277,415 @@ const NuevoReporteModal = ({ show, onClose, onSave, metadata }) => {
   );
 };
 
-// Componente para exportación
-const ExportButtons = ({ data, onExport, loading }) => {
-  const [showMenu, setShowMenu] = useState(false);
-  
-  const formats = [
-    { key: 'excel', label: 'Excel (.xlsx)', icon: '📊' },
-    { key: 'csv', label: 'CSV (.csv)', icon: '📄' },
-    { key: 'pdf', label: 'PDF (.pdf)', icon: '📋' },
-    { key: 'json', label: 'JSON (.json)', icon: '🔧' }
-  ];
-
-  return (
-    <div className="relative">
-      <button
-        onClick={() => setShowMenu(!showMenu)}
-        disabled={data.length === 0 || loading}
-        className="bg-green-600 text-white px-4 py-2 rounded flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-        type="button"
-      >
-        <Download className="w-4 h-4" />
-        Exportar
-      </button>
-
-      {showMenu && (
-        <div className="absolute right-0 mt-2 w-48 bg-white border rounded-lg shadow-lg z-10">
-          <div className="py-1">
-            {formats.map((format) => (
-              <button
-                key={format.key}
-                onClick={() => {
-                  onExport(format.key);
-                  setShowMenu(false);
-                }}
-                className="w-full text-left px-4 py-2 hover:bg-gray-50 flex items-center gap-2"
-                type="button"
-              >
-                <span>{format.icon}</span>
-                <span className="text-sm">{format.label}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-};
-
-// Módulo principal de reportes
+// Componente principal
 const ReportesModule = () => {
-  const { user, getStoredToken } = useAuth();
-  const [metadata, setMetadata] = useState({});
+  const { getStoredToken } = useAuth();
+  
+  // Estados principales
   const [reportes, setReportes] = useState([]);
   const [showModal, setShowModal] = useState(false);
-  const [rows, setRows] = useState([]);
-  const [columns, setColumns] = useState([]);
-  const [metrics, setMetrics] = useState([]);
   const [sqlQuery, setSqlQuery] = useState("");
-  const [customSql, setCustomSql] = useState("");
   const [data, setData] = useState([]);
-  const [chartType, setChartType] = useState("bar");
   const [loading, setLoading] = useState(false);
   const [exportLoading, setExportLoading] = useState(false);
   const [error, setError] = useState(null);
+  
+  // Estados para plantillas rápidas
+  const [plantillaSeleccionada, setPlantillaSeleccionada] = useState("");
 
-  // CARGAR METADATA Y REPORTES GUARDADOS
+  // Cargar reportes guardados
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const token = getStoredToken();
-        if (!token) {
-          setError("No hay token de autenticación");
-          return;
-        }
+    cargarReportes();
+  }, []);
 
-        const headers = { 
-          'Authorization': `Bearer ${token}`,
+  const cargarReportes = async () => {
+    try {
+      const token = getStoredToken();
+      if (!token) return;
+
+      const response = await fetch(`${API_URL}/reportes/guardados`, {
+        headers: { 
+          Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json'
-        };
-
-        const [metaRes, repRes] = await Promise.all([
-          fetch(`${API_URL}/reportes/metadata`, { headers }),
-          fetch(`${API_URL}/reportes/guardados`, { headers })
-        ]);
-
-        if (!metaRes.ok) {
-          throw new Error(`Error metadata: ${metaRes.status}`);
         }
-        if (!repRes.ok) {
-          throw new Error(`Error reportes: ${repRes.status}`);
-        }
-
-        const metaData = await metaRes.json();
-        const repData = await repRes.json();
-
-        setMetadata(metaData.simplified || metaData);
-
-        if (Array.isArray(repData)) {
-          setReportes(repData);
-        } else {
-          console.warn("Respuesta de reportes no es un array:", repData);
-          setReportes([]);
-        }
-
-        setError(null);
-      } catch (err) {
-        console.error("Error cargando datos:", err);
-        setError(err.message);
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setReportes(Array.isArray(data) ? data : []);
+      } else if (response.status !== 403) {
+        console.warn("Error cargando reportes:", response.status);
       }
-    };
-    fetchData();
-  }, [getStoredToken]);
+    } catch (err) {
+      console.warn("Error conectando:", err.message);
+    }
+  };
 
-  // Generar SQL dinámico
-  useEffect(() => {
-    if (rows.length === 0 && columns.length === 0 && metrics.length === 0) {
-      setSqlQuery("");
-      return;
-    }
-    const allFields = [...rows, ...columns, ...metrics];
-    const tables = [...new Set(allFields.map((f) => f.table))];
-    const selectFields = allFields.map((f) => `${f.table}.${f.name}`).join(", ");
-    let query = `SELECT ${selectFields} FROM ${tables.join(", ")}`;
-    if (rows.length || columns.length) {
-      query += ` GROUP BY ${[...rows, ...columns].map((f) => `${f.table}.${f.name}`).join(", ")}`;
-    }
-    setSqlQuery(query);
-  }, [rows, columns, metrics]);
-
-  // EJECUTAR REPORTE
-  const ejecutarReporte = async () => {
-    const query = customSql || sqlQuery;
-    if (!query.trim()) {
-      alert("No hay consulta para ejecutar");
-      return;
-    }
+  // Ejecutar consulta
+  const ejecutarConsulta = async (sql = null) => {
+    const queryToExecute = sql || sqlQuery;
     
+    if (!queryToExecute.trim()) {
+      alert("Escriba una consulta SQL o seleccione una plantilla");
+      return;
+    }
+
     setLoading(true);
     setError(null);
-    
+
     try {
-      const res = await fetch(`${API_URL}/reportes/custom`, {
+      const response = await fetch(`${API_URL}/reportes/custom`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${getStoredToken()}`,
+          Authorization: `Bearer ${getStoredToken()}`
         },
-        body: JSON.stringify({ sqlQuery: query }),
+        body: JSON.stringify({ sqlQuery: queryToExecute })
       });
 
-      if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(errorData.details || `Error ${res.status}`);
+      if (response.ok) {
+        const result = await response.json();
+        setData(result.data || []);
+      } else {
+        const errorData = await response.json();
+        throw new Error(errorData.details || `Error ${response.status}`);
       }
-
-      const result = await res.json();
-      setData(result.data || result);
     } catch (err) {
-      console.error("Error ejecutando reporte:", err);
       setError(err.message);
+      console.error("Error ejecutando consulta:", err);
     } finally {
       setLoading(false);
     }
   };
 
-  // EXPORTAR REPORTE
-  const exportarReporte = async (formato) => {
-    if (data.length === 0) {
-      alert("No hay datos para exportar");
-      return;
-    }
-
-    setExportLoading(true);
-    
+  // Guardar reporte
+  const guardarReporte = async (nuevoReporte) => {
     try {
-      const res = await fetch(`${API_URL}/reportes/export`, {
+      const response = await fetch(`${API_URL}/reportes/guardados`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${getStoredToken()}`,
+          Authorization: `Bearer ${getStoredToken()}`
         },
-        body: JSON.stringify({
-          formato,
-          data,
-          nombre: `reporte_${new Date().toISOString().split('T')[0]}`
-        }),
+        body: JSON.stringify(nuevoReporte)
       });
 
-      if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(errorData.details || `Error ${res.status}`);
+      if (response.ok) {
+        const saved = await response.json();
+        setReportes(prev => [...prev, saved]);
+        setShowModal(false);
+        alert("Reporte guardado exitosamente");
+      } else {
+        const errorData = await response.json();
+        throw new Error(errorData.details || `Error ${response.status}`);
       }
-
-      // Descargar archivo
-      const blob = await res.blob();
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      
-      // Determinar extensión del archivo
-      const extensions = {
-        excel: 'xlsx',
-        csv: 'csv', 
-        pdf: 'pdf',
-        json: 'json'
-      };
-      
-      link.download = `reporte_${new Date().toISOString().split('T')[0]}.${extensions[formato]}`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
-      
-      console.log(`Archivo ${formato} descargado exitosamente`);
-      
-    } catch (err) {
-      console.error("Error exportando reporte:", err);
-      alert("Error al exportar: " + err.message);
-    } finally {
-      setExportLoading(false);
-    }
-  };
-
-  // GUARDAR REPORTE
-  const guardarReporte = async (nuevo) => {
-    try {
-      const res = await fetch(`${API_URL}/reportes/guardados`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${getStoredToken()}`,
-        },
-        body: JSON.stringify({
-          ...nuevo,
-          configuracion: { rows, columns, metrics, sqlQuery: customSql || sqlQuery },
-        }),
-      });
-
-      if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(errorData.details || `Error ${res.status}`);
-      }
-
-      const saved = await res.json();
-      setReportes([...reportes, saved]);
-      setShowModal(false);
-      alert("Reporte guardado exitosamente");
     } catch (err) {
       console.error("Error guardando reporte:", err);
       alert("Error guardando reporte: " + err.message);
     }
   };
 
-  // Funciones helper para drag & drop
-  const addFieldToArray = (array, setter) => (field) => {
-    const exists = array.some(f => f.table === field.table && f.name === field.name);
-    if (!exists) {
-      setter([...array, field]);
+  // Ejecutar plantilla rápida
+  const ejecutarPlantilla = (plantillaId) => {
+    const plantilla = PLANTILLAS_RRHH.find(p => p.id === plantillaId);
+    if (plantilla) {
+      setSqlQuery(plantilla.sql);
+      ejecutarConsulta(plantilla.sql);
     }
   };
 
-  const removeFieldFromArray = (array, setter) => (index) => {
-    setter(array.filter((_, i) => i !== index));
+  // Exportar datos
+  const exportarDatos = async (formato) => {
+    if (data.length === 0) {
+      alert("No hay datos para exportar");
+      return;
+    }
+
+    setExportLoading(true);
+
+    try {
+      const response = await fetch(`${API_URL}/reportes/export`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${getStoredToken()}`
+        },
+        body: JSON.stringify({
+          formato,
+          data,
+          nombre: `reporte_rrhh_${new Date().toISOString().split('T')[0]}`
+        })
+      });
+
+      if (response.ok) {
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        
+        const extensions = {
+          excel: 'xlsx',
+          csv: 'csv',
+          pdf: 'pdf',
+          json: 'json'
+        };
+        
+        link.download = `reporte_rrhh_${new Date().toISOString().split('T')[0]}.${extensions[formato]}`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        window.URL.revokeObjectURL(url);
+      } else {
+        throw new Error(`Error ${response.status}`);
+      }
+    } catch (err) {
+      console.error("Error exportando:", err);
+      alert("Error al exportar: " + err.message);
+    } finally {
+      setExportLoading(false);
+    }
   };
 
-  // Renderizar gráfico según tipo
-  const renderChart = () => {
-    if (data.length === 0) return null;
-    const keys = Object.keys(data[0] || {});
-    if (keys.length < 2) return null;
-    
-    switch (chartType) {
-      case "line":
-        return (
-          <LineChart data={data} width={600} height={300}>
-            <XAxis dataKey={keys[0]} />
-            <YAxis />
-            <Tooltip />
-            <Legend />
-            <Line dataKey={keys[1]} stroke="#8884d8" />
-          </LineChart>
-        );
-      case "pie":
-        return (
-          <PieChart width={600} height={300}>
-            <Pie data={data} dataKey={keys[1]} nameKey={keys[0]} label />
-            <Tooltip />
-          </PieChart>
-        );
-      default:
-        return (
-          <BarChart data={data} width={600} height={300}>
-            <XAxis dataKey={keys[0]} />
-            <YAxis />
-            <Tooltip />
-            <Legend />
-            <Bar dataKey={keys[1]} fill="#8884d8" />
-          </BarChart>
-        );
+  // Cargar reporte guardado
+  const cargarReporte = (reporte) => {
+    if (reporte.configuracion && reporte.configuracion.sqlQuery) {
+      setSqlQuery(reporte.configuracion.sqlQuery);
+      ejecutarConsulta(reporte.configuracion.sqlQuery);
     }
   };
 
   return (
-    <DndProvider backend={HTML5Backend}>
-      <div className="p-6">
-        {/* Header */}
-        <div className="flex justify-between items-center mb-6">
-          <h1 className="text-2xl font-bold flex items-center gap-2">
-            <BarChart3 className="w-7 h-7 text-blue-600" /> Generador de Reportes
+    <div className="p-6 max-w-7xl mx-auto">
+      {/* Header */}
+      <div className="flex justify-between items-center mb-8">
+        <div>
+          <h1 className="text-3xl font-bold flex items-center gap-3 text-gray-800">
+            <BarChart3 className="w-8 h-8 text-blue-600" />
+            Reportes RRHH
           </h1>
-          <button
-            onClick={() => setShowModal(true)}
-            className="bg-green-600 text-white px-4 py-2 rounded flex items-center gap-2"
-            type="button"
-          >
-            <Plus className="w-4 h-4" /> Nuevo Reporte
+          <p className="text-gray-600 mt-2">Genera reportes personalizados para recursos humanos</p>
+        </div>
+        <button
+          onClick={() => setShowModal(true)}
+          className="bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 transition-colors flex items-center gap-2 shadow-lg"
+        >
+          <Plus className="w-5 h-5" />
+          Nuevo Reporte
+        </button>
+      </div>
+
+      {/* Error */}
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6 flex justify-between items-center">
+          <div className="flex items-center gap-2">
+            <div className="w-4 h-4 bg-red-500 rounded-full"></div>
+            <span className="text-red-700">{error}</span>
+          </div>
+          <button onClick={() => setError(null)} className="text-red-500 hover:text-red-700">
+            <X className="w-5 h-5" />
           </button>
         </div>
+      )}
 
-        {/* MOSTRAR ERRORES */}
-        {error && (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6 flex items-center justify-between">
-            <span className="text-red-700">{error}</span>
-            <button onClick={() => setError(null)} className="text-red-500 hover:text-red-700">×</button>
+      {/* Plantillas rápidas */}
+      <div className="bg-white rounded-lg shadow-sm mb-6">
+        <div className="p-6 border-b border-gray-200">
+          <h3 className="text-lg font-semibold flex items-center gap-2 text-gray-800">
+            <Users className="w-5 h-5 text-blue-600" />
+            Plantillas Rápidas
+          </h3>
+          <p className="text-sm text-gray-600 mt-1">Reportes predefinidos más utilizados</p>
+        </div>
+        <div className="p-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            {PLANTILLAS_RRHH.map(plantilla => (
+              <button
+                key={plantilla.id}
+                onClick={() => ejecutarPlantilla(plantilla.id)}
+                disabled={loading}
+                className="p-4 border-2 border-gray-200 rounded-lg hover:border-blue-400 hover:bg-blue-50 transition-all disabled:opacity-50 text-left group"
+              >
+                <div className="flex items-center gap-2 mb-2">
+                  <Building className="w-4 h-4 text-blue-600 group-hover:text-blue-700" />
+                  <h4 className="font-medium text-gray-800 group-hover:text-blue-700">
+                    {plantilla.nombre}
+                  </h4>
+                </div>
+                <p className="text-sm text-gray-600 group-hover:text-gray-700">
+                  {plantilla.descripcion}
+                </p>
+              </button>
+            ))}
           </div>
-        )}
+        </div>
+      </div>
 
-        {/* Tabla de reportes guardados */}
-        <div className="bg-white rounded-lg shadow mb-6">
-          <div className="p-4 border-b flex items-center gap-2">
-            <FileText className="w-5 h-5 text-gray-600" /> 
-            Reportes Guardados ({Array.isArray(reportes) ? reportes.length : 0})
+      {/* Editor SQL */}
+      <div className="bg-white rounded-lg shadow-sm mb-6">
+        <div className="p-6 border-b border-gray-200">
+          <h3 className="text-lg font-semibold flex items-center gap-2 text-gray-800">
+            <Database className="w-5 h-5 text-green-600" />
+            Editor de Consultas
+          </h3>
+          <p className="text-sm text-gray-600 mt-1">Escribe tu consulta SQL personalizada</p>
+        </div>
+        <div className="p-6">
+          <textarea
+            value={sqlQuery}
+            onChange={(e) => setSqlQuery(e.target.value)}
+            className="w-full border border-gray-300 rounded-lg p-4 font-mono text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            rows={8}
+            placeholder="SELECT e.Nombre, e.Apellido, d.Nombre as Departamento 
+FROM Empleados e 
+LEFT JOIN Departamentos d ON e.DepartamentoID = d.DepartamentoID 
+WHERE e.Estado = 1"
+          />
+          
+          <div className="flex justify-between items-center mt-4">
+            <div className="flex gap-2">
+              <button
+                onClick={() => ejecutarConsulta()}
+                disabled={loading || !sqlQuery.trim()}
+                className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors flex items-center gap-2"
+              >
+                <Play className="w-4 h-4" />
+                {loading ? "Ejecutando..." : "Ejecutar Consulta"}
+              </button>
+              
+              <button
+                onClick={() => setSqlQuery("")}
+                className="bg-gray-500 text-white px-4 py-2 rounded-lg hover:bg-gray-600 transition-colors"
+              >
+                Limpiar
+              </button>
+            </div>
+
+            {data.length > 0 && (
+              <div className="flex gap-2">
+                <button
+                  onClick={() => exportarDatos('excel')}
+                  disabled={exportLoading}
+                  className="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors flex items-center gap-1"
+                >
+                  <Download className="w-4 h-4" />
+                  Excel
+                </button>
+                <button
+                  onClick={() => exportarDatos('csv')}
+                  disabled={exportLoading}
+                  className="bg-orange-600 text-white px-4 py-2 rounded-lg hover:bg-orange-700 disabled:opacity-50 transition-colors flex items-center gap-1"
+                >
+                  <Download className="w-4 h-4" />
+                  CSV
+                </button>
+              </div>
+            )}
           </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50">
+        </div>
+      </div>
+
+      {/* Reportes guardados */}
+      <div className="bg-white rounded-lg shadow-sm mb-6">
+        <div className="p-6 border-b border-gray-200">
+          <h3 className="text-lg font-semibold flex items-center gap-2 text-gray-800">
+            <FileText className="w-5 h-5 text-purple-600" />
+            Reportes Guardados ({reportes.length})
+          </h3>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-6 py-4 text-left text-sm font-medium text-gray-700">Nombre</th>
+                <th className="px-6 py-4 text-left text-sm font-medium text-gray-700">Descripción</th>
+                <th className="px-6 py-4 text-left text-sm font-medium text-gray-700">Fecha Creación</th>
+                <th className="px-6 py-4 text-left text-sm font-medium text-gray-700">Acciones</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-200">
+              {reportes.length === 0 ? (
                 <tr>
-                  <th className="p-2 text-left">Nombre</th>
-                  <th className="p-2 text-left">Origen</th>
-                  <th className="p-2 text-left">Descripción</th>
-                  <th className="p-2 text-left">Acciones</th>
+                  <td colSpan="4" className="px-6 py-8 text-center text-gray-500">
+                    No hay reportes guardados. Crea tu primer reporte personalizado.
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {Array.isArray(reportes) && reportes.length > 0 ? (
-                  reportes.map((r) => (
-                    <tr key={r.id} className="hover:bg-gray-50">
-                      <td className="p-2">{r.nombre}</td>
-                      <td className="p-2">{r.origen}</td>
-                      <td className="p-2">{r.descripcion || "-"}</td>
-                      <td className="p-2 flex gap-1">
-                        <button className="text-blue-600 hover:underline" type="button">Ver</button>
-                        <button className="text-green-600 hover:underline" type="button">Editar</button>
-                        <button className="text-red-600 hover:underline" type="button">Eliminar</button>
-                      </td>
-                    </tr>
-                  ))
-                ) : (
-                  <tr>
-                    <td colSpan="4" className="p-4 text-center text-gray-500">
-                      No hay reportes guardados
+              ) : (
+                reportes.map((reporte) => (
+                  <tr key={reporte.id} className="hover:bg-gray-50 transition-colors">
+                    <td className="px-6 py-4 font-medium text-gray-900">{reporte.nombre}</td>
+                    <td className="px-6 py-4 text-gray-600">{reporte.descripcion || "-"}</td>
+                    <td className="px-6 py-4 text-gray-600">{reporte.fechaCreacion || "-"}</td>
+                    <td className="px-6 py-4">
+                      <div className="flex gap-2">
+                        <button 
+                          onClick={() => cargarReporte(reporte)}
+                          className="text-blue-600 hover:text-blue-800 hover:underline text-sm font-medium"
+                        >
+                          Ejecutar
+                        </button>
+                        <button className="text-green-600 hover:text-green-800 hover:underline text-sm font-medium">
+                          Editar
+                        </button>
+                        <button className="text-red-600 hover:text-red-800 hover:underline text-sm font-medium">
+                          Eliminar
+                        </button>
+                      </div>
                     </td>
                   </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        {/* Editor SQL */}
-        <div className="bg-white rounded-lg shadow p-4 mb-6">
-          <h3 className="font-semibold mb-2 flex items-center gap-2">
-            <Database className="w-5 h-5" /> Editor SQL
-          </h3>
-          <div className="mb-2">
-            <label className="block text-sm font-medium mb-1">SQL Generado automáticamente:</label>
-            <textarea
-              value={sqlQuery}
-              readOnly
-              className="w-full border p-2 text-sm font-mono bg-gray-50"
-              rows={3}
-              placeholder="Se genera automáticamente al arrastrar campos..."
-            />
-          </div>
-          <div className="mb-4">
-            <label className="block text-sm font-medium mb-1">SQL Personalizado:</label>
-            <textarea
-              value={customSql}
-              onChange={(e) => setCustomSql(e.target.value)}
-              className="w-full border p-2 text-sm font-mono"
-              rows={3}
-              placeholder="O escribe tu consulta personalizada aquí..."
-            />
-          </div>
-          <div className="flex gap-2">
-            <button
-              onClick={ejecutarReporte}
-              disabled={loading}
-              className="bg-blue-600 text-white px-4 py-2 rounded flex items-center gap-2 disabled:opacity-50"
-              type="button"
-            >
-              <Play className="w-4 h-4" /> 
-              {loading ? "Ejecutando..." : "Ejecutar"}
-            </button>
-            
-            {/* Botón de exportación */}
-            <ExportButtons 
-              data={data} 
-              onExport={exportarReporte} 
-              loading={exportLoading} 
-            />
-          </div>
-        </div>
-
-        {/* Campos disponibles y DropZones */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="bg-white rounded-lg shadow p-4">
-            <h3 className="font-semibold mb-2 flex items-center gap-2">
-              <GripVertical className="w-5 h-5" /> Campos Disponibles
-            </h3>
-            <div className="max-h-96 overflow-y-auto">
-              {Object.keys(metadata).length === 0 ? (
-                <p className="text-gray-500 text-sm">Cargando campos...</p>
-              ) : (
-                Object.entries(metadata).map(([table, fields]) => (
-                  <div key={table} className="mb-4">
-                    <h4 className="font-medium text-gray-700 mb-2">{table}</h4>
-                    <div className="space-y-1">
-                      {Array.isArray(fields) ? fields.map((field) => (
-                        <DraggableField key={`${table}-${field}`} table={table} name={field} />
-                      )) : null}
-                    </div>
-                  </div>
                 ))
               )}
-            </div>
-          </div>
-
-          <div className="lg:col-span-2 space-y-4">
-            <DropZone 
-              title="Filas" 
-              fields={rows} 
-              onDrop={addFieldToArray(rows, setRows)} 
-              onRemove={removeFieldFromArray(rows, setRows)} 
-              icon={<Filter className="w-4 h-4 text-blue-600" />} 
-            />
-            <DropZone 
-              title="Columnas" 
-              fields={columns} 
-              onDrop={addFieldToArray(columns, setColumns)} 
-              onRemove={removeFieldFromArray(columns, setColumns)} 
-              icon={<BarChart3 className="w-4 h-4 text-green-600" />} 
-            />
-            <DropZone 
-              title="Métricas" 
-              fields={metrics} 
-              onDrop={addFieldToArray(metrics, setMetrics)} 
-              onRemove={removeFieldFromArray(metrics, setMetrics)} 
-              icon={<Database className="w-4 h-4 text-purple-600" />} 
-            />
-          </div>
+            </tbody>
+          </table>
         </div>
+      </div>
 
-        {/* Resultados */}
-        {data.length > 0 && (
-          <div className="bg-white rounded-lg shadow p-4 mt-6">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="font-semibold">Resultados ({data.length} registros)</h3>
-              <div className="flex gap-2 items-center">
-                <select 
-                  value={chartType} 
-                  onChange={(e) => setChartType(e.target.value)} 
-                  className="border p-1 rounded text-sm"
-                >
-                  <option value="bar">Gráfico de Barras</option>
-                  <option value="line">Gráfico de Líneas</option>
-                  <option value="pie">Gráfico Circular</option>
-                </select>
-                
-                <ExportButtons 
-                  data={data} 
-                  onExport={exportarReporte} 
-                  loading={exportLoading} 
-                />
+      {/* Resultados */}
+      {data.length > 0 && (
+        <div className="bg-white rounded-lg shadow-sm">
+          <div className="p-6 border-b border-gray-200">
+            <div className="flex justify-between items-center">
+              <h3 className="text-lg font-semibold text-gray-800">
+                Resultados ({data.length} registros)
+              </h3>
+              <div className="text-sm text-gray-600">
+                Consulta ejecutada exitosamente
               </div>
             </div>
-            
-            {/* Gráfico */}
-            <div className="mb-6">
-              <ResponsiveContainer width="100%" height={300}>
-                {renderChart()}
-              </ResponsiveContainer>
-            </div>
+          </div>
+          
+          <div className="p-6">
+            {/* Gráfico simple */}
+            {data.length > 0 && Object.keys(data[0]).length >= 2 && (
+              <div className="mb-6">
+                <ResponsiveContainer width="100%" height={300}>
+                  <BarChart data={data.slice(0, 10)}>
+                    <XAxis dataKey={Object.keys(data[0])[0]} />
+                    <YAxis />
+                    <Tooltip />
+                    <Legend />
+                    <Bar dataKey={Object.keys(data[0])[1]} fill="#3B82F6" />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            )}
 
             {/* Tabla de datos */}
             <div className="overflow-x-auto">
-              <table className="w-full text-sm border">
+              <table className="w-full border border-gray-200 rounded-lg">
                 <thead className="bg-gray-50">
                   <tr>
                     {Object.keys(data[0] || {}).map((key) => (
-                      <th key={key} className="border p-2 text-left font-medium">{key}</th>
+                      <th key={key} className="border-b border-gray-200 px-4 py-3 text-left font-medium text-sm text-gray-700">
+                        {key}
+                      </th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {data.slice(0, 50).map((row, index) => (
-                    <tr key={index} className="hover:bg-gray-50">
+                  {data.slice(0, 100).map((row, index) => (
+                    <tr key={index} className="hover:bg-gray-50 transition-colors">
                       {Object.values(row).map((value, cellIndex) => (
-                        <td key={cellIndex} className="border p-2">
+                        <td key={cellIndex} className="border-b border-gray-100 px-4 py-3 text-sm text-gray-900">
                           {value}
                         </td>
                       ))}
@@ -673,26 +693,24 @@ const ReportesModule = () => {
                   ))}
                 </tbody>
               </table>
-              {data.length > 50 && (
-                <p className="text-sm text-gray-500 mt-2 text-center">
-                  Mostrando primeros 50 de {data.length} registros
+              {data.length > 100 && (
+                <p className="text-sm text-gray-500 mt-3 text-center">
+                  Mostrando primeros 100 de {data.length} registros
                 </p>
               )}
             </div>
           </div>
-        )}
+        </div>
+      )}
 
-        {/* Modal */}
-        <NuevoReporteModal 
-          show={showModal} 
-          onClose={() => setShowModal(false)} 
-          onSave={guardarReporte} 
-          metadata={metadata} 
-        />
-      </div>
-    </DndProvider>
+      {/* Modal */}
+      <NuevoReporteModal
+        show={showModal}
+        onClose={() => setShowModal(false)}
+        onSave={guardarReporte}
+      />
+    </div>
   );
 };
 
 export default ReportesModule;
-

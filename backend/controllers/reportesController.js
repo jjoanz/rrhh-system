@@ -69,13 +69,26 @@ export const verificarToken = (req, res, next) => {
     // Verificar JWT
     try {
       const decoded = jwt.verify(token, JWT_SECRET);
-      req.user = decoded;
-      logActivity(req.user.id, "Token verificado", `Rol: ${req.user.role || 'N/A'}`);
+      req.user = {
+        id: decoded.id || decoded.userId || 'usuario_jwt',
+        role: decoded.role || 'user',
+        name: decoded.name || decoded.username || 'Usuario'
+      };
+      
+      logActivity(req.user.id, "Token verificado", `Rol: ${req.user.role}`);
       next();
     } catch (jwtError) {
+      console.warn('Error JWT:', jwtError.message);
+      
       // Fallback para tokens simples (compatibilidad temporal)
       if (token.length >= 10 && !token.includes('.')) {
-        req.user = { id: 'demo', role: 'user', name: 'Usuario Demo' };
+        req.user = { 
+          id: `user_${Date.now()}`, 
+          role: 'user', 
+          name: 'Usuario Demo' 
+        };
+        
+        logActivity(req.user.id, "Token simple verificado");
         next();
       } else {
         return res.status(401).json({ 
@@ -97,7 +110,8 @@ export const verificarToken = (req, res, next) => {
 // ===================== REPORTES GUARDADOS =====================
 export const getReportesGuardados = async (req, res) => {
   try {
-    logActivity(req.user.id, "Consultando reportes guardados");
+    const usuarioId = req.user?.id || 'sistema';
+    logActivity(usuarioId, "Consultando reportes guardados");
 
     const query = `
       SELECT 
@@ -108,7 +122,7 @@ export const getReportesGuardados = async (req, res) => {
         r.Configuracion as configuracion,
         r.FechaCreacion as fechaCreacion,
         r.FechaModificacion as fechaModificacion,
-        u.Username as modificadoPor,
+        COALESCE(u.Username, 'Sistema') as modificadoPor,
         r.EsPredeterminado as predeterminado,
         r.EliminarDuplicados as eliminarDuplicados
       FROM ReportesPersonalizados r
@@ -117,17 +131,21 @@ export const getReportesGuardados = async (req, res) => {
       ORDER BY r.FechaModificacion DESC
     `;
 
-    const result = await executeQuery(query);
+    const pool = await getConnection();
+    const request = pool.request();
+    const result = await request.query(query);
     
     // Procesar configuración JSON
     const reportes = result.recordset.map(reporte => ({
       ...reporte,
-      configuracion: reporte.configuracion ? JSON.parse(reporte.configuracion) : null,
+      configuracion: reporte.configuracion ? 
+        (typeof reporte.configuracion === 'string' ? 
+          JSON.parse(reporte.configuracion) : reporte.configuracion) : null,
       fechaCreacion: reporte.fechaCreacion?.toISOString().split('T')[0],
       fechaModificacion: reporte.fechaModificacion?.toISOString().split('T')[0]
     }));
 
-    logActivity(req.user.id, "Reportes obtenidos", `${reportes.length} encontrados`);
+    logActivity(usuarioId, "Reportes obtenidos", `${reportes.length} encontrados`);
     res.json(reportes);
 
   } catch (error) {
@@ -150,27 +168,35 @@ export const guardarReporte = async (req, res) => {
       });
     }
 
-    logActivity(req.user.id, "Guardando reporte", nombre);
+    // Verificar que el usuario esté autenticado
+    const usuarioId = req.user?.id || 'sistema';
+    
+    logActivity(usuarioId, "Guardando reporte", nombre);
 
     const query = `
       INSERT INTO ReportesPersonalizados 
       (Nombre, Origen, Descripcion, Configuracion, EsPredeterminado, EliminarDuplicados, 
        FechaCreacion, FechaModificacion, ModificadoPor, Estado)
       OUTPUT INSERTED.ReporteID
-      VALUES (?, ?, ?, ?, ?, ?, GETDATE(), GETDATE(), ?, 1)
+      VALUES (@nombre, @origen, @descripcion, @configuracion, @predeterminado, @eliminarDuplicados, GETDATE(), GETDATE(), @usuarioId, 1)
     `;
 
     const configuracionJson = configuracion ? JSON.stringify(configuracion) : null;
     
-    const result = await executeQuery(query, [
-      nombre.trim(),
-      origen.trim(),
-      descripcion?.trim() || null,
-      configuracionJson,
-      predeterminado || false,
-      eliminarDuplicados || false,
-      req.user.id
-    ]);
+    // Usar el pool directamente con parámetros nombrados
+    const pool = await getConnection();
+    const request = pool.request();
+    
+    // Agregar parámetros nombrados
+    request.input('nombre', nombre.trim());
+    request.input('origen', origen.trim());
+    request.input('descripcion', descripcion?.trim() || null);
+    request.input('configuracion', configuracionJson);
+    request.input('predeterminado', predeterminado || false);
+    request.input('eliminarDuplicados', eliminarDuplicados || false);
+    request.input('usuarioId', usuarioId);
+
+    const result = await request.query(query);
 
     const nuevoReporte = {
       id: result.recordset[0].ReporteID,
@@ -179,13 +205,13 @@ export const guardarReporte = async (req, res) => {
       descripcion: descripcion?.trim(),
       fechaCreacion: new Date().toISOString().split('T')[0],
       fechaModificacion: new Date().toISOString().split('T')[0],
-      modificadoPor: req.user.name || 'Usuario',
+      modificadoPor: req.user?.name || 'Usuario',
       predeterminado: predeterminado || false,
       eliminarDuplicados: eliminarDuplicados || false,
       configuracion
     };
 
-    logActivity(req.user.id, "Reporte guardado", `ID: ${nuevoReporte.id}`);
+    logActivity(usuarioId, "Reporte guardado", `ID: ${nuevoReporte.id}`);
     res.status(201).json(nuevoReporte);
 
   } catch (error) {
@@ -209,26 +235,30 @@ export const actualizarReporte = async (req, res) => {
       });
     }
 
-    logActivity(req.user.id, "Actualizando reporte", `ID: ${id}`);
+    const usuarioId = req.user?.id || 'sistema';
+    logActivity(usuarioId, "Actualizando reporte", `ID: ${id}`);
 
     const query = `
       UPDATE ReportesPersonalizados 
-      SET Nombre = ?, Descripcion = ?, Configuracion = ?, 
-          FechaModificacion = GETDATE(), ModificadoPor = ?
-      WHERE ReporteID = ? AND Estado = 1
+      SET Nombre = @nombre, Descripcion = @descripcion, Configuracion = @configuracion, 
+          FechaModificacion = GETDATE(), ModificadoPor = @usuarioId
+      WHERE ReporteID = @id AND Estado = 1
     `;
 
     const configuracionJson = configuracion ? JSON.stringify(configuracion) : null;
     
-    await executeQuery(query, [
-      nombre.trim(),
-      descripcion?.trim() || null,
-      configuracionJson,
-      req.user.id,
-      id
-    ]);
+    const pool = await getConnection();
+    const request = pool.request();
+    
+    request.input('nombre', nombre.trim());
+    request.input('descripcion', descripcion?.trim() || null);
+    request.input('configuracion', configuracionJson);
+    request.input('usuarioId', usuarioId);
+    request.input('id', id);
 
-    logActivity(req.user.id, "Reporte actualizado", `ID: ${id}`);
+    await request.query(query);
+
+    logActivity(usuarioId, "Reporte actualizado", `ID: ${id}`);
     res.json({ message: "Reporte actualizado correctamente" });
 
   } catch (error) {
@@ -251,18 +281,25 @@ export const eliminarReporte = async (req, res) => {
       });
     }
 
-    logActivity(req.user.id, "Eliminando reporte", `ID: ${id}`);
+    const usuarioId = req.user?.id || 'sistema';
+    logActivity(usuarioId, "Eliminando reporte", `ID: ${id}`);
 
     // Eliminación lógica
     const query = `
       UPDATE ReportesPersonalizados 
-      SET Estado = 0, FechaModificacion = GETDATE(), ModificadoPor = ?
-      WHERE ReporteID = ?
+      SET Estado = 0, FechaModificacion = GETDATE(), ModificadoPor = @usuarioId
+      WHERE ReporteID = @id
     `;
     
-    await executeQuery(query, [req.user.id, id]);
+    const pool = await getConnection();
+    const request = pool.request();
+    
+    request.input('usuarioId', usuarioId);
+    request.input('id', id);
 
-    logActivity(req.user.id, "Reporte eliminado", `ID: ${id}`);
+    await request.query(query);
+
+    logActivity(usuarioId, "Reporte eliminado", `ID: ${id}`);
     res.json({ message: "Reporte eliminado correctamente" });
 
   } catch (error) {
@@ -277,8 +314,9 @@ export const eliminarReporte = async (req, res) => {
 // ===================== REPORTES PREDEFINIDOS =====================
 export const getPredefinidos = async (req, res) => {
   const { tipo } = req.params;
+  const usuarioId = req.user?.id || 'sistema';
   
-  logActivity(req.user.id, "Ejecutando reporte predefinido", tipo);
+  logActivity(usuarioId, "Ejecutando reporte predefinido", tipo);
 
   const reportesPredefinidos = {
     empleados_por_departamento: {
@@ -340,13 +378,15 @@ export const getPredefinidos = async (req, res) => {
   }
 
   try {
-    const result = await executeQuery(reporte.query);
+    const pool = await getConnection();
+    const request = pool.request();
+    const result = await request.query(reporte.query);
     
     if (!result.recordset) {
       return res.status(500).json({ error: "No se obtuvieron resultados" });
     }
 
-    logActivity(req.user.id, "Reporte predefinido ejecutado", 
+    logActivity(usuarioId, "Reporte predefinido ejecutado", 
       `${tipo} - ${result.recordset.length} registros`);
     
     res.json({
@@ -379,8 +419,8 @@ export const ejecutarQuery = async (req, res) => {
       });
     }
 
-    logActivity(req.user.id, "Ejecutando query personalizado", 
-      `Longitud: ${sqlQuery.length} chars`);
+    const usuarioId = req.user?.id || 'sistema';
+    logActivity(usuarioId, "Ejecutando query personalizado", `Longitud: ${sqlQuery.length} chars`);
 
     // Validar seguridad
     validateQuerySafety(sqlQuery);
@@ -400,14 +440,19 @@ export const ejecutarQuery = async (req, res) => {
     console.log('Ejecutando query:', queryFinal);
 
     const startTime = Date.now();
-    const result = await executeQuery(queryFinal);
+    
+    // Usar conexión directa sin parámetros
+    const pool = await getConnection();
+    const request = pool.request();
+    const result = await request.query(queryFinal);
+    
     const executionTime = Date.now() - startTime;
     
     if (!result.recordset) {
       return res.status(500).json({ error: "No se obtuvieron resultados de la consulta" });
     }
 
-    logActivity(req.user.id, "Query ejecutado exitosamente", 
+    logActivity(usuarioId, "Query ejecutado exitosamente", 
       `${result.recordset.length} registros en ${executionTime}ms`);
 
     res.json({
@@ -439,7 +484,8 @@ export const ejecutarQuery = async (req, res) => {
 // ===================== METADATOS PARA CONSTRUCTOR =====================
 export const getMetadata = async (req, res) => {
   try {
-    logActivity(req.user.id, "Consultando metadata de DB");
+    const usuarioId = req.user?.id || 'sistema';
+    logActivity(usuarioId, "Consultando metadata de DB");
     
     const connection = await getConnection();
     if (!connection) {
@@ -539,7 +585,7 @@ export const getMetadata = async (req, res) => {
       estructuraSimplificada[tabla] = tablas[tabla].columns.map(col => col.name);
     });
 
-    logActivity(req.user.id, "Metadata obtenida", 
+    logActivity(usuarioId, "Metadata obtenida", 
       `${Object.keys(tablas).length} tablas, ${result.recordset.length} columnas`);
 
     res.json({
@@ -573,8 +619,8 @@ export const exportarReporte = async (req, res) => {
       });
     }
 
-    logActivity(req.user.id, `Exportando reporte en ${formato}`, 
-      `${data.length} registros`);
+    const usuarioId = req.user?.id || 'sistema';
+    logActivity(usuarioId, `Exportando reporte en ${formato}`, `${data.length} registros`);
 
     const formatosPermitidos = ['csv', 'excel', 'pdf', 'json'];
     if (!formatosPermitidos.includes(formato)) {
@@ -608,7 +654,7 @@ export const exportarReporte = async (req, res) => {
           metadata: {
             totalRecords: data.length,
             exportDate: new Date().toISOString(),
-            exportedBy: req.user.name || req.user.id
+            exportedBy: req.user?.name || req.user?.id || 'Sistema'
           }
         }, null, 2);
         
@@ -619,7 +665,7 @@ export const exportarReporte = async (req, res) => {
 
       case "excel":
         const workbook = new ExcelJS.Workbook();
-        workbook.creator = req.user.name || 'Sistema RRHH';
+        workbook.creator = req.user?.name || 'Sistema RRHH';
         workbook.created = new Date();
         
         const sheet = workbook.addWorksheet("Reporte", {
@@ -701,7 +747,7 @@ export const exportarReporte = async (req, res) => {
         doc.fontSize(10).fillColor('black')
            .text(`Generado: ${new Date().toLocaleString()}`, { align: 'right' });
         doc.text(`Total de registros: ${data.length}`, { align: 'right' });
-        doc.text(`Exportado por: ${req.user.name || req.user.id}`, { align: 'right' });
+        doc.text(`Exportado por: ${req.user?.name || req.user?.id || 'Sistema'}`, { align: 'right' });
         doc.moveDown();
 
         // Línea separadora
@@ -711,7 +757,6 @@ export const exportarReporte = async (req, res) => {
         // Datos en formato tabla simplificada
         doc.fontSize(8);
         const itemsPerPage = 25;
-        let currentPage = 0;
 
         data.forEach((row, index) => {
           if (index % itemsPerPage === 0 && index > 0) {
@@ -760,7 +805,8 @@ export const exportarReporte = async (req, res) => {
 // ===================== ESTADÍSTICAS Y UTILIDADES =====================
 export const getEstadisticas = async (req, res) => {
   try {
-    logActivity(req.user.id, "Consultando estadísticas");
+    const usuarioId = req.user?.id || 'sistema';
+    logActivity(usuarioId, "Consultando estadísticas");
 
     const queries = {
       reportesGuardados: "SELECT COUNT(*) as total FROM ReportesPersonalizados WHERE Estado = 1",
@@ -779,7 +825,9 @@ export const getEstadisticas = async (req, res) => {
     
     for (const [key, query] of Object.entries(queries)) {
       try {
-        const result = await executeQuery(query);
+        const pool = await getConnection();
+        const request = pool.request();
+        const result = await request.query(query);
         resultados[key] = result.recordset[0]?.total || 0;
       } catch (error) {
         console.warn(`Error en consulta ${key}:`, error.message);
@@ -787,7 +835,7 @@ export const getEstadisticas = async (req, res) => {
       }
     }
 
-    logActivity(req.user.id, "Estadísticas obtenidas", JSON.stringify(resultados));
+    logActivity(usuarioId, "Estadísticas obtenidas", JSON.stringify(resultados));
     
     res.json({
       ...resultados,
@@ -815,7 +863,8 @@ export const validarQuery = async (req, res) => {
       });
     }
 
-    logActivity(req.user.id, "Validando query", `Longitud: ${sqlQuery.length}`);
+    const usuarioId = req.user?.id || 'sistema';
+    logActivity(usuarioId, "Validando query", `Longitud: ${sqlQuery.length}`);
 
     // Validar sintaxis básica
     const validationResult = {
@@ -853,7 +902,7 @@ export const validarQuery = async (req, res) => {
       validationResult.errors.push(error.message);
     }
 
-    logActivity(req.user.id, "Query validado", 
+    logActivity(usuarioId, "Query validado", 
       `Válido: ${validationResult.isValid}, Errores: ${validationResult.errors.length}`);
 
     res.json(validationResult);
@@ -872,8 +921,9 @@ export const getHistorialReportes = async (req, res) => {
   try {
     const { page = 1, limit = 50 } = req.query;
     const offset = (page - 1) * limit;
+    const usuarioId = req.user?.id || 'sistema';
 
-    logActivity(req.user.id, "Consultando historial de reportes", `Página: ${page}`);
+    logActivity(usuarioId, "Consultando historial de reportes", `Página: ${page}`);
 
     const query = `
       SELECT 
@@ -884,24 +934,34 @@ export const getHistorialReportes = async (req, res) => {
         h.TotalRegistros,
         h.TiempoEjecucion,
         h.FechaEjecucion,
-        u.Username as EjecutadoPor,
+        COALESCE(u.Username, 'Sistema') as EjecutadoPor,
         h.Estado
       FROM HistorialReportes h
       LEFT JOIN Usuarios u ON h.UsuarioID = u.UsuarioID
-      WHERE h.UsuarioID = ?
+      WHERE h.UsuarioID = @usuarioId OR h.UsuarioID IS NULL
       ORDER BY h.FechaEjecucion DESC
-      OFFSET ? ROWS FETCH NEXT ? ROWS ONLY
+      OFFSET @offset ROWS FETCH NEXT @limit ROWS ONLY
     `;
 
     const countQuery = `
       SELECT COUNT(*) as total 
       FROM HistorialReportes 
-      WHERE UsuarioID = ?
+      WHERE UsuarioID = @usuarioId OR UsuarioID IS NULL
     `;
 
+    const pool = await getConnection();
+    
+    const historialRequest = pool.request();
+    historialRequest.input('usuarioId', usuarioId);
+    historialRequest.input('offset', offset);
+    historialRequest.input('limit', parseInt(limit));
+    
+    const countRequest = pool.request();
+    countRequest.input('usuarioId', usuarioId);
+
     const [historialResult, countResult] = await Promise.all([
-      executeQuery(query, [req.user.id, offset, parseInt(limit)]),
-      executeQuery(countQuery, [req.user.id])
+      historialRequest.query(query),
+      countRequest.query(countQuery)
     ]);
 
     const historial = historialResult.recordset.map(item => ({
@@ -934,7 +994,8 @@ export const getHistorialReportes = async (req, res) => {
 // ===================== PLANTILLAS DE REPORTES =====================
 export const getPlantillas = async (req, res) => {
   try {
-    logActivity(req.user.id, "Consultando plantillas de reportes");
+    const usuarioId = req.user?.id || 'sistema';
+    logActivity(usuarioId, "Consultando plantillas de reportes");
 
     const plantillas = [
       {
@@ -1007,6 +1068,7 @@ export const getPlantillas = async (req, res) => {
 export const aplicarPlantilla = async (req, res) => {
   try {
     const { plantillaId, parametros = {} } = req.body;
+    const usuarioId = req.user?.id || 'sistema';
 
     if (!plantillaId) {
       return res.status(400).json({ 
@@ -1015,27 +1077,37 @@ export const aplicarPlantilla = async (req, res) => {
       });
     }
 
-    logActivity(req.user.id, "Aplicando plantilla", plantillaId);
+    logActivity(usuarioId, "Aplicando plantilla", plantillaId);
 
-    // En una implementación real, estas plantillas estarían en la base de datos
-    const plantillasResult = await executeQuery(`
-      SELECT 
-        PlantillaID,
-        Nombre,
-        SqlTemplate,
-        Parametros
-      FROM PlantillasReporte 
-      WHERE PlantillaID = ? AND Estado = 1
-    `, [plantillaId]);
+    // Plantillas predefinidas (en una implementación real estarían en BD)
+    const plantillasPredefinidas = {
+      'empleados_basico': {
+        PlantillaID: 'empleados_basico',
+        Nombre: 'Listado Básico de Empleados',
+        SqlTemplate: `SELECT 
+          e.EmpleadoID,
+          e.Nombre,
+          e.Apellido,
+          e.Email,
+          e.Puesto,
+          d.Nombre as Departamento,
+          e.FechaIngreso
+        FROM Empleados e
+        INNER JOIN Departamentos d ON e.DepartamentoID = d.DepartamentoID
+        WHERE e.Estado = 1
+        ORDER BY e.Apellido, e.Nombre`
+      }
+    };
 
-    if (plantillasResult.recordset.length === 0) {
+    const plantilla = plantillasPredefinidas[plantillaId];
+    
+    if (!plantilla) {
       return res.status(404).json({ 
         error: "Plantilla no encontrada",
-        details: `No existe una plantilla con ID: ${plantillaId}`
+        details: `No existe una plantilla con ID: ${plantillaId}`,
+        disponibles: Object.keys(plantillasPredefinidas)
       });
     }
-
-    const plantilla = plantillasResult.recordset[0];
     
     // Reemplazar parámetros en la plantilla SQL
     let sqlFinal = plantilla.SqlTemplate;
@@ -1045,9 +1117,11 @@ export const aplicarPlantilla = async (req, res) => {
     });
 
     // Ejecutar la consulta
-    const result = await executeQuery(sqlFinal);
+    const pool = await getConnection();
+    const request = pool.request();
+    const result = await request.query(sqlFinal);
 
-    logActivity(req.user.id, "Plantilla aplicada", 
+    logActivity(usuarioId, "Plantilla aplicada", 
       `${plantillaId} - ${result.recordset.length} registros`);
 
     res.json({
@@ -1073,7 +1147,8 @@ export const aplicarPlantilla = async (req, res) => {
 // ===================== CONFIGURACIÓN Y PREFERENCIAS =====================
 export const getConfiguracion = async (req, res) => {
   try {
-    logActivity(req.user.id, "Consultando configuración de usuario");
+    const usuarioId = req.user?.id || 'sistema';
+    logActivity(usuarioId, "Consultando configuración de usuario");
 
     const query = `
       SELECT 
@@ -1081,10 +1156,13 @@ export const getConfiguracion = async (req, res) => {
         ConfiguracionValue,
         FechaModificacion
       FROM ConfiguracionUsuario 
-      WHERE UsuarioID = ?
+      WHERE UsuarioID = @usuarioId
     `;
 
-    const result = await executeQuery(query, [req.user.id]);
+    const pool = await getConnection();
+    const request = pool.request();
+    request.input('usuarioId', usuarioId);
+    const result = await request.query(query);
     
     // Convertir a objeto de configuración
     const configuracion = {};
@@ -1120,6 +1198,7 @@ export const getConfiguracion = async (req, res) => {
 export const actualizarConfiguracion = async (req, res) => {
   try {
     const { configuracion } = req.body;
+    const usuarioId = req.user?.id || 'sistema';
 
     if (!configuracion || typeof configuracion !== 'object') {
       return res.status(400).json({ 
@@ -1128,14 +1207,16 @@ export const actualizarConfiguracion = async (req, res) => {
       });
     }
 
-    logActivity(req.user.id, "Actualizando configuración", 
+    logActivity(usuarioId, "Actualizando configuración", 
       `${Object.keys(configuracion).length} elementos`);
+
+    const pool = await getConnection();
 
     // Actualizar cada elemento de configuración
     for (const [key, value] of Object.entries(configuracion)) {
       const query = `
         MERGE ConfiguracionUsuario AS target
-        USING (SELECT ? as UsuarioID, ? as ConfigKey, ? as ConfigValue) AS source
+        USING (SELECT @usuarioId as UsuarioID, @configKey as ConfigKey, @configValue as ConfigValue) AS source
         ON target.UsuarioID = source.UsuarioID AND target.ConfiguracionKey = source.ConfigKey
         WHEN MATCHED THEN 
           UPDATE SET ConfiguracionValue = source.ConfigValue, FechaModificacion = GETDATE()
@@ -1144,14 +1225,15 @@ export const actualizarConfiguracion = async (req, res) => {
           VALUES (source.UsuarioID, source.ConfigKey, source.ConfigValue, GETDATE(), GETDATE());
       `;
 
-      await executeQuery(query, [
-        req.user.id, 
-        key, 
-        typeof value === 'object' ? JSON.stringify(value) : value
-      ]);
+      const request = pool.request();
+      request.input('usuarioId', usuarioId);
+      request.input('configKey', key);
+      request.input('configValue', typeof value === 'object' ? JSON.stringify(value) : value);
+      
+      await request.query(query);
     }
 
-    logActivity(req.user.id, "Configuración actualizada exitosamente");
+    logActivity(usuarioId, "Configuración actualizada exitosamente");
     
     res.json({ 
       message: "Configuración actualizada correctamente",
@@ -1167,24 +1249,101 @@ export const actualizarConfiguracion = async (req, res) => {
   }
 };
 
+// ===================== VERIFICACIÓN DE CONECTIVIDAD =====================
+export const verificarConexionDB = async (req, res) => {
+  try {
+    const usuarioId = req.user?.id || 'sistema';
+    logActivity(usuarioId, "Verificando conexión a base de datos");
+
+    const connection = await getConnection();
+    if (!connection) {
+      throw new Error("No se pudo establecer conexión con la base de datos");
+    }
+
+    // Prueba simple de conectividad
+    const testQuery = "SELECT GETDATE() as fechaServidor, @@VERSION as versionSQL";
+    const request = connection.request();
+    const result = await request.query(testQuery);
+    
+    const info = {
+      estado: "conectado",
+      fechaServidor: result.recordset[0].fechaServidor,
+      versionSQL: result.recordset[0].versionSQL.split('\n')[0], // Solo primera línea
+      timestamp: new Date().toISOString(),
+      usuario: req.user?.name || req.user?.id || 'Sistema'
+    };
+
+    logActivity(usuarioId, "Conexión DB verificada exitosamente");
+    
+    res.json({
+      message: "Conexión a base de datos verificada correctamente",
+      ...info
+    });
+
+  } catch (error) {
+    console.error("Error en verificarConexionDB:", error);
+    
+    const usuarioId = req.user?.id || 'sistema';
+    logActivity(usuarioId, "Error en verificación DB", error.message);
+    
+    res.status(500).json({ 
+      error: "Error al verificar la conexión",
+      details: error.message,
+      estado: "desconectado",
+      timestamp: new Date().toISOString()
+    });
+  }
+};
+
+// ===================== CACHÉ Y OPTIMIZACIÓN =====================
+export const limpiarCache = async (req, res) => {
+  try {
+    const usuarioId = req.user?.id || 'sistema';
+    logActivity(usuarioId, "Limpiando caché del sistema");
+
+    // Simular limpieza de caché (en una implementación real podrías usar Redis, etc.)
+    const cacheKeys = ['metadata', 'plantillas', 'estadisticas'];
+    
+    res.json({
+      message: "Caché limpiado exitosamente",
+      keysCleaned: cacheKeys,
+      timestamp: new Date().toISOString()
+    });
+
+    logActivity(usuarioId, "Caché limpiado exitosamente");
+
+  } catch (error) {
+    console.error("Error en limpiarCache:", error);
+    res.status(500).json({ 
+      error: "Error al limpiar el caché",
+      details: error.message
+    });
+  }
+};
+
 // ===================== LIMPIEZA Y MANTENIMIENTO =====================
 export const limpiarHistorial = async (req, res) => {
   try {
     const { diasAntiguedad = 30 } = req.body;
+    const usuarioId = req.user?.id || 'sistema';
 
-    logActivity(req.user.id, "Iniciando limpieza de historial", `${diasAntiguedad} días`);
+    logActivity(usuarioId, "Iniciando limpieza de historial", `${diasAntiguedad} días`);
 
     const query = `
       DELETE FROM HistorialReportes 
-      WHERE UsuarioID = ? 
-        AND FechaEjecucion < DATEADD(day, -?, GETDATE())
+      WHERE UsuarioID = @usuarioId 
+        AND FechaEjecucion < DATEADD(day, -@diasAntiguedad, GETDATE())
     `;
 
-    const result = await executeQuery(query, [req.user.id, diasAntiguedad]);
+    const pool = await getConnection();
+    const request = pool.request();
+    request.input('usuarioId', usuarioId);
+    request.input('diasAntiguedad', diasAntiguedad);
     
+    const result = await request.query(query);
     const registrosEliminados = result.rowsAffected[0] || 0;
     
-    logActivity(req.user.id, "Limpieza completada", `${registrosEliminados} registros eliminados`);
+    logActivity(usuarioId, "Limpieza completada", `${registrosEliminados} registros eliminados`);
 
     res.json({
       message: "Historial limpiado exitosamente",
@@ -1201,78 +1360,11 @@ export const limpiarHistorial = async (req, res) => {
   }
 };
 
-// ===================== VERIFICACIÓN DE CONECTIVIDAD =====================
-export const verificarConexionDB = async (req, res) => {
-  try {
-    logActivity(req.user.id, "Verificando conexión a base de datos");
-
-    const connection = await getConnection();
-    if (!connection) {
-      throw new Error("No se pudo establecer conexión con la base de datos");
-    }
-
-    // Prueba simple de conectividad
-    const testQuery = "SELECT GETDATE() as fechaServidor, @@VERSION as versionSQL";
-    const result = await executeQuery(testQuery);
-    
-    const info = {
-      estado: "conectado",
-      fechaServidor: result.recordset[0].fechaServidor,
-      versionSQL: result.recordset[0].versionSQL.split('\n')[0], // Solo primera línea
-      timestamp: new Date().toISOString(),
-      usuario: req.user.name || req.user.id
-    };
-
-    logActivity(req.user.id, "Conexión DB verificada exitosamente");
-    
-    res.json({
-      message: "Conexión a base de datos verificada correctamente",
-      ...info
-    });
-
-  } catch (error) {
-    console.error("Error en verificarConexionDB:", error);
-    
-    logActivity(req.user.id, "Error en verificación DB", error.message);
-    
-    res.status(500).json({ 
-      error: "Error al verificar la conexión",
-      details: error.message,
-      estado: "desconectado",
-      timestamp: new Date().toISOString()
-    });
-  }
-};
-
-// ===================== CACHÉ Y OPTIMIZACIÓN =====================
-export const limpiarCache = async (req, res) => {
-  try {
-    logActivity(req.user.id, "Limpiando caché del sistema");
-
-    // Simular limpieza de caché (en una implementación real podrías usar Redis, etc.)
-    const cacheKeys = ['metadata', 'plantillas', 'estadisticas'];
-    
-    res.json({
-      message: "Caché limpiado exitosamente",
-      keysCleaned: cacheKeys,
-      timestamp: new Date().toISOString()
-    });
-
-    logActivity(req.user.id, "Caché limpiado exitosamente");
-
-  } catch (error) {
-    console.error("Error en limpiarCache:", error);
-    res.status(500).json({ 
-      error: "Error al limpiar el caché",
-      details: error.message
-    });
-  }
-};
-
 // ===================== EXPORTACIONES POR LOTES =====================
 export const exportarLote = async (req, res) => {
   try {
     const { reportes, formato = 'excel' } = req.body;
+    const usuarioId = req.user?.id || 'sistema';
 
     if (!reportes || !Array.isArray(reportes) || reportes.length === 0) {
       return res.status(400).json({ 
@@ -1281,10 +1373,11 @@ export const exportarLote = async (req, res) => {
       });
     }
 
-    logActivity(req.user.id, "Iniciando exportación por lotes", 
+    logActivity(usuarioId, "Iniciando exportación por lotes", 
       `${reportes.length} reportes en formato ${formato}`);
 
     const resultados = [];
+    const pool = await getConnection();
     
     for (const reporteId of reportes) {
       try {
@@ -1292,10 +1385,12 @@ export const exportarLote = async (req, res) => {
         const reporteQuery = `
           SELECT Nombre, Configuracion 
           FROM ReportesPersonalizados 
-          WHERE ReporteID = ? AND Estado = 1
+          WHERE ReporteID = @reporteId AND Estado = 1
         `;
         
-        const reporteResult = await executeQuery(reporteQuery, [reporteId]);
+        const reporteRequest = pool.request();
+        reporteRequest.input('reporteId', reporteId);
+        const reporteResult = await reporteRequest.query(reporteQuery);
         
         if (reporteResult.recordset.length === 0) {
           resultados.push({
@@ -1310,7 +1405,8 @@ export const exportarLote = async (req, res) => {
         
         // Ejecutar consulta del reporte
         if (config.sqlQuery) {
-          const dataResult = await executeQuery(config.sqlQuery);
+          const dataRequest = pool.request();
+          const dataResult = await dataRequest.query(config.sqlQuery);
           
           resultados.push({
             reporteId,
@@ -1365,7 +1461,7 @@ export const exportarLote = async (req, res) => {
       });
     }
 
-    logActivity(req.user.id, "Exportación por lotes completada");
+    logActivity(usuarioId, "Exportación por lotes completada");
 
   } catch (error) {
     console.error("Error en exportarLote:", error);

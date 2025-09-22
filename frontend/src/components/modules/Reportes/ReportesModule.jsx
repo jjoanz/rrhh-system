@@ -104,14 +104,14 @@ const PLANTILLAS_RRHH = [
 
 // Modal para crear nuevo reporte
 const NuevoReporteModal = ({ show, onClose, onSave }) => {
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = React.useState({
     nombre: "",
     descripcion: "",
     plantilla: "",
     sqlPersonalizado: ""
   });
 
-  const [usarPlantilla, setUsarPlantilla] = useState(true);
+  const [usarPlantilla, setUsarPlantilla] = React.useState(true);
 
   const handleSave = () => {
     if (!formData.nombre.trim()) {
@@ -137,7 +137,7 @@ const NuevoReporteModal = ({ show, onClose, onSave }) => {
       descripcion: formData.descripcion.trim(),
       origen: "personalizado",
       configuracion: {
-        tipo: usarPlantilla ? 'plantilla' : 'personalizado',
+        tipo: usarPlantilla ? "plantilla" : "personalizado",
         plantillaId: formData.plantilla,
         sqlQuery: sqlFinal
       }
@@ -150,7 +150,7 @@ const NuevoReporteModal = ({ show, onClose, onSave }) => {
   const resetForm = () => {
     setFormData({
       nombre: "",
-      descripcion: "", 
+      descripcion: "",
       plantilla: "",
       sqlPersonalizado: ""
     });
@@ -258,8 +258,8 @@ const NuevoReporteModal = ({ show, onClose, onSave }) => {
         </div>
 
         <div className="flex justify-end gap-3 mt-6 pt-4 border-t">
-          <button 
-            onClick={handleClose} 
+          <button
+            onClick={handleClose}
             className="px-6 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 transition-colors"
           >
             Cancelar
@@ -276,6 +276,7 @@ const NuevoReporteModal = ({ show, onClose, onSave }) => {
     </div>
   );
 };
+
 
 // Componente principal
 const ReportesModule = () => {
@@ -536,9 +537,9 @@ const ReportesModule = () => {
             className="w-full border border-gray-300 rounded-lg p-4 font-mono text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             rows={8}
             placeholder="SELECT e.Nombre, e.Apellido, d.Nombre as Departamento 
-FROM Empleados e 
-LEFT JOIN Departamentos d ON e.DepartamentoID = d.DepartamentoID 
-WHERE e.Estado = 1"
+                          FROM Empleados e 
+                          LEFT JOIN Departamentos d ON e.DepartamentoID = d.DepartamentoID 
+                          WHERE e.Estado = 1"
           />
           
           <div className="flex justify-between items-center mt-4">

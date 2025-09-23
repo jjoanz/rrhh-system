@@ -377,7 +377,7 @@ const LoginPage = () => {
                       background: 'white',
                       boxSizing: 'border-box'
                     }}
-                    placeholder="tu.email@prodominicana.gov.do"
+                    placeholder="tu.email@prodominicana.gob.do"
                     onFocus={(e) => e.target.style.borderColor = 'rgb(37, 99, 235)'}
                     onBlur={(e) => e.target.style.borderColor = 'rgb(229, 231, 235)'}
                   />

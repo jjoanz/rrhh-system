@@ -17,6 +17,7 @@ import postulacionesRoutes from './routes/postulacionesRoutes.js';
 import authRoutes from './routes/authRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
 import reportesRoutes from "./routes/reportesRoutes.js";
+import vacantesRoutes from './routes/vacantesRoutes.js';
 
 // Importar middleware de autenticación
 import { authenticateToken } from './middleware/auth.js';
@@ -42,6 +43,19 @@ process.on('uncaughtException', (error) => {
     );
   }
   process.exit(1);
+});
+
+// --- MIDDLEWARE PARA HACER POOL DISPONIBLE EN TODAS LAS RUTAS ---
+app.use(async (req, res, next) => {
+  try {
+    const pool = await poolPromise;
+    req.app.locals.db = pool;
+    next();
+  } catch (error) {
+    console.error('Error obteniendo pool:', error.message);
+    req.app.locals.db = null;
+    next();
+  }
 });
 
 // --- RUTAS DE AUTENTICACIÓN (SIN PROTECCIÓN) ---
@@ -81,6 +95,7 @@ app.use('/api/puestos', authenticateToken, puestosRoutes);
 app.use('/api/postulaciones', authenticateToken, postulacionesRoutes);
 app.use('/api/admin', authenticateToken, adminRoutes);
 app.use("/api/reportes", authenticateToken, reportesRoutes);
+app.use('/api/vacantes', authenticateToken, vacantesRoutes);
 
 // --- MANEJO DE ERRORES GLOBAL ---
 app.use((err, req, res, next) => {
@@ -145,6 +160,7 @@ if (fs.existsSync(frontendBuildPath)) {
           puestos: '/api/puestos',
           postulaciones: '/api/postulaciones',
           reportes: '/api/reportes',
+          vacantes: '/api/vacantes',
         },
       });
     }
@@ -157,6 +173,7 @@ const server = app.listen(PORT, HOST, () => {
   console.log(`🗄️  Conectando a base de datos: ${process.env.DB_SERVER}`);
   console.log(`🔐 Endpoints de auth: http://${HOST}:${PORT}/api/auth`);
   console.log(`🛡️  Endpoints de admin: http://${HOST}:${PORT}/api/admin`);
+  console.log(`💼 Endpoints de vacantes: http://${HOST}:${PORT}/api/vacantes`);
   console.log(`⚡ API Health check: http://${HOST}:${PORT}/api/health`);
 });
 

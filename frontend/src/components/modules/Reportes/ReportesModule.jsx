@@ -1,9 +1,12 @@
 import React, { useState, useEffect } from "react";
-import { BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, LineChart, Line } from "recharts";
-import { Play, Save, Plus, Database, Download, FileText, BarChart3, X, Users, Building } from "lucide-react";
+import { BarChart, Bar, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell, AreaChart, Area } from "recharts";
+import { Play, Save, Plus, Database, Download, FileText, BarChart3, X, Users, Building, Edit3, Trash2, TrendingUp } from "lucide-react";
 import { useAuth } from "../../../context/AuthContext";
 
 const API_URL = process.env.REACT_APP_API_URL || "http://192.168.0.239:5000/api";
+
+// Colores para gráficos
+const CHART_COLORS = ['#3B82F6', '#EF4444', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899', '#14B8A6', '#F97316'];
 
 // Plantillas predefinidas para RRHH
 const PLANTILLAS_RRHH = [
@@ -31,79 +34,106 @@ const PLANTILLAS_RRHH = [
     descripcion: "Salario promedio por departamento",
     sql: "SELECT d.Nombre as Departamento, AVG(CAST(e.Salario AS FLOAT)) as Salario_Promedio, COUNT(e.EmpleadoID) as Cantidad_Empleados FROM Departamentos d LEFT JOIN Empleados e ON d.DepartamentoID = e.DepartamentoID WHERE e.Estado = 1 GROUP BY d.Nombre ORDER BY Salario_Promedio DESC"
   },
-   {
-  id: "Severance",
-  nombre: "Reporte Severance",
-  descripcion: "Detalle de Preaviso, Cesantía, Vacaciones, Regalía y Total por empleado",
-  sql: `
-    SELECT 
-        ROW_NUMBER() OVER (ORDER BY e.Cedula) AS No,
-        e.Nombre + ' ' + e.Apellido AS [Colaborador (a)],
-        e.Cedula,
-        e.Cargo AS Puesto, 
-        FORMAT(e.FechaIngreso, 'dd-MMM-yy', 'es-DO') AS [Fecha de Ingreso],
-        e.Salario,
-
-        -- Preaviso (según años de servicio)
-        CASE 
-            WHEN DATEDIFF(MONTH, e.FechaIngreso, GETDATE()) < 3 THEN 0
-            WHEN DATEDIFF(MONTH, e.FechaIngreso, GETDATE()) < 6 THEN ROUND((e.Salario / 30) * 7, 2)
-            WHEN DATEDIFF(MONTH, e.FechaIngreso, GETDATE()) < 12 THEN ROUND((e.Salario / 30) * 14, 2)
-            ELSE ROUND((e.Salario / 30) * 28, 2)
-        END AS Preaviso,
-
-        -- Cesantía (según años de servicio)
-        CASE 
-            WHEN DATEDIFF(MONTH, e.FechaIngreso, GETDATE()) < 3 THEN 0
-            WHEN DATEDIFF(MONTH, e.FechaIngreso, GETDATE()) BETWEEN 3 AND 5 
-                THEN ROUND((e.Salario / 30) * 6 * DATEDIFF(YEAR, e.FechaIngreso, GETDATE()), 2)
-            WHEN DATEDIFF(YEAR, e.FechaIngreso, GETDATE()) < 1 
-                THEN ROUND((e.Salario / 30) * 13, 2)
-            WHEN DATEDIFF(YEAR, e.FechaIngreso, GETDATE()) BETWEEN 1 AND 5 
-                THEN ROUND((e.Salario / 30) * 21 * DATEDIFF(YEAR, e.FechaIngreso, GETDATE()), 2)
-            ELSE ROUND((e.Salario / 30) * 23 * DATEDIFF(YEAR, e.FechaIngreso, GETDATE()), 2)
-        END AS Cesantia,
-
-        -- Vacaciones (14 días de salario por año trabajado)
-        ROUND((e.Salario / 30) * 14, 2) AS Vacaciones,
-
-        -- Regalía (2/3 de salario, ajusta a 1.0 si quieres salario completo)
-        ROUND(e.Salario * 0.6667, 2) AS Regalia,
-
-        -- Total beneficios
-        (
-            CASE 
-                WHEN DATEDIFF(MONTH, e.FechaIngreso, GETDATE()) < 3 THEN 0
-                WHEN DATEDIFF(MONTH, e.FechaIngreso, GETDATE()) < 6 THEN ROUND((e.Salario / 30) * 7, 2)
-                WHEN DATEDIFF(MONTH, e.FechaIngreso, GETDATE()) < 12 THEN ROUND((e.Salario / 30) * 14, 2)
-                ELSE ROUND((e.Salario / 30) * 28, 2)
-            END 
-            +
-            CASE 
-                WHEN DATEDIFF(MONTH, e.FechaIngreso, GETDATE()) < 3 THEN 0
-                WHEN DATEDIFF(MONTH, e.FechaIngreso, GETDATE()) BETWEEN 3 AND 5 
-                    THEN ROUND((e.Salario / 30) * 6 * DATEDIFF(YEAR, e.FechaIngreso, GETDATE()), 2)
-                WHEN DATEDIFF(YEAR, e.FechaIngreso, GETDATE()) < 1 
-                    THEN ROUND((e.Salario / 30) * 13, 2)
-                WHEN DATEDIFF(YEAR, e.FechaIngreso, GETDATE()) BETWEEN 1 AND 5 
-                    THEN ROUND((e.Salario / 30) * 21 * DATEDIFF(YEAR, e.FechaIngreso, GETDATE()), 2)
-                ELSE ROUND((e.Salario / 30) * 23 * DATEDIFF(YEAR, e.FechaIngreso, GETDATE()), 2)
-            END 
-            + ROUND((e.Salario / 30) * 14, 2)
-            + ROUND(e.Salario * 0.6667, 2)
-        ) AS Total
-
-    FROM dbo.Empleados e
-    WHERE e.Estado = 1
-    ORDER BY e.Cedula;
-  `
-}
-
-  
+  {
+    id: "Severance",
+    nombre: "Reporte Severance",
+    descripcion: "Detalle de Preaviso, Cesantía, Vacaciones, Regalía y Total por empleado",
+    sql: `
+      SELECT 
+          ROW_NUMBER() OVER (ORDER BY e.Cedula) AS No,
+          e.Nombre + ' ' + e.Apellido AS [Colaborador (a)],
+          e.Cedula,
+          e.Cargo AS Puesto, 
+          FORMAT(e.FechaIngreso, 'dd-MMM-yy', 'es-DO') AS [Fecha de Ingreso],
+          e.Salario,
+          CASE 
+              WHEN DATEDIFF(MONTH, e.FechaIngreso, GETDATE()) < 3 THEN 0
+              WHEN DATEDIFF(MONTH, e.FechaIngreso, GETDATE()) < 6 THEN ROUND((e.Salario / 30) * 7, 2)
+              WHEN DATEDIFF(MONTH, e.FechaIngreso, GETDATE()) < 12 THEN ROUND((e.Salario / 30) * 14, 2)
+              ELSE ROUND((e.Salario / 30) * 28, 2)
+          END AS Preaviso,
+          CASE 
+              WHEN DATEDIFF(MONTH, e.FechaIngreso, GETDATE()) < 3 THEN 0
+              WHEN DATEDIFF(MONTH, e.FechaIngreso, GETDATE()) BETWEEN 3 AND 5 
+                  THEN ROUND((e.Salario / 30) * 6 * DATEDIFF(YEAR, e.FechaIngreso, GETDATE()), 2)
+              WHEN DATEDIFF(YEAR, e.FechaIngreso, GETDATE()) < 1 
+                  THEN ROUND((e.Salario / 30) * 13, 2)
+              WHEN DATEDIFF(YEAR, e.FechaIngreso, GETDATE()) BETWEEN 1 AND 5 
+                  THEN ROUND((e.Salario / 30) * 21 * DATEDIFF(YEAR, e.FechaIngreso, GETDATE()), 2)
+              ELSE ROUND((e.Salario / 30) * 23 * DATEDIFF(YEAR, e.FechaIngreso, GETDATE()), 2)
+          END AS Cesantia,
+          ROUND((e.Salario / 30) * 14, 2) AS Vacaciones,
+          ROUND(e.Salario * 0.6667, 2) AS Regalia,
+          (
+              CASE 
+                  WHEN DATEDIFF(MONTH, e.FechaIngreso, GETDATE()) < 3 THEN 0
+                  WHEN DATEDIFF(MONTH, e.FechaIngreso, GETDATE()) < 6 THEN ROUND((e.Salario / 30) * 7, 2)
+                  WHEN DATEDIFF(MONTH, e.FechaIngreso, GETDATE()) < 12 THEN ROUND((e.Salario / 30) * 14, 2)
+                  ELSE ROUND((e.Salario / 30) * 28, 2)
+              END 
+              +
+              CASE 
+                  WHEN DATEDIFF(MONTH, e.FechaIngreso, GETDATE()) < 3 THEN 0
+                  WHEN DATEDIFF(MONTH, e.FechaIngreso, GETDATE()) BETWEEN 3 AND 5 
+                      THEN ROUND((e.Salario / 30) * 6 * DATEDIFF(YEAR, e.FechaIngreso, GETDATE()), 2)
+                  WHEN DATEDIFF(YEAR, e.FechaIngreso, GETDATE()) < 1 
+                      THEN ROUND((e.Salario / 30) * 13, 2)
+                  WHEN DATEDIFF(YEAR, e.FechaIngreso, GETDATE()) BETWEEN 1 AND 5 
+                      THEN ROUND((e.Salario / 30) * 21 * DATEDIFF(YEAR, e.FechaIngreso, GETDATE()), 2)
+                  ELSE ROUND((e.Salario / 30) * 23 * DATEDIFF(YEAR, e.FechaIngreso, GETDATE()), 2)
+              END 
+              + ROUND((e.Salario / 30) * 14, 2)
+              + ROUND(e.Salario * 0.6667, 2)
+          ) AS Total
+      FROM dbo.Empleados e
+      WHERE e.Estado = 1
+      ORDER BY e.Cedula;
+    `
+  }
 ];
 
-// Modal para crear nuevo reporte
-const NuevoReporteModal = ({ show, onClose, onSave }) => {
+// Modal de confirmación para eliminar
+const ConfirmDeleteModal = ({ show, onClose, onConfirm, reporteName }) => {
+  if (!show) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50">
+      <div className="bg-white p-6 rounded-lg shadow-xl w-96">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
+            <Trash2 className="w-6 h-6 text-red-600" />
+          </div>
+          <div>
+            <h3 className="text-lg font-semibold text-gray-900">Eliminar Reporte</h3>
+            <p className="text-sm text-gray-600">Esta acción no se puede deshacer</p>
+          </div>
+        </div>
+        
+        <p className="text-gray-700 mb-6">
+          ¿Estás seguro de que deseas eliminar el reporte <strong>"{reporteName}"</strong>?
+        </p>
+        
+        <div className="flex justify-end gap-3">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 transition-colors"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={onConfirm}
+            className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+          >
+            Eliminar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Modal para crear/editar reporte
+const ReporteModal = ({ show, onClose, onSave, editingReport = null }) => {
   const [formData, setFormData] = React.useState({
     nombre: "",
     descripcion: "",
@@ -112,6 +142,21 @@ const NuevoReporteModal = ({ show, onClose, onSave }) => {
   });
 
   const [usarPlantilla, setUsarPlantilla] = React.useState(true);
+
+  // Cargar datos del reporte si estamos editando
+  useEffect(() => {
+    if (editingReport) {
+      setFormData({
+        nombre: editingReport.nombre || "",
+        descripcion: editingReport.descripcion || "",
+        plantilla: editingReport.configuracion?.plantillaId || "",
+        sqlPersonalizado: editingReport.configuracion?.sqlQuery || ""
+      });
+      setUsarPlantilla(editingReport.configuracion?.tipo === "plantilla");
+    } else {
+      resetForm();
+    }
+  }, [editingReport]);
 
   const handleSave = () => {
     if (!formData.nombre.trim()) {
@@ -133,6 +178,7 @@ const NuevoReporteModal = ({ show, onClose, onSave }) => {
     }
 
     const reporte = {
+      id: editingReport?.id,
       nombre: formData.nombre.trim(),
       descripcion: formData.descripcion.trim(),
       origen: "personalizado",
@@ -168,7 +214,9 @@ const NuevoReporteModal = ({ show, onClose, onSave }) => {
     <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50">
       <div className="bg-white p-6 rounded-lg shadow-xl w-[600px] max-h-[90vh] overflow-y-auto">
         <div className="flex justify-between items-center mb-6">
-          <h3 className="text-xl font-bold text-gray-800">Crear Nuevo Reporte</h3>
+          <h3 className="text-xl font-bold text-gray-800">
+            {editingReport ? "Editar Reporte" : "Crear Nuevo Reporte"}
+          </h3>
           <button onClick={handleClose} className="text-gray-500 hover:text-gray-700">
             <X className="w-6 h-6" />
           </button>
@@ -269,7 +317,7 @@ const NuevoReporteModal = ({ show, onClose, onSave }) => {
             className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
           >
             <Save className="w-4 h-4" />
-            Crear Reporte
+            {editingReport ? "Actualizar" : "Crear"} Reporte
           </button>
         </div>
       </div>
@@ -277,6 +325,120 @@ const NuevoReporteModal = ({ show, onClose, onSave }) => {
   );
 };
 
+// Componente para selector de tipo de gráfico
+const ChartTypeSelector = ({ currentType, onTypeChange, data }) => {
+  const chartTypes = [
+    { id: 'bar', name: 'Barras', icon: BarChart3 },
+    { id: 'line', name: 'Líneas', icon: TrendingUp },
+    { id: 'pie', name: 'Circular', icon: Users },
+    { id: 'area', name: 'Área', icon: Building }
+  ];
+
+  if (!data || data.length === 0 || Object.keys(data[0]).length < 2) {
+    return null;
+  }
+
+  return (
+    <div className="flex items-center gap-2 mb-4">
+      <span className="text-sm font-medium text-gray-700">Tipo de gráfico:</span>
+      <div className="flex gap-1">
+        {chartTypes.map(type => {
+          const Icon = type.icon;
+          return (
+            <button
+              key={type.id}
+              onClick={() => onTypeChange(type.id)}
+              className={`px-3 py-1 rounded-md text-sm font-medium transition-colors flex items-center gap-1 ${
+                currentType === type.id 
+                  ? 'bg-blue-100 text-blue-700 border border-blue-300' 
+                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+              }`}
+            >
+              <Icon className="w-3 h-3" />
+              {type.name}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
+// Componente para renderizar gráficos
+const ChartRenderer = ({ type, data, height = 300 }) => {
+  if (!data || data.length === 0) return null;
+
+  const keys = Object.keys(data[0]);
+  const xKey = keys[0];
+  const yKey = keys[1];
+  const chartData = data.slice(0, 10); // Limitar a 10 elementos para mejor visualización
+
+  const renderPieChart = () => (
+    <ResponsiveContainer width="100%" height={height}>
+      <PieChart>
+        <Pie
+          data={chartData}
+          dataKey={yKey}
+          nameKey={xKey}
+          cx="50%"
+          cy="50%"
+          outerRadius={80}
+          label={({name, percent}) => `${name} (${(percent * 100).toFixed(0)}%)`}
+        >
+          {chartData.map((entry, index) => (
+            <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
+          ))}
+        </Pie>
+        <Tooltip />
+        <Legend />
+      </PieChart>
+    </ResponsiveContainer>
+  );
+
+  switch (type) {
+    case 'line':
+      return (
+        <ResponsiveContainer width="100%" height={height}>
+          <LineChart data={chartData}>
+            <XAxis dataKey={xKey} />
+            <YAxis />
+            <Tooltip />
+            <Legend />
+            <Line type="monotone" dataKey={yKey} stroke="#3B82F6" strokeWidth={2} />
+          </LineChart>
+        </ResponsiveContainer>
+      );
+    
+    case 'pie':
+      return renderPieChart();
+    
+    case 'area':
+      return (
+        <ResponsiveContainer width="100%" height={height}>
+          <AreaChart data={chartData}>
+            <XAxis dataKey={xKey} />
+            <YAxis />
+            <Tooltip />
+            <Legend />
+            <Area type="monotone" dataKey={yKey} stroke="#3B82F6" fill="#3B82F6" fillOpacity={0.6} />
+          </AreaChart>
+        </ResponsiveContainer>
+      );
+    
+    default: // bar
+      return (
+        <ResponsiveContainer width="100%" height={height}>
+          <BarChart data={chartData}>
+            <XAxis dataKey={xKey} />
+            <YAxis />
+            <Tooltip />
+            <Legend />
+            <Bar dataKey={yKey} fill="#3B82F6" />
+          </BarChart>
+        </ResponsiveContainer>
+      );
+  }
+};
 
 // Componente principal
 const ReportesModule = () => {
@@ -285,14 +447,15 @@ const ReportesModule = () => {
   // Estados principales
   const [reportes, setReportes] = useState([]);
   const [showModal, setShowModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [editingReport, setEditingReport] = useState(null);
+  const [deletingReport, setDeletingReport] = useState(null);
   const [sqlQuery, setSqlQuery] = useState("");
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(false);
   const [exportLoading, setExportLoading] = useState(false);
   const [error, setError] = useState(null);
-  
-  // Estados para plantillas rápidas
-  const [plantillaSeleccionada, setPlantillaSeleccionada] = useState("");
+  const [chartType, setChartType] = useState('bar');
 
   // Cargar reportes guardados
   useEffect(() => {
@@ -359,23 +522,33 @@ const ReportesModule = () => {
     }
   };
 
-  // Guardar reporte
-  const guardarReporte = async (nuevoReporte) => {
+  // Guardar/actualizar reporte
+  const guardarReporte = async (reporteData) => {
     try {
-      const response = await fetch(`${API_URL}/reportes/guardados`, {
-        method: "POST",
+      const isEdit = !!reporteData.id;
+      const method = isEdit ? "PUT" : "POST";
+      const endpoint = isEdit ? `${API_URL}/reportes/guardados/${reporteData.id}` : `${API_URL}/reportes/guardados`;
+
+      const response = await fetch(endpoint, {
+        method,
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${getStoredToken()}`
         },
-        body: JSON.stringify(nuevoReporte)
+        body: JSON.stringify(reporteData)
       });
 
       if (response.ok) {
         const saved = await response.json();
-        setReportes(prev => [...prev, saved]);
+        if (isEdit) {
+          setReportes(prev => prev.map(r => r.id === saved.id ? saved : r));
+          alert("Reporte actualizado exitosamente");
+        } else {
+          setReportes(prev => [...prev, saved]);
+          alert("Reporte guardado exitosamente");
+        }
         setShowModal(false);
-        alert("Reporte guardado exitosamente");
+        setEditingReport(null);
       } else {
         const errorData = await response.json();
         throw new Error(errorData.details || `Error ${response.status}`);
@@ -383,6 +556,31 @@ const ReportesModule = () => {
     } catch (err) {
       console.error("Error guardando reporte:", err);
       alert("Error guardando reporte: " + err.message);
+    }
+  };
+
+  // Eliminar reporte
+  const eliminarReporte = async (reporteId) => {
+    try {
+      const response = await fetch(`${API_URL}/reportes/guardados/${reporteId}`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${getStoredToken()}`
+        }
+      });
+
+      if (response.ok) {
+        setReportes(prev => prev.filter(r => r.id !== reporteId));
+        alert("Reporte eliminado exitosamente");
+        setShowDeleteModal(false);
+        setDeletingReport(null);
+      } else {
+        const errorData = await response.json();
+        throw new Error(errorData.details || `Error ${response.status}`);
+      }
+    } catch (err) {
+      console.error("Error eliminando reporte:", err);
+      alert("Error eliminando reporte: " + err.message);
     }
   };
 
@@ -395,7 +593,7 @@ const ReportesModule = () => {
     }
   };
 
-  // Exportar datos
+  // Exportar datos (incluyendo PDF)
   const exportarDatos = async (formato) => {
     if (data.length === 0) {
       alert("No hay datos para exportar");
@@ -453,6 +651,18 @@ const ReportesModule = () => {
       setSqlQuery(reporte.configuracion.sqlQuery);
       ejecutarConsulta(reporte.configuracion.sqlQuery);
     }
+  };
+
+  // Manejar edición
+  const handleEditReport = (reporte) => {
+    setEditingReport(reporte);
+    setShowModal(true);
+  };
+
+  // Manejar eliminación
+  const handleDeleteReport = (reporte) => {
+    setDeletingReport(reporte);
+    setShowDeleteModal(true);
   };
 
   return (
@@ -537,9 +747,9 @@ const ReportesModule = () => {
             className="w-full border border-gray-300 rounded-lg p-4 font-mono text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
             rows={8}
             placeholder="SELECT e.Nombre, e.Apellido, d.Nombre as Departamento 
-                          FROM Empleados e 
-                          LEFT JOIN Departamentos d ON e.DepartamentoID = d.DepartamentoID 
-                          WHERE e.Estado = 1"
+FROM Empleados e 
+LEFT JOIN Departamentos d ON e.DepartamentoID = d.DepartamentoID 
+WHERE e.Estado = 1"
           />
           
           <div className="flex justify-between items-center mt-4">
@@ -579,6 +789,14 @@ const ReportesModule = () => {
                   <Download className="w-4 h-4" />
                   CSV
                 </button>
+                <button
+                  onClick={() => exportarDatos('pdf')}
+                  disabled={exportLoading}
+                  className="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 disabled:opacity-50 transition-colors flex items-center gap-1"
+                >
+                  <Download className="w-4 h-4" />
+                  PDF
+                </button>
               </div>
             )}
           </div>
@@ -615,19 +833,30 @@ const ReportesModule = () => {
                   <tr key={reporte.id} className="hover:bg-gray-50 transition-colors">
                     <td className="px-6 py-4 font-medium text-gray-900">{reporte.nombre}</td>
                     <td className="px-6 py-4 text-gray-600">{reporte.descripcion || "-"}</td>
-                    <td className="px-6 py-4 text-gray-600">{reporte.fechaCreacion || "-"}</td>
+                    <td className="px-6 py-4 text-gray-600">
+                      {reporte.fechaCreacion ? new Date(reporte.fechaCreacion).toLocaleDateString('es-DO') : "-"}
+                    </td>
                     <td className="px-6 py-4">
-                      <div className="flex gap-2">
+                      <div className="flex gap-3">
                         <button 
                           onClick={() => cargarReporte(reporte)}
-                          className="text-blue-600 hover:text-blue-800 hover:underline text-sm font-medium"
+                          className="text-blue-600 hover:text-blue-800 hover:underline text-sm font-medium flex items-center gap-1"
                         >
+                          <Play className="w-3 h-3" />
                           Ejecutar
                         </button>
-                        <button className="text-green-600 hover:text-green-800 hover:underline text-sm font-medium">
+                        <button 
+                          onClick={() => handleEditReport(reporte)}
+                          className="text-green-600 hover:text-green-800 hover:underline text-sm font-medium flex items-center gap-1"
+                        >
+                          <Edit3 className="w-3 h-3" />
                           Editar
                         </button>
-                        <button className="text-red-600 hover:text-red-800 hover:underline text-sm font-medium">
+                        <button 
+                          onClick={() => handleDeleteReport(reporte)}
+                          className="text-red-600 hover:text-red-800 hover:underline text-sm font-medium flex items-center gap-1"
+                        >
+                          <Trash2 className="w-3 h-3" />
                           Eliminar
                         </button>
                       </div>
@@ -655,18 +884,21 @@ const ReportesModule = () => {
           </div>
           
           <div className="p-6">
-            {/* Gráfico simple */}
+            {/* Selector de tipo de gráfico */}
+            <ChartTypeSelector 
+              currentType={chartType}
+              onTypeChange={setChartType}
+              data={data}
+            />
+
+            {/* Gráfico */}
             {data.length > 0 && Object.keys(data[0]).length >= 2 && (
               <div className="mb-6">
-                <ResponsiveContainer width="100%" height={300}>
-                  <BarChart data={data.slice(0, 10)}>
-                    <XAxis dataKey={Object.keys(data[0])[0]} />
-                    <YAxis />
-                    <Tooltip />
-                    <Legend />
-                    <Bar dataKey={Object.keys(data[0])[1]} fill="#3B82F6" />
-                  </BarChart>
-                </ResponsiveContainer>
+                <ChartRenderer 
+                  type={chartType}
+                  data={data}
+                  height={300}
+                />
               </div>
             )}
 
@@ -687,7 +919,7 @@ const ReportesModule = () => {
                     <tr key={index} className="hover:bg-gray-50 transition-colors">
                       {Object.values(row).map((value, cellIndex) => (
                         <td key={cellIndex} className="border-b border-gray-100 px-4 py-3 text-sm text-gray-900">
-                          {value}
+                          {typeof value === 'number' ? value.toLocaleString('es-DO') : value}
                         </td>
                       ))}
                     </tr>
@@ -704,11 +936,26 @@ const ReportesModule = () => {
         </div>
       )}
 
-      {/* Modal */}
-      <NuevoReporteModal
+      {/* Modal para crear/editar */}
+      <ReporteModal
         show={showModal}
-        onClose={() => setShowModal(false)}
+        onClose={() => {
+          setShowModal(false);
+          setEditingReport(null);
+        }}
         onSave={guardarReporte}
+        editingReport={editingReport}
+      />
+
+      {/* Modal de confirmación para eliminar */}
+      <ConfirmDeleteModal
+        show={showDeleteModal}
+        onClose={() => {
+          setShowDeleteModal(false);
+          setDeletingReport(null);
+        }}
+        onConfirm={() => eliminarReporte(deletingReport?.id)}
+        reporteName={deletingReport?.nombre}
       />
     </div>
   );

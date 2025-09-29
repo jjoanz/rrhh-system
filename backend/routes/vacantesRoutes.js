@@ -1,7 +1,6 @@
 // backend/routes/vacantesRoutes.js
 import express from 'express';
-import sql from 'mssql';
-import VacantesController from '../controllers/VacantesController.js';
+import VacantesController from '../controllers/vacantesController.js';
 
 const router = express.Router();
 
@@ -60,10 +59,10 @@ router.get('/reportes/resumen', authenticateToken, authorizeRoles(['rrhh', 'admi
 router.post('/reportes/exportar', authenticateToken, authorizeRoles(['rrhh', 'admin']), VacantesController.exportarReporte);
 
 // ===============================
-// VACANTES GENERALES (AL FINAL)
+// VACANTES - RUTAS GENERALES AL FINAL
 // ===============================
 
-// Listar todas las vacantes
+// Listar todas las vacantes activas
 router.get('/', VacantesController.getVacantesActivas);
 
 // Crear nueva vacante

@@ -77,38 +77,32 @@ class VacantesController {
       const result = await pool.request().query(`
         SELECT 
           v.VacanteID as id,
+          v.Titulo as titulo,
           v.Titulo as cargo,
           COALESCE(d.Nombre, 'Sin Departamento') as departamento,
           v.Descripcion as descripcion,
           v.Requisitos as requisitos,
+          v.SalarioMinimo as salarioMinimo,
+          v.SalarioMaximo as salarioMaximo,
           v.SalarioMinimo as salarioMin,
           v.SalarioMaximo as salarioMax,
           v.FechaPublicacion as fechaPublicacion,
           v.FechaCierre as fechaCierre,
-          v.Estado,
-          'Santo Domingo' as ubicacion,
-          'Híbrido' as modalidad,
+          v.Estado as estado,
+          v.Modalidad as modalidad,
           COUNT(p.PostulacionID) as postulaciones,
-          STRING_AGG(vr.Requisito, '|') as requisitosArray
+          COUNT(p.PostulacionID) as totalPostulaciones
         FROM Vacantes v
         LEFT JOIN Departamentos d ON v.DepartamentoID = d.DepartamentoID
         LEFT JOIN Postulaciones p ON v.VacanteID = p.VacanteID
-        LEFT JOIN VacanteRequisitos vr ON v.VacanteID = vr.VacanteID
         WHERE v.Estado = 'Activa'
         GROUP BY v.VacanteID, v.Titulo, d.Nombre, v.Descripcion, v.Requisitos, 
-                 v.SalarioMinimo, v.SalarioMaximo, v.FechaPublicacion, v.FechaCierre, v.Estado
+                 v.SalarioMinimo, v.SalarioMaximo, v.FechaPublicacion, v.FechaCierre, v.Estado, v.Modalidad
         ORDER BY v.FechaPublicacion DESC
       `);
 
       const vacantes = result.recordset.map(vacante => ({
         ...vacante,
-        requisitos: vacante.requisitosArray ? vacante.requisitosArray.split('|') : [],
-        beneficios: [
-          'Seguro médico completo',
-          'Flexibilidad horaria',
-          'Capacitación continua',
-          'Bonos por desempeño'
-        ],
         fechaPublicacion: vacante.fechaPublicacion?.toISOString().split('T')[0],
         fechaCierre: vacante.fechaCierre?.toISOString().split('T')[0]
       }));
@@ -124,71 +118,61 @@ class VacantesController {
     try {
       const pool = req.app.locals.db;
       const { 
+        Titulo,
         titulo, 
+        Descripcion,
         descripcion, 
+        Requisitos,
         requisitos, 
+        SalarioMinimo,
         salarioMinimo, 
+        SalarioMaximo,
         salarioMaximo, 
+        DepartamentoID,
         departamentoID, 
         creadoPor,
-        fechaCierre 
+        fechaCierre,
+        modalidad,
+        estado
       } = req.body;
 
-      if (!titulo || !descripcion || !departamentoID) {
+      const tituloFinal = Titulo || titulo;
+      const descripcionFinal = Descripcion || descripcion;
+      const departamentoFinal = DepartamentoID || departamentoID;
+
+      if (!tituloFinal || !descripcionFinal || !departamentoFinal) {
         return res.status(400).json({ 
-          error: 'Campos requeridos: titulo, descripcion, departamentoID'
+          error: 'Campos requeridos: Titulo, Descripcion, DepartamentoID'
         });
       }
 
-      const transaction = new sql.Transaction(pool);
-      await transaction.begin();
+      const result = await pool.request()
+        .input('titulo', sql.NVarChar(200), tituloFinal)
+        .input('descripcion', sql.NVarChar(sql.MAX), descripcionFinal)
+        .input('requisitos', sql.NVarChar(sql.MAX), Requisitos || requisitos || '')
+        .input('salarioMinimo', sql.Decimal(10, 2), SalarioMinimo || salarioMinimo || 0)
+        .input('salarioMaximo', sql.Decimal(10, 2), SalarioMaximo || salarioMaximo || 0)
+        .input('departamentoID', sql.Int, departamentoFinal)
+        .input('creadoPor', sql.Int, creadoPor || 1)
+        .input('fechaCierre', sql.Date, fechaCierre || null)
+        .input('modalidad', sql.NVarChar(50), modalidad || 'Presencial')
+        .input('estado', sql.NVarChar(50), estado || 'Activa')
+        .query(`
+          INSERT INTO Vacantes (Titulo, Descripcion, Requisitos, SalarioMinimo, SalarioMaximo, 
+                              Estado, FechaPublicacion, FechaCierre, DepartamentoID, CreadoPor, Modalidad)
+          OUTPUT INSERTED.VacanteID
+          VALUES (@titulo, @descripcion, @requisitos, @salarioMinimo, @salarioMaximo,
+                  @estado, GETDATE(), @fechaCierre, @departamentoID, @creadoPor, @modalidad)
+        `);
 
-      try {
-        const result = await transaction.request()
-          .input('titulo', sql.NVarChar(200), titulo)
-          .input('descripcion', sql.NVarChar(2000), descripcion)
-          .input('requisitos', sql.NVarChar(2000), Array.isArray(requisitos) ? requisitos.join('\n') : requisitos || '')
-          .input('salarioMinimo', sql.Decimal(10, 2), salarioMinimo || 0)
-          .input('salarioMaximo', sql.Decimal(10, 2), salarioMaximo || 0)
-          .input('departamentoID', sql.Int, departamentoID)
-          .input('creadoPor', sql.Int, creadoPor || req.user?.id || 1)
-          .input('fechaCierre', sql.Date, fechaCierre || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000))
-          .query(`
-            INSERT INTO Vacantes (Titulo, Descripcion, Requisitos, SalarioMinimo, SalarioMaximo, 
-                                Estado, FechaPublicacion, FechaCierre, DepartamentoID, CreadoPor)
-            OUTPUT INSERTED.VacanteID
-            VALUES (@titulo, @descripcion, @requisitos, @salarioMinimo, @salarioMaximo,
-                    'Activa', GETDATE(), @fechaCierre, @departamentoID, @creadoPor)
-          `);
+      const vacanteID = result.recordset[0].VacanteID;
 
-        const vacanteID = result.recordset[0].VacanteID;
-
-        if (Array.isArray(requisitos) && requisitos.length > 0) {
-          for (const requisito of requisitos) {
-            if (requisito && requisito.trim()) {
-              await transaction.request()
-                .input('vacanteID', sql.Int, vacanteID)
-                .input('requisito', sql.NVarChar(500), requisito.trim())
-                .query(`
-                  INSERT INTO VacanteRequisitos (VacanteID, Requisito)
-                  VALUES (@vacanteID, @requisito)
-                `);
-            }
-          }
-        }
-
-        await transaction.commit();
-
-        res.status(201).json({ 
-          message: 'Vacante creada exitosamente', 
-          vacanteID,
-          titulo
-        });
-
-      } catch (error) {
-        await transaction.rollback();
-        throw error;
-      }
+      res.status(201).json({ 
+        message: 'Vacante creada exitosamente', 
+        vacanteID,
+        id: vacanteID,
+        titulo: tituloFinal
+      });
 
     } catch (error) {
       VacantesController.handleError(res, error, 'crearVacante');
@@ -303,46 +287,52 @@ class VacantesController {
   }
 
   // ===============================
-  // SOLICITUDES
+  // SOLICITUDES - 100% REAL DE BD
   // ===============================
 
   static async getSolicitudes(req, res) {
     try {
+      const pool = req.app.locals.db;
       const { usuarioID, rol } = req.query;
 
-      const mockSolicitudes = [
-        {
-          id: 1,
-          cargo: 'Desarrollador Frontend Senior',
-          departamento: 'Tecnología',
-          solicitante: 'María García',
-          fechaSolicitud: '2025-09-15',
-          estado: 'Pendiente',
-          justificacion: 'Expansión del equipo de desarrollo para nuevos proyectos',
-          salarioMin: 80000,
-          salarioMax: 120000,
-          modalidad: 'Híbrido',
-          prioridad: 'Alta'
-        },
-        {
-          id: 2,
-          cargo: 'Analista de Datos',
-          departamento: 'Business Intelligence',
-          solicitante: 'Carlos López',
-          fechaSolicitud: '2025-09-10',
-          estado: 'Aprobada',
-          justificacion: 'Necesidad de análisis avanzado de métricas',
-          salarioMin: 60000,
-          salarioMax: 90000,
-          modalidad: 'Remoto',
-          prioridad: 'Media'
-        }
-      ];
+      let query = `
+        SELECT 
+          sv.SolicitudVacanteID as id,
+          sv.Titulo as cargo,
+          COALESCE(d.Nombre, 'Sin Departamento') as departamento,
+          COALESCE(e.NOMBRE + ' ' + e.APELLIDO, 'Usuario Desconocido') as solicitante,
+          sv.FechaSolicitud as fechaSolicitud,
+          sv.Estado as estado,
+          sv.Justificacion as justificacion,
+          sv.SalarioMinimo as salarioMin,
+          sv.SalarioMaximo as salarioMax,
+          sv.Modalidad as modalidad,
+          sv.Urgencia as prioridad,
+          sv.SolicitanteID as solicitanteId
+        FROM SolicitudesVacantes sv
+        LEFT JOIN Departamentos d ON sv.DepartamentoID = d.DepartamentoID
+        LEFT JOIN Empleados e ON sv.SolicitanteID = e.EmpleadoID
+      `;
 
-      let solicitudes = mockSolicitudes;
+      const request = pool.request();
+
+      // Filtrar por usuario si es necesario
       if (rol === 'director' && usuarioID) {
-        solicitudes = mockSolicitudes.filter(s => s.solicitante.includes('García'));
+        query += ` WHERE sv.SolicitanteID = (SELECT EmpleadoID FROM Usuarios WHERE UsuarioID = @usuarioID)`;
+        request.input('usuarioID', sql.Int, parseInt(usuarioID));
+      } else if (rol === 'gerente' && usuarioID) {
+        query += ` WHERE sv.SolicitanteID = (SELECT EmpleadoID FROM Usuarios WHERE UsuarioID = @usuarioID)`;
+        request.input('usuarioID', sql.Int, parseInt(usuarioID));
       }
+
+      query += ` ORDER BY sv.FechaSolicitud DESC`;
+
+      const result = await request.query(query);
+
+      const solicitudes = result.recordset.map(solicitud => ({
+        ...solicitud,
+        fechaSolicitud: solicitud.fechaSolicitud?.toISOString().split('T')[0]
+      }));
 
       res.json(solicitudes);
 
@@ -351,75 +341,219 @@ class VacantesController {
     }
   }
 
-  static async crearSolicitud(req, res) {
-    try {
-      const { cargo, departamento, justificacion, salarioMin, salarioMax, modalidad, prioridad } = req.body;
+  /**
+ * CREAR SOLICITUD DE VACANTE
+ * 
+ * Flujo: 
+ * 1. Director/Gerente solicita una nueva vacante
+ * 2. Se crea registro en tabla SolicitudesVacantes con estado 'Pendiente'
+ * 3. Inicia el flujo de aprobación (Director Área → Gerente RRHH → Director RRHH)
+ * 
+ * @param {Object} req.body - Datos de la solicitud
+ * @param {string} req.body.Titulo - Título de la vacante solicitada
+ * @param {string} req.body.Descripcion - Descripción del puesto
+ * @param {string} req.body.Requisitos - Requisitos del puesto
+ * @param {number} req.body.DepartamentoID - ID del departamento
+ * @param {number} req.body.SalarioMinimo - Salario mínimo ofrecido
+ * @param {number} req.body.SalarioMaximo - Salario máximo ofrecido
+ * @param {string} req.body.Justificacion - Justificación de la necesidad
+ * @param {string} req.body.Modalidad - Modalidad: Presencial/Remoto/Híbrido
+ * @param {string} req.body.Urgencia - Prioridad: Baja/Media/Alta/Urgente
+ * @param {number} req.body.solicitanteId - ID del empleado que solicita
+ * 
+ * @returns {Object} - Solicitud creada con ID y estado
+ */
+    static async crearSolicitud(req, res) {
+      try {
+        const pool = req.app.locals.db;
+        
+        // Extraer datos del body - soporta múltiples formatos de nombres
+        const { 
+          Titulo, titulo, cargo,
+          Descripcion, descripcion,
+          Requisitos, requisitos,
+          DepartamentoID, departamentoId,
+          Justificacion, justificacion,
+          SalarioMinimo, salarioMinimo, salarioMin,
+          SalarioMaximo, salarioMaximo, salarioMax,
+          Modalidad, modalidad,
+          Urgencia, urgencia, prioridad,
+          solicitanteId, SolicitanteID
+        } = req.body;
 
-      if (!cargo || !departamento || !justificacion) {
-        return res.status(400).json({ 
-          error: 'Campos requeridos: cargo, departamento, justificacion'
+        // Normalizar los valores finales (prioridad a mayúsculas)
+        const tituloFinal = Titulo || titulo || cargo;
+        const descripcionFinal = Descripcion || descripcion || '';
+        const requisitosFinal = Requisitos || requisitos || '';
+        const justificacionFinal = Justificacion || justificacion;
+        const departamentoFinal = DepartamentoID || departamentoId;
+        const solicitanteFinal = SolicitanteID || solicitanteId;
+        const modalidadFinal = Modalidad || modalidad || 'Presencial';
+        const urgenciaFinal = Urgencia || urgencia || prioridad || 'Media';
+        const salarioMinFinal = SalarioMinimo || salarioMinimo || salarioMin || 0;
+        const salarioMaxFinal = SalarioMaximo || salarioMaximo || salarioMax || 0;
+
+        // Validación de campos requeridos
+        if (!tituloFinal || !departamentoFinal || !justificacionFinal) {
+          return res.status(400).json({ 
+            error: 'Campos requeridos: Titulo, DepartamentoID, Justificacion',
+            camposFaltantes: {
+              titulo: !tituloFinal,
+              departamento: !departamentoFinal,
+              justificacion: !justificacionFinal
+            }
+          });
+        }
+
+        // Validación del solicitante
+        if (!solicitanteFinal) {
+          return res.status(400).json({ 
+            error: 'Se requiere el ID del solicitante (solicitanteId)'
+          });
+        }
+
+        // Insertar en tabla SolicitudesVacantes
+        const result = await pool.request()
+          .input('titulo', sql.NVarChar(200), tituloFinal)
+          .input('descripcion', sql.NVarChar(sql.MAX), descripcionFinal)
+          .input('requisitos', sql.NVarChar(sql.MAX), requisitosFinal)
+          .input('departamentoID', sql.Int, parseInt(departamentoFinal))
+          .input('justificacion', sql.NVarChar(sql.MAX), justificacionFinal)
+          .input('salarioMin', sql.Decimal(10, 2), parseFloat(salarioMinFinal))
+          .input('salarioMax', sql.Decimal(10, 2), parseFloat(salarioMaxFinal))
+          .input('modalidad', sql.NVarChar(50), modalidadFinal)
+          .input('urgencia', sql.NVarChar(50), urgenciaFinal)
+          .input('solicitanteID', sql.Int, parseInt(solicitanteFinal))
+          .query(`
+            INSERT INTO SolicitudesVacantes (
+              Titulo, Descripcion, Requisitos, DepartamentoID, Justificacion,
+              SalarioMinimo, SalarioMaximo, Modalidad, Urgencia, 
+              Estado, FechaSolicitud, SolicitanteID
+            )
+            OUTPUT INSERTED.SolicitudVacanteID, INSERTED.Estado, INSERTED.FechaSolicitud
+            VALUES (
+              @titulo, @descripcion, @requisitos, @departamentoID, @justificacion,
+              @salarioMin, @salarioMax, @modalidad, @urgencia,
+              'Pendiente', GETDATE(), @solicitanteID
+            )
+          `);
+
+        const solicitudCreada = result.recordset[0];
+
+        // Respuesta exitosa
+        res.status(201).json({
+          success: true,
+          message: 'Solicitud creada exitosamente',
+          solicitud: {
+            id: solicitudCreada.SolicitudVacanteID,
+            cargo: tituloFinal,
+            departamento: departamentoFinal,
+            estado: solicitudCreada.Estado,
+            fechaSolicitud: solicitudCreada.FechaSolicitud.toISOString().split('T')[0],
+            justificacion: justificacionFinal,
+            salarioMin: salarioMinFinal,
+            salarioMax: salarioMaxFinal,
+            modalidad: modalidadFinal,
+            urgencia: urgenciaFinal
+          }
         });
+
+      } catch (error) {
+        // Log detallado del error para debugging
+        console.error('Error detallado en crearSolicitud:', {
+          message: error.message,
+          stack: error.stack,
+          body: req.body
+        });
+        
+        VacantesController.handleError(res, error, 'crearSolicitud');
       }
-
-      const mockResponse = {
-        id: Date.now(),
-        cargo,
-        departamento,
-        justificacion,
-        salarioMin: salarioMin || 0,
-        salarioMax: salarioMax || 0,
-        modalidad: modalidad || 'Presencial',
-        prioridad: prioridad || 'Media',
-        estado: 'Pendiente',
-        fechaSolicitud: new Date().toISOString().split('T')[0],
-        solicitante: req.user?.name || 'Usuario'
-      };
-
-      res.status(201).json(mockResponse);
-
-    } catch (error) {
-      VacantesController.handleError(res, error, 'crearSolicitud');
     }
-  }
 
-  static async aprobarSolicitud(req, res) {
-    try {
-      const { id } = req.params;
-      const { comentarios } = req.body;
-      
-      res.json({ 
-        message: 'Solicitud aprobada exitosamente',
-        solicitudId: id,
-        estado: 'Aprobada',
-        comentarios: comentarios || '',
-        fechaAprobacion: new Date().toISOString().split('T')[0]
-      });
+    /**
+ * APROBAR SOLICITUD DE VACANTE
+ * Actualiza el estado de una solicitud a 'Aprobada' en la tabla SolicitudesVacantes
+ */
+static async aprobarSolicitud(req, res) {
+  try {
+    const { id } = req.params;
+    const { comentarios, aprobadorID } = req.body;
+    const pool = req.app.locals.db;
+    
+    const result = await pool.request()
+      .input('id', sql.Int, parseInt(id))
+      .input('comentarios', sql.NVarChar(sql.MAX), comentarios || '')
+      .input('aprobadorID', sql.Int, aprobadorID || 1)
+      .query(`
+        UPDATE SolicitudesVacantes 
+        SET Estado = 'Aprobada',
+            FechaAprobacion = GETDATE(),
+            AprobadorID = @aprobadorID,
+            Comentarios = @comentarios
+        WHERE SolicitudVacanteID = @id
+      `);
 
-    } catch (error) {
-      VacantesController.handleError(res, error, 'aprobarSolicitud');
+    if (result.rowsAffected[0] === 0) {
+      return res.status(404).json({ error: 'Solicitud no encontrada' });
     }
+
+    res.json({ 
+      success: true,
+      message: 'Solicitud aprobada exitosamente',
+      solicitudId: id,
+      estado: 'Aprobada',
+      fechaAprobacion: new Date().toISOString().split('T')[0]
+    });
+
+  } catch (error) {
+    VacantesController.handleError(res, error, 'aprobarSolicitud');
   }
+}
 
-  static async rechazarSolicitud(req, res) {
-    try {
-      const { id } = req.params;
-      const { comentarios } = req.body;
-      
-      res.json({ 
-        message: 'Solicitud rechazada',
-        solicitudId: id,
-        estado: 'Rechazada',
-        comentarios: comentarios || '',
-        fechaRechazo: new Date().toISOString().split('T')[0]
-      });
+/**
+ * RECHAZAR SOLICITUD DE VACANTE
+ * Actualiza el estado de una solicitud a 'Rechazada' en la tabla SolicitudesVacantes
+ */
+static async rechazarSolicitud(req, res) {
+  try {
+    const { id } = req.params;
+    const { comentarios, rechazadorID } = req.body;
+    const pool = req.app.locals.db;
+    
+    const result = await pool.request()
+      .input('id', sql.Int, parseInt(id))
+      .input('comentarios', sql.NVarChar(sql.MAX), comentarios || '')
+      .input('rechazadorID', sql.Int, rechazadorID || 1)
+      .query(`
+        UPDATE SolicitudesVacantes 
+        SET Estado = 'Rechazada',
+            FechaRechazo = GETDATE(),
+            RechazadorID = @rechazadorID,
+            Comentarios = @comentarios
+        WHERE SolicitudVacanteID = @id
+      `);
 
-    } catch (error) {
-      VacantesController.handleError(res, error, 'rechazarSolicitud');
+    if (result.rowsAffected[0] === 0) {
+      return res.status(404).json({ error: 'Solicitud no encontrada' });
     }
+
+    res.json({ 
+      success: true,
+      message: 'Solicitud rechazada',
+      solicitudId: id,
+      estado: 'Rechazada',
+      fechaRechazo: new Date().toISOString().split('T')[0]
+    });
+
+  } catch (error) {
+    VacantesController.handleError(res, error, 'rechazarSolicitud');
   }
+}
+
+
 
   // ===============================
-  // POSTULACIONES
+  // POSTULACIONES - 100% REAL DE BD
   // ===============================
 
   static async getPostulaciones(req, res) {
@@ -432,18 +566,18 @@ class VacantesController {
           p.PostulacionID as id,
           p.VacanteID as vacanteId,
           COALESCE(p.NombreCandidato, e.NOMBRE + ' ' + e.APELLIDO) as nombre,
+          COALESCE(p.NombreCandidato, e.NOMBRE + ' ' + e.APELLIDO) as nombreCandidato,
           COALESCE(p.Email, u.Email) as email,
           p.Telefono as telefono,
           p.Estado as estado,
           p.FechaPostulacion as fechaPostulacion,
           p.Observaciones as experiencia,
+          p.Observaciones as motivacion,
           v.Titulo as cargoVacante,
           CASE 
             WHEN p.EmpleadoID IS NOT NULL THEN 'Interno'
             ELSE 'Externo'
-          END as tipoPostulante,
-          'Licenciatura' as educacion,
-          75000 as expectativaSalarial
+          END as tipoPostulante
         FROM Postulaciones p
         INNER JOIN Vacantes v ON p.VacanteID = v.VacanteID
         LEFT JOIN Empleados e ON p.EmpleadoID = e.EmpleadoID
@@ -484,6 +618,7 @@ class VacantesController {
         experiencia, 
         educacion, 
         expectativaSalarial,
+        motivacion,
         empleadoID 
       } = req.body;
 
@@ -519,6 +654,7 @@ class VacantesController {
         const observaciones = [
           experiencia ? `Experiencia: ${experiencia}` : '',
           educacion ? `Educación: ${educacion}` : '',
+          motivacion ? `Motivación: ${motivacion}` : '',
           expectativaSalarial ? `Expectativa salarial: ${expectativaSalarial}` : ''
         ].filter(Boolean).join('\n');
 
@@ -528,7 +664,7 @@ class VacantesController {
           .input('nombre', sql.NVarChar(200), nombre)
           .input('email', sql.NVarChar(255), email)
           .input('telefono', sql.NVarChar(50), telefono || '')
-          .input('observaciones', sql.NVarChar(1000), observaciones)
+          .input('observaciones', sql.NVarChar(sql.MAX), observaciones)
           .query(`
             INSERT INTO Postulaciones (VacanteID, EmpleadoID, NombreCandidato, Email, Telefono, 
                                      Estado, FechaPostulacion, Observaciones)
@@ -544,6 +680,7 @@ class VacantesController {
         res.status(201).json({ 
           message: 'Postulación enviada exitosamente', 
           postulacionID,
+          id: postulacionID,
           nombre,
           email
         });
@@ -597,7 +734,7 @@ class VacantesController {
   }
 
   // ===============================
-  // ESTADÍSTICAS
+  // ESTADÍSTICAS - 100% REAL DE BD
   // ===============================
 
   static async getEstadisticas(req, res) {
@@ -607,7 +744,9 @@ class VacantesController {
       const [
         vacantesResult, 
         postulacionesResult,
-        postulacionesMesResult
+        postulacionesMesResult,
+        solicitudesPendientesResult,
+        solicitudesResult
       ] = await Promise.all([
         pool.request().query(`SELECT COUNT(*) as total FROM Vacantes WHERE Estado = 'Activa'`),
         pool.request().query(`SELECT COUNT(*) as total FROM Postulaciones`),
@@ -615,41 +754,93 @@ class VacantesController {
           SELECT COUNT(*) as total FROM Postulaciones 
           WHERE MONTH(FechaPostulacion) = MONTH(GETDATE()) 
           AND YEAR(FechaPostulacion) = YEAR(GETDATE())
+        `),
+        pool.request().query(`SELECT COUNT(*) as total FROM SolicitudesVacantes WHERE Estado = 'Pendiente'`),
+        pool.request().query(`
+          SELECT 
+            COUNT(*) as total,
+            SUM(CASE WHEN Estado IN ('Aprobada', 'Publicada') THEN 1 ELSE 0 END) as aprobadas
+          FROM SolicitudesVacantes
         `)
       ]);
 
+      const totalSolicitudes = solicitudesResult.recordset[0]?.total || 0;
+      const aprobadas = solicitudesResult.recordset[0]?.aprobadas || 0;
+      const tasaAprobacion = totalSolicitudes > 0 ? Math.round((aprobadas / totalSolicitudes) * 100) : 0;
+
       const stats = {
-        vacantesActivas: vacantesResult.recordset[0].total,
-        solicitudesPendientes: 2,
-        totalPostulaciones: postulacionesResult.recordset[0].total,
-        postulacionesMes: postulacionesMesResult.recordset[0].total,
-        tasaAprobacion: 75,
+        vacantesActivas: vacantesResult.recordset[0]?.total || 0,
+        solicitudesPendientes: solicitudesPendientesResult.recordset[0]?.total || 0,
+        totalPostulaciones: postulacionesResult.recordset[0]?.total || 0,
+        postulaciones: postulacionesResult.recordset[0]?.total || 0,
+        postulacionesMes: postulacionesMesResult.recordset[0]?.total || 0,
+        tasaAprobacion: tasaAprobacion,
         ultimaActualizacion: new Date().toISOString()
       };
 
       res.json(stats);
-
+      
     } catch (error) {
       VacantesController.handleError(res, error, 'getEstadisticas');
     }
   }
 
+  // ===============================
+  // REPORTES - 100% REAL DE BD
+  // ===============================
+
   static async getReportesResumen(req, res) {
     try {
+      const pool = req.app.locals.db;
+
+      const [vacantesData, postulacionesData, solicitudesData] = await Promise.all([
+        pool.request().query(`
+          SELECT 
+            d.Nombre as departamento,
+            COUNT(v.VacanteID) as total
+          FROM Vacantes v
+          INNER JOIN Departamentos d ON v.DepartamentoID = d.DepartamentoID
+          WHERE v.Estado = 'Activa'
+          GROUP BY d.Nombre
+        `),
+        pool.request().query(`
+          SELECT 
+            Estado,
+            COUNT(*) as total
+          FROM Postulaciones
+          GROUP BY Estado
+        `),
+        pool.request().query(`
+          SELECT 
+            Estado,
+            COUNT(*) as total
+            FROM SolicitudesVacantes
+          GROUP BY Estado
+        `)
+      ]);
+
       const resumen = {
         reportesDisponibles: [
           {
             nombre: 'Vacantes por Departamento',
             descripcion: 'Distribución de vacantes activas por departamento',
+            datos: vacantesData.recordset,
             ultimaEjecucion: new Date().toISOString().split('T')[0]
           },
           {
             nombre: 'Postulaciones por Estado',
             descripcion: 'Estado actual de todas las postulaciones',
+            datos: postulacionesData.recordset,
+            ultimaEjecucion: new Date().toISOString().split('T')[0]
+          },
+          {
+            nombre: 'Solicitudes por Estado',
+            descripcion: 'Estado actual de todas las solicitudes',
+            datos: solicitudesData.recordset,
             ultimaEjecucion: new Date().toISOString().split('T')[0]
           }
         ],
-        totalReportes: 2,
+        totalReportes: 3,
         timestamp: new Date().toISOString()
       };
 
@@ -687,7 +878,7 @@ class VacantesController {
   }
 
   // ===============================
-  // DATOS AUXILIARES
+  // DATOS AUXILIARES - 100% REAL DE BD
   // ===============================
 
   static async getDepartamentos(req, res) {
@@ -731,156 +922,6 @@ class VacantesController {
 
     } catch (error) {
       VacantesController.handleError(res, error, 'getUsuarios');
-    }
-  }
-
-  // Métodos adicionales (stubs para completar la interfaz)
-  static async getMetricasAvanzadas(req, res) {
-    try {
-      const metricas = {
-        tiempoPromedioContratacion: 15,
-        conversionPorDepartamento: [],
-        fuentesCandidatos: [],
-        ultimaActualizacion: new Date().toISOString()
-      };
-      res.json(metricas);
-    } catch (error) {
-      VacantesController.handleError(res, error, 'getMetricasAvanzadas');
-    }
-  }
-
-  static async getSolicitudPorId(req, res) {
-    try {
-      const { id } = req.params;
-      res.json({ id, message: 'Solicitud no implementada' });
-    } catch (error) {
-      VacantesController.handleError(res, error, 'getSolicitudPorId');
-    }
-  }
-
-  static async actualizarSolicitud(req, res) {
-    try {
-      const { id } = req.params;
-      res.json({ id, message: 'Actualización no implementada' });
-    } catch (error) {
-      VacantesController.handleError(res, error, 'actualizarSolicitud');
-    }
-  }
-
-  static async getPostulacionPorId(req, res) {
-    try {
-      const { id } = req.params;
-      res.json({ id, message: 'Postulación no implementada' });
-    } catch (error) {
-      VacantesController.handleError(res, error, 'getPostulacionPorId');
-    }
-  }
-
-  static async getPostulacionesPorVacante(req, res) {
-    try {
-      const { vacanteId } = req.params;
-      res.json({ vacanteId, postulaciones: [] });
-    } catch (error) {
-      VacantesController.handleError(res, error, 'getPostulacionesPorVacante');
-    }
-  }
-
-  static async getReportePorTipo(req, res) {
-    try {
-      const { tipo } = req.params;
-      res.json({ tipo, data: [] });
-    } catch (error) {
-      VacantesController.handleError(res, error, 'getReportePorTipo');
-    }
-  }
-
-  static async getRoles(req, res) {
-    try {
-      res.json([]);
-    } catch (error) {
-      VacantesController.handleError(res, error, 'getRoles');
-    }
-  }
-
-  static async getConfiguracion(req, res) {
-    try {
-      res.json({});
-    } catch (error) {
-      VacantesController.handleError(res, error, 'getConfiguracion');
-    }
-  }
-
-  static async testConexion(req, res) {
-    try {
-      res.json({ status: 'OK', test: true });
-    } catch (error) {
-      VacantesController.handleError(res, error, 'testConexion');
-    }
-  }
-
-  static async getVersion(req, res) {
-    try {
-      res.json({ version: '1.0.0' });
-    } catch (error) {
-      VacantesController.handleError(res, error, 'getVersion');
-    }
-  }
-
-  static async getNotificaciones(req, res) {
-    try {
-      res.json([]);
-    } catch (error) {
-      VacantesController.handleError(res, error, 'getNotificaciones');
-    }
-  }
-
-  static async marcarNotificacionLeida(req, res) {
-    try {
-      res.json({ success: true });
-    } catch (error) {
-      VacantesController.handleError(res, error, 'marcarNotificacionLeida');
-    }
-  }
-
-  static async subirArchivo(req, res) {
-    try {
-      res.json({ success: true });
-    } catch (error) {
-      VacantesController.handleError(res, error, 'subirArchivo');
-    }
-  }
-
-  static async descargarArchivo(req, res) {
-    try {
-      res.json({ success: true });
-    } catch (error) {
-      VacantesController.handleError(res, error, 'descargarArchivo');
-    }
-  }
-
-  static async eliminarArchivo(req, res) {
-    try {
-      res.json({ success: true });
-    } catch (error) {
-      VacantesController.handleError(res, error, 'eliminarArchivo');
-    }
-  }
-
-  static async actualizarVacante(req, res) {
-    try {
-      const { id } = req.params;
-      res.json({ id, message: 'Actualización no implementada' });
-    } catch (error) {
-      VacantesController.handleError(res, error, 'actualizarVacante');
-    }
-  }
-
-  static async cerrarVacante(req, res) {
-    try {
-      const { id } = req.params;
-      res.json({ id, message: 'Cierre no implementado' });
-    } catch (error) {
-      VacantesController.handleError(res, error, 'cerrarVacante');
     }
   }
 }

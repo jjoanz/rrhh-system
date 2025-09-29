@@ -35,6 +35,11 @@ const vacantesService = {
     }
   },
 
+  // Alias para crear vacante directa (personal RRHH)
+  async crearVacanteDirecta(vacante) {
+    return this.crearVacante(vacante);
+  },
+
   async buscarVacantes(filtros) {
     try {
       console.log('Buscando vacantes con filtros:', filtros);
@@ -90,7 +95,7 @@ const vacantesService = {
   },
 
   // ===============================
-  // SOLICITUDES
+  // SOLICITUDES - FLUJO COMPLETO
   // ===============================
   
   async getSolicitudes(usuarioID, rol) {
@@ -116,6 +121,76 @@ const vacantesService = {
       return response.data;
     } catch (error) {
       console.error('Error al crear solicitud:', error.response?.data || error.message);
+      throw error;
+    }
+  },
+
+  // Alias para mantener compatibilidad con VacantesModule.jsx
+  async crearSolicitudVacante(solicitud) {
+    return this.crearSolicitud(solicitud);
+  },
+
+  // Aprobar como Director de Área
+  async aprobarSolicitudDirectorArea(solicitudId, aprobadorID) {
+    try {
+      console.log('Director de Área aprobando solicitud:', solicitudId);
+      const response = await api.put(`/vacantes/solicitudes/${solicitudId}/aprobar`, { 
+        aprobadorID,
+        comentarios: 'Aprobado por Director de Área'
+      });
+      console.log('Solicitud aprobada por Director de Área:', response.data);
+      return response.data;
+    } catch (error) {
+      console.error('Error al aprobar solicitud (Director Área):', error.response?.data || error.message);
+      throw error;
+    }
+  },
+
+  // Aprobar como Gerente RRHH
+  async aprobarSolicitudGerenteRRHH(solicitudId, aprobadorID) {
+    try {
+      console.log('Gerente RRHH aprobando solicitud:', solicitudId);
+      const response = await api.put(`/vacantes/solicitudes/${solicitudId}/aprobar`, { 
+        aprobadorID,
+        comentarios: 'Aprobado por Gerente RRHH'
+      });
+      console.log('Solicitud aprobada por Gerente RRHH:', response.data);
+      return response.data;
+    } catch (error) {
+      console.error('Error al aprobar solicitud (Gerente RRHH):', error.response?.data || error.message);
+      throw error;
+    }
+  },
+
+  // Aprobar como Director RRHH
+  async aprobarSolicitudDirectorRRHH(solicitudId, aprobadorID) {
+    try {
+      console.log('Director RRHH aprobando solicitud:', solicitudId);
+      const response = await api.put(`/vacantes/solicitudes/${solicitudId}/aprobar`, { 
+        aprobadorID,
+        comentarios: 'Aprobado por Director RRHH'
+      });
+      console.log('Solicitud aprobada por Director RRHH:', response.data);
+      return response.data;
+    } catch (error) {
+      console.error('Error al aprobar solicitud (Director RRHH):', error.response?.data || error.message);
+      throw error;
+    }
+  },
+
+  // Publicar vacante desde solicitud aprobada
+  async publicarVacanteDesdeSolicitud(solicitudId, publicadorID) {
+    try {
+      console.log('Publicando vacante desde solicitud:', solicitudId);
+      // Aquí usamos el endpoint de aprobar pero con un flag especial
+      const response = await api.put(`/vacantes/solicitudes/${solicitudId}/aprobar`, { 
+        aprobadorID: publicadorID,
+        comentarios: 'Vacante publicada y habilitada para postulaciones'
+      });
+      console.log('Vacante publicada:', response.data);
+      return response.data;
+    } catch (error) {
+      console.error('Error al publicar vacante:', error.response?.data || error.message);
       throw error;
     }
   },
@@ -187,6 +262,20 @@ const vacantesService = {
     }
   },
 
+  async getPostulacionesEmpleado(empleadoId) {
+    try {
+      console.log('Obteniendo postulaciones del empleado:', empleadoId);
+      const params = new URLSearchParams();
+      params.append('empleadoID', empleadoId);
+      const response = await api.get(`/vacantes/postulaciones?${params.toString()}`);
+      console.log('Postulaciones del empleado obtenidas:', response.data?.length || 0);
+      return response.data;
+    } catch (error) {
+      console.error('Error al obtener postulaciones del empleado:', error.response?.data || error.message);
+      throw error;
+    }
+  },
+
   async crearPostulacion(postulacion) {
     try {
       console.log('Creando postulación:', postulacion);
@@ -199,10 +288,14 @@ const vacantesService = {
     }
   },
 
-  async cambiarEstadoPostulacion(postulacionId, estado, comentarios = '') {
+  async cambiarEstadoPostulacion(postulacionId, estado, comentarios = '', empleadoId = null) {
     try {
       console.log('Cambiando estado de postulación:', postulacionId, 'a', estado);
-      const response = await api.put(`/vacantes/postulaciones/${postulacionId}/estado`, { estado, comentarios });
+      const response = await api.put(`/vacantes/postulaciones/${postulacionId}/estado`, { 
+        estado, 
+        comentarios,
+        empleadoId 
+      });
       console.log('Estado cambiado:', response.data);
       return response.data;
     } catch (error) {

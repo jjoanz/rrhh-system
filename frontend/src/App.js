@@ -24,6 +24,9 @@ import DepartamentosModule from './components/modules/departamentos/Departamento
 import PuestosModule from './components/modules/puestos/PuestosModule';
 import ReportesModule from './components/modules/Reportes/ReportesModule';
 
+// ===================== COMPONENTES PÚBLICOS =====================
+import FormularioPostulacion from './components/public/FormularioPostulacion';
+
 // ===================== ADMIN =====================
 import AdminPermissions from './components/Admin/AdminPermissions';
 
@@ -124,7 +127,6 @@ const Dashboard = () => {
   const { navigateToSection } = useApp();
   const navigation = user ? getNavigationByRoleAndPermissions(user, permisos) : [];
 
-  // Función para obtener saludo según la hora
   const getSaludoPorHora = () => {
     const hora = new Date().getHours();
     if (hora < 12) return "Buenos días";
@@ -137,7 +139,6 @@ const Dashboard = () => {
       minHeight: '100vh',
       background: 'linear-gradient(135deg, rgb(248, 250, 252) 0%, rgb(239, 246, 255) 50%, rgb(224, 231, 255) 100%)'
     }}>
-      {/* Header Principal */}
       <div style={{
         position: 'relative',
         overflow: 'hidden',
@@ -185,14 +186,12 @@ const Dashboard = () => {
               </p>
             </div>
             
-            {/* Indicador de estado */}
             <motion.div
               initial={{ scale: 0 }}
               animate={{ scale: 1 }}
               transition={{ delay: 0.5, type: "spring", stiffness: 200 }}
               style={{
-                display: 'none', // Oculto en móvil
-                '@media (min-width: 768px)': { display: 'flex' },
+                display: 'none',
                 alignItems: 'center',
                 gap: '0.5rem',
                 background: 'rgba(255, 255, 255, 0.1)',
@@ -205,8 +204,7 @@ const Dashboard = () => {
                 width: '0.5rem',
                 height: '0.5rem',
                 background: 'rgb(74, 222, 128)',
-                borderRadius: '50%',
-                animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite'
+                borderRadius: '50%'
               }}></div>
               <span style={{ color: 'white', fontSize: '0.875rem', fontWeight: '500' }}>
                 Sistema Activo
@@ -216,9 +214,7 @@ const Dashboard = () => {
         </div>
       </div>
 
-      {/* Contenido Principal */}
       <div style={{ padding: '2rem 1.5rem' }}>
-        {/* Información del Sistema */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -348,7 +344,6 @@ const Dashboard = () => {
           </div>
         </motion.div>
 
-        {/* Módulos del Sistema */}
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -426,7 +421,6 @@ const Dashboard = () => {
                     transition: 'all 0.3s ease'
                   }}
                 >
-                  {/* Contenido */}
                   <div style={{ position: 'relative' }}>
                     <div style={{
                       width: '4rem',
@@ -461,7 +455,6 @@ const Dashboard = () => {
                       {item.description || "Gestiona y administra información del sistema"}
                     </p>
                     
-                    {/* Indicador de acceso */}
                     <div style={{
                       marginTop: '1rem',
                       display: 'flex',
@@ -483,7 +476,6 @@ const Dashboard = () => {
           </div>
         </motion.div>
 
-        {/* Logo Institucional */}
         <motion.div
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
@@ -544,7 +536,6 @@ const Dashboard = () => {
           </div>
         </motion.div>
 
-        {/* Footer */}
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -617,6 +608,7 @@ const AppRouter = () => {
       {/* Rutas públicas */}
       <Route path="/login" element={user ? <Navigate to="/dashboard" replace /> : <LoginPage />} />
       <Route path="/reset-password/:token" element={user ? <Navigate to="/dashboard" replace /> : <ResetPassword />} />
+      <Route path="/postulacion" element={<FormularioPostulacion />} /> {/* ← NUEVA RUTA PÚBLICA */}
 
       {/* Rutas protegidas */}
       <Route path="/*" element={

@@ -82,6 +82,18 @@ const vacantesService = {
     }
   },
 
+    async actualizarVacante(id, datos, token) {
+    try {
+      const response = await api.put(`/vacantes/${id}`, datos, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Error al actualizar vacante:', error);
+      throw error;
+    }
+  },
+
   async cerrarVacante(id, motivo) {
     try {
       console.log('Cerrando vacante:', id);
@@ -236,21 +248,18 @@ const vacantesService = {
     }
   },
 
-  async rechazarSolicitud(solicitudId, comentarios = '', token) {
-    try {
-      console.log('Rechazando solicitud:', solicitudId, comentarios);
-      const response = await api.put(
-        `/vacantes/solicitudes/${solicitudId}/rechazar`, 
-        { comentarios },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      console.log('Solicitud rechazada:', response.data);
-      return response.data;
-    } catch (error) {
-      console.error('Error al rechazar solicitud:', error.response?.data || error.message);
-      throw error;
-    }
-  },
+  async rechazarSolicitud(solicitudId, comentarios, token) {
+  try {
+    const response = await api.post(`/vacantes/solicitudes/${solicitudId}/rechazar`, 
+      { comentarios },
+      { headers: { Authorization: `Bearer ${token}` } }
+    );
+    return response.data;
+  } catch (error) {
+    console.error('Error al rechazar solicitud:', error);
+    throw error;
+  }
+},
 
   async getSolicitudPorId(id) {
     try {

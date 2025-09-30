@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../../context/AuthContext';
 import vacantesService from '../../../api/vacantesService';
-import { Briefcase, Users, Clock, CheckCircle, XCircle, AlertCircle, FileText, Plus, Send, X, Loader, Eye, Calendar, MapPin, DollarSign } from 'lucide-react';
+import { Plus, Users, Briefcase, CheckCircle, XCircle, Clock, Calendar, DollarSign, MapPin, Building2, Eye, FileText, UserCheck, Send, Edit, Loader, AlertCircle, X } from 'lucide-react';
 
 const VacantesModule = () => {
   const { user, loading, getStoredToken } = useAuth();
@@ -156,6 +156,20 @@ const aprobarSolicitud = async (solicitudId, nivel) => {
   }
 };
 
+const rechazarSolicitud = async (solicitudId, comentarios) => {
+  try {
+    const token = getStoredToken();
+    await vacantesService.rechazarSolicitud(solicitudId, comentarios, token);
+    
+    setSolicitudes(prev => prev.map(s => 
+      s.id === solicitudId ? { ...s, estado: 'Rechazada' } : s
+    ));
+    mostrarExito('Solicitud rechazada');
+  } catch (err) {
+    setError('Error al rechazar solicitud');
+  }
+};
+
 const publicarVacante = async (solicitudId) => {
   try {
     const token = getStoredToken();
@@ -170,6 +184,7 @@ const publicarVacante = async (solicitudId) => {
     setError('Error al publicar vacante');
   }
 };
+
 
 const crearVacanteDirecta = async (datos) => {
   try {
@@ -187,6 +202,17 @@ const crearVacanteDirecta = async (datos) => {
   }
 };
 
+const editarVacante = async (vacanteId, datos) => {
+  try {
+    const token = getStoredToken();
+    await vacantesService.actualizarVacante(vacanteId, datos, token);
+    setVacantes(prev => prev.map(v => v.id === vacanteId ? { ...v, ...datos } : v));
+    setModalVacante(false);
+    mostrarExito('Vacante actualizada exitosamente');
+  } catch (err) {
+    setError('Error al actualizar vacante');
+  }
+};
 const postularse = async (datos) => {
   try {
     const token = getStoredToken();
@@ -324,7 +350,7 @@ return (
       {/* Contenido Principal */}
       <div style={{ backgroundColor: 'white', borderRadius: '0.75rem', boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)', padding: '2rem' }}>
         {vistaActiva === 'dashboard' && <VistaDashboard permisos={permisos} setModalSolicitud={setModalSolicitud} setModalVacante={setModalVacante} estadisticas={estadisticas} user={user} />}
-        {vistaActiva === 'solicitudes' && <VistaSolicitudes solicitudes={solicitudes} user={user} permisos={permisos} setModalSolicitud={setModalSolicitud} aprobarSolicitud={aprobarSolicitud} publicarVacante={publicarVacante} />}
+        {vistaActiva === 'solicitudes' && <VistaSolicitudes solicitudes={solicitudes} user={user} permisos={permisos} setModalSolicitud={setModalSolicitud} aprobarSolicitud={aprobarSolicitud} rechazarSolicitud={rechazarSolicitud} publicarVacante={publicarVacante} />}
         {vistaActiva === 'vacantes' && <VistaVacantes vacantes={vacantes} permisos={permisos} setModalVacante={setModalVacante} setVacanteSeleccionada={setVacanteSeleccionada} setModalPostulacion={setModalPostulacion} />}
         {vistaActiva === 'postulaciones' && <VistaPostulaciones postulaciones={postulaciones} permisos={permisos} cambiarEstadoPostulacion={cambiarEstadoPostulacion} user={user} />}
       </div>
@@ -434,7 +460,7 @@ const VistaDashboard = ({ permisos, setModalSolicitud, setModalVacante, estadist
 );
 
 // Vista de Solicitudes con flujo profesional
-const VistaSolicitudes = ({ solicitudes, user, permisos, setModalSolicitud, aprobarSolicitud, publicarVacante }) => {
+const VistaSolicitudes = ({ solicitudes, user, permisos, setModalSolicitud, aprobarSolicitud, rechazarSolicitud, publicarVacante }) => {
   const [filtro, setFiltro] = useState('todas');
   const [solicitudEnProceso, setSolicitudEnProceso] = useState(null);
 
@@ -493,15 +519,16 @@ const VistaSolicitudes = ({ solicitudes, user, permisos, setModalSolicitud, apro
         ) : (
           solicitudesFiltradas.map(solicitud => (
             <TarjetaSolicitudProfesional 
-              key={solicitud.id}
-              solicitud={solicitud}
-              user={user}
-              permisos={permisos}
-              aprobarSolicitud={aprobarSolicitud}
-              publicarVacante={publicarVacante}
-              solicitudEnProceso={solicitudEnProceso}
-              setSolicitudEnProceso={setSolicitudEnProceso}
-            />
+            key={solicitud.id}
+            solicitud={solicitud}
+            user={user}
+            permisos={permisos}
+            aprobarSolicitud={aprobarSolicitud}
+            rechazarSolicitud={rechazarSolicitud}
+            publicarVacante={publicarVacante}
+            solicitudEnProceso={solicitudEnProceso}
+            setSolicitudEnProceso={setSolicitudEnProceso}
+          />
           ))
         )}
       </div>
@@ -673,7 +700,7 @@ const EstadisticaTarjeta = ({ valor, etiqueta, color }) => (
 );
 
 // Tarjeta de solicitud profesional - CORREGIDA
-const TarjetaSolicitudProfesional = ({ solicitud, user, permisos, aprobarSolicitud, publicarVacante, solicitudEnProceso, setSolicitudEnProceso }) => {
+const TarjetaSolicitudProfesional = ({ solicitud, user, permisos, aprobarSolicitud, rechazarSolicitud, publicarVacante, solicitudEnProceso, setSolicitudEnProceso }) => {
   const [mostrarDetalles, setMostrarDetalles] = useState(false);
   
   const rolNormalizado = user?.role?.toLowerCase().replace(/\s+/g, '_');
@@ -695,22 +722,24 @@ const TarjetaSolicitudProfesional = ({ solicitud, user, permisos, aprobarSolicit
     }
   };
 
-  const handleAccion = async (accion, id) => {
-    setSolicitudEnProceso(id);
-    try {
-      if (accion === 'aprobar-director-area') {
-        await aprobarSolicitud(id, 'director-area');
-      } else if (accion === 'aprobar-gerente-rrhh') {
-        await aprobarSolicitud(id, 'gerente-rrhh');
-      } else if (accion === 'aprobar-director-rrhh') {
-        await aprobarSolicitud(id, 'director-rrhh');
-      } else if (accion === 'publicar') {
-        await publicarVacante(id);
+  const handleAccion = async (accion, id, comentarios = '') => {
+      setSolicitudEnProceso(id);
+      try {
+        if (accion === 'aprobar-director-area') {
+          await aprobarSolicitud(id, 'director-area');
+        } else if (accion === 'aprobar-gerente-rrhh') {
+          await aprobarSolicitud(id, 'gerente-rrhh');
+        } else if (accion === 'aprobar-director-rrhh') {
+          await aprobarSolicitud(id, 'director-rrhh');
+        } else if (accion === 'publicar') {
+          await publicarVacante(id);
+        } else if (accion === 'rechazar') {
+          await rechazarSolicitud(id, comentarios);
+        }
+      } finally {
+        setSolicitudEnProceso(null);
       }
-    } finally {
-      setSolicitudEnProceso(null);
-    }
-  };
+    };
 
   return (
     <div style={{ border: '1px solid #e5e7eb', borderRadius: '0.75rem', padding: '1.5rem', backgroundColor: 'white', boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)' }}>
@@ -849,6 +878,35 @@ const TarjetaSolicitudProfesional = ({ solicitud, user, permisos, aprobarSolicit
               Autorizar como Director RRHH
             </button>
           )}
+
+          {/* Botón de rechazar (disponible en cualquier etapa antes de publicar) */}
+          {(puedeAprobarDirectorArea || puedeAprobarGerenteRRHH || puedeAprobarDirectorRRHH) && (
+            <>
+              <button 
+                onClick={() => {
+                  const comentarios = prompt('¿Por qué se rechaza esta solicitud?');
+                  if (comentarios) handleAccion('rechazar', solicitud.id, comentarios);
+                }}
+                style={{ 
+                  backgroundColor: '#dc2626', 
+                  color: 'white', 
+                  padding: '0.5rem 1rem', 
+                  borderRadius: '0.5rem', 
+                  border: 'none', 
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem',
+                  fontSize: '0.875rem',
+                  fontWeight: '500'
+                }}
+              >
+                <XCircle size={16} />
+                Rechazar
+              </button>
+            </>
+          )}
+
           {puedePublicar && (
             <button 
               onClick={() => handleAccion('publicar', solicitud.id)} 
@@ -904,6 +962,20 @@ const TarjetaVacanteProfesional = ({ vacante, permisos, setVacanteSeleccionada, 
       
       <div style={{ textAlign: 'right' }}>
         <EstadoBadge estado={vacante.estado} />
+        {vacante.PublicaEnPortal && (
+        <div style={{ 
+          marginTop: '0.5rem',
+          fontSize: '0.75rem', 
+          color: '#0891b2', 
+          backgroundColor: '#e0f2fe',
+          padding: '0.25rem 0.5rem',
+          borderRadius: '0.375rem',
+          fontWeight: '500'
+        }}>
+          🌐 Pública
+        </div>
+      )}
+        
       </div>
     </div>
 
@@ -913,6 +985,36 @@ const TarjetaVacanteProfesional = ({ vacante, permisos, setVacanteSeleccionada, 
       <div style={{ fontSize: '0.875rem', color: '#6b7280' }}>
         <strong>Modalidad:</strong> {vacante.modalidad || 'Presencial'}
       </div>
+
+      {permisos.crearVacante && (
+  <button 
+          onClick={() => {
+            // Aquí necesitas abrir un modal de edición
+            // Por simplicidad, usa prompt temporalmente
+            const nuevoTitulo = prompt('Nuevo título:', vacante.titulo);
+            if (nuevoTitulo) {
+              vacantesService.actualizarVacante(vacante.id, { Titulo: nuevoTitulo });
+            }
+          }}
+          style={{ 
+            backgroundColor: '#f59e0b', 
+            color: 'white', 
+            padding: '0.5rem 1rem', 
+            borderRadius: '0.5rem', 
+            border: 'none', 
+            cursor: 'pointer', 
+            display: 'flex', 
+            alignItems: 'center', 
+            gap: '0.5rem', 
+            fontSize: '0.875rem', 
+            fontWeight: '500',
+            marginRight: '0.5rem'
+          }}
+        >
+          <Edit size={16} />
+          Editar
+        </button>
+      )}
       
       {permisos.postularse && vacante.estado === 'Activa' && (
         <button 
@@ -1247,7 +1349,8 @@ const ModalVacante = ({ onClose, onGuardar, departamentos }) => {
     salarioMinimo: '',
     salarioMaximo: '',
     modalidad: 'Presencial',
-    fechaCierre: ''
+    fechaCierre: '',
+    publicaEnPortal: true
   });
 
   const [errores, setErrores] = useState({});
@@ -1281,7 +1384,8 @@ const ModalVacante = ({ onClose, onGuardar, departamentos }) => {
         SalarioMaximo: parseFloat(datos.salarioMaximo),
         modalidad: datos.modalidad,
         fechaCierre: datos.fechaCierre || null,
-        estado: 'Activa'
+        estado: 'Activa',        
+        PublicaEnPortal: datos.publicaEnPortal ? 1 : 0
       });
     }
   };
@@ -1339,7 +1443,34 @@ const ModalVacante = ({ onClose, onGuardar, departamentos }) => {
           />
           {mostrarError('descripcion')}
         </div>
-        
+        <div style={{ 
+          padding: '1rem', 
+          backgroundColor: '#f0f9ff', 
+          borderRadius: '0.5rem', 
+          border: '1px solid #bae6fd' 
+        }}>
+          <label style={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            gap: '0.75rem', 
+            cursor: 'pointer' 
+          }}>
+            <input 
+              type="checkbox" 
+              checked={datos.publicaEnPortal} 
+              onChange={(e) => setDatos(prev => ({ ...prev, publicaEnPortal: e.target.checked }))}
+              style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+            />
+            <div>
+              <span style={{ fontSize: '0.875rem', fontWeight: '600', color: '#0369a1' }}>
+                Publicar en portal externo
+              </span>
+              <div style={{ fontSize: '0.75rem', color: '#0891b2', marginTop: '0.25rem' }}>
+                Candidatos externos podrán postularse desde el formulario público
+              </div>
+            </div>
+          </label>
+        </div>
         <div>
           <label style={labelStyle}>Requisitos y Cualificaciones *</label>
           <textarea 

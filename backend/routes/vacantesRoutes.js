@@ -47,8 +47,9 @@ router.post('/solicitudes/:id/aprobar-gerente-rrhh', authenticateToken, authoriz
 router.post('/solicitudes/:id/aprobar-director-rrhh', authenticateToken, authorizeRoles(['director_rrhh', 'admin']), VacantesController.aprobarSolicitudDirectorRRHH);
 router.post('/solicitudes/:id/asignar-responsable', authenticateToken, authorizeRoles(['director_rrhh', 'gerente_rrhh', 'admin']), VacantesController.asignarResponsablePublicacion);
 
-// Rutas de publicación de vacante)
+// Rutas de publicación de vacante
 router.post('/solicitudes/:id/publicar', authenticateToken, authorizeRoles(['director_rrhh', 'gerente_rrhh', 'rrhh', 'admin']), VacantesController.publicarVacanteDesdeSolicitud);
+
 // Rutas legacy (mantener compatibilidad)
 router.put('/solicitudes/:id/aprobar', authenticateToken, authorizeRoles(['rrhh', 'admin']), VacantesController.aprobarSolicitud);
 router.put('/solicitudes/:id/rechazar', authenticateToken, authorizeRoles(['rrhh', 'admin']), VacantesController.rechazarSolicitud);
@@ -80,6 +81,14 @@ router.get('/:id', VacantesController.getVacanteById);
 
 // Crear nueva vacante
 router.post('/', authenticateToken, authorizeRoles(['rrhh', 'admin']), VacantesController.crearVacante);
+
+// Actualizar vacante
+router.put(
+  '/:id',
+  authenticateToken,
+  authorizeRoles(['rrhh', 'gerente_rrhh', 'director_rrhh', 'admin']),
+  VacantesController.actualizarVacante
+);
 
 // ===============================
 // MANEJO DE ERRORES

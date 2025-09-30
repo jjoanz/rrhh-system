@@ -133,7 +133,8 @@ class VacantesController {
         creadoPor,
         fechaCierre,
         modalidad,
-        estado
+        estado,
+        PublicaEnPortal
       } = req.body;
 
       const tituloFinal = Titulo || titulo;
@@ -157,12 +158,13 @@ class VacantesController {
         .input('fechaCierre', sql.Date, fechaCierre || null)
         .input('modalidad', sql.NVarChar(50), modalidad || 'Presencial')
         .input('estado', sql.NVarChar(50), estado || 'Activa')
+        .input('publicaEnPortal', sql.Bit, PublicaEnPortal !== undefined ? PublicaEnPortal : 0)
         .query(`
           INSERT INTO Vacantes (Titulo, Descripcion, Requisitos, SalarioMinimo, SalarioMaximo, 
-                              Estado, FechaPublicacion, FechaCierre, DepartamentoID, CreadoPor, Modalidad)
+                    Estado, FechaPublicacion, FechaCierre, DepartamentoID, CreadoPor, Modalidad, PublicaEnPortal)
           OUTPUT INSERTED.VacanteID
           VALUES (@titulo, @descripcion, @requisitos, @salarioMinimo, @salarioMaximo,
-                  @estado, GETDATE(), @fechaCierre, @departamentoID, @creadoPor, @modalidad)
+        @estado, GETDATE(), @fechaCierre, @departamentoID, @creadoPor, @modalidad, @publicaEnPortal)
         `);
 
       const vacanteID = result.recordset[0].VacanteID;
@@ -286,6 +288,63 @@ class VacantesController {
     }
   }
 
+    static async actualizarVacante(req, res) {
+      try {
+        const { id } = req.params;
+        const pool = req.app.locals.db;
+        const { Titulo, Descripcion, Requisitos, SalarioMinimo, SalarioMaximo, Estado, PublicaEnPortal } = req.body;
+
+        const updates = [];
+        const request = pool.request().input('id', sql.Int, parseInt(id));
+
+        if (Titulo) {
+          updates.push('Titulo = @titulo');
+          request.input('titulo', sql.NVarChar(200), Titulo);
+        }
+        if (Descripcion) {
+          updates.push('Descripcion = @descripcion');
+          request.input('descripcion', sql.NVarChar(sql.MAX), Descripcion);
+        }
+        if (Requisitos) {
+          updates.push('Requisitos = @requisitos');
+          request.input('requisitos', sql.NVarChar(sql.MAX), Requisitos);
+        }
+        if (SalarioMinimo) {
+          updates.push('SalarioMinimo = @salarioMin');
+          request.input('salarioMin', sql.Decimal(10, 2), SalarioMinimo);
+        }
+        if (SalarioMaximo) {
+          updates.push('SalarioMaximo = @salarioMax');
+          request.input('salarioMax', sql.Decimal(10, 2), SalarioMaximo);
+        }
+        if (Estado) {
+          updates.push('Estado = @estado');
+          request.input('estado', sql.NVarChar(50), Estado);
+        }
+        if (PublicaEnPortal !== undefined) {
+          updates.push('PublicaEnPortal = @publicaEnPortal');
+          request.input('publicaEnPortal', sql.Bit, PublicaEnPortal);
+        }
+
+        if (updates.length === 0) {
+          return res.status(400).json({ error: 'No hay campos para actualizar' });
+        }
+
+        const result = await request.query(`
+          UPDATE Vacantes 
+          SET ${updates.join(', ')}
+          WHERE VacanteID = @id
+        `);
+
+        if (result.rowsAffected[0] === 0) {
+          return res.status(404).json({ error: 'Vacante no encontrada' });
+        }
+
+        res.json({ success: true, message: 'Vacante actualizada' });
+      } catch (error) {
+        VacantesController.handleError(res, error, 'actualizarVacante');
+      }
+    }
   // ===============================
   // SOLICITUDES - 100% REAL DE BD
   // ===============================

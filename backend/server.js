@@ -14,6 +14,7 @@ import asistenciaRoutes from './routes/asistenciaRoutes.js';
 import departamentosRoutes from './routes/departamentosRoutes.js';
 import puestosRoutes from './routes/puestosRoutes.js';
 import postulacionesRoutes from './routes/postulacionesRoutes.js';
+import postulacionesPublicasRoutes from './routes/postulacionesPublicasRoutes.js'; // ← NUEVA RUTA PÚBLICA
 import authRoutes from './routes/authRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
 import reportesRoutes from "./routes/reportesRoutes.js";
@@ -25,11 +26,25 @@ import { authenticateToken } from './middleware/auth.js';
 // --- INICIALIZAR EXPRESS ---
 const app = express();
 app.use(express.json());
+app.use(express.urlencoded({ extended: true })); // ← NECESARIO PARA FORM-DATA
 app.use(cors());
 
 // --- VARIABLES DE ENTORNO ---
 const HOST = process.env.HOST || '0.0.0.0';
 const PORT = process.env.PORT || 5000;
+
+// --- CONFIGURAR __dirname PARA ES MODULES ---
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// --- SERVIR ARCHIVOS ESTÁTICOS (UPLOADS) ---
+const uploadsPath = path.join(__dirname, 'uploads');
+if (!fs.existsSync(uploadsPath)) {
+  fs.mkdirSync(uploadsPath, { recursive: true });
+  console.log('📁 Carpeta uploads creada');
+}
+app.use('/uploads', express.static(uploadsPath));
+console.log('📂 Sirviendo archivos desde:', uploadsPath);
 
 // --- MANEJO DE ERRORES PARA PATH-TO-REGEXP ---
 process.on('uncaughtException', (error) => {
@@ -58,8 +73,19 @@ app.use(async (req, res, next) => {
   }
 });
 
-// --- RUTAS DE AUTENTICACIÓN (SIN PROTECCIÓN) ---
+// --- RUTAS PÚBLICAS (SIN AUTENTICACIÓN) ---
 app.use('/api/auth', authRoutes);
+app.use('/api/postulaciones-publicas', postulacionesPublicasRoutes); // ← NUEVA RUTA PÚBLICA
+
+// --- RUTA DE SALUD DEL SERVIDOR (SIN PROTECCIÓN) ---
+app.get('/api/health', (req, res) => {
+  res.json({
+    status: 'OK',
+    timestamp: new Date().toISOString(),
+    database: process.env.DB_SERVER,
+    server: `${HOST}:${PORT}`,
+  });
+});
 
 // --- RUTAS DE API PROTEGIDAS ---
 app.get('/api/usuarios', authenticateToken, async (req, res) => {
@@ -73,16 +99,6 @@ app.get('/api/usuarios', authenticateToken, async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
-});
-
-// --- RUTA DE SALUD DEL SERVIDOR (SIN PROTECCIÓN) ---
-app.get('/api/health', (req, res) => {
-  res.json({
-    status: 'OK',
-    timestamp: new Date().toISOString(),
-    database: process.env.DB_SERVER,
-    server: `${HOST}:${PORT}`,
-  });
 });
 
 // --- CONECTAR LOS MÓDULOS PROTEGIDOS ---
@@ -110,10 +126,6 @@ app.use((err, req, res, next) => {
 });
 
 // --- SERVIR REACT BUILD ---
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-// 🔑 Ajuste para que funcione con backend en carpeta separada
 const frontendBuildPath = path.join(__dirname, '..', 'frontend', 'build');
 
 console.log('Ruta build usada por Express:', frontendBuildPath);
@@ -159,6 +171,7 @@ if (fs.existsSync(frontendBuildPath)) {
           empleados: '/api/empleados',
           puestos: '/api/puestos',
           postulaciones: '/api/postulaciones',
+          postulacionesPublicas: '/api/postulaciones-publicas', // ← NUEVA
           reportes: '/api/reportes',
           vacantes: '/api/vacantes',
         },
@@ -174,6 +187,9 @@ const server = app.listen(PORT, HOST, () => {
   console.log(`🔐 Endpoints de auth: http://${HOST}:${PORT}/api/auth`);
   console.log(`🛡️  Endpoints de admin: http://${HOST}:${PORT}/api/admin`);
   console.log(`💼 Endpoints de vacantes: http://${HOST}:${PORT}/api/vacantes`);
+  console.log(`📋 Endpoints de postulaciones (auth): http://${HOST}:${PORT}/api/postulaciones`);
+  console.log(`🌐 Endpoints públicos de postulaciones: http://${HOST}:${PORT}/api/postulaciones-publicas`);
+  console.log(`📁 Archivos uploads: http://${HOST}:${PORT}/uploads`);
   console.log(`⚡ API Health check: http://${HOST}:${PORT}/api/health`);
 });
 
@@ -198,6 +214,3 @@ const gracefulShutdown = async () => {
 
 process.on('SIGINT', gracefulShutdown);
 process.on('SIGTERM', gracefulShutdown);
-
-
-

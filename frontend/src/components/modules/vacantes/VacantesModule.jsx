@@ -22,281 +22,304 @@ const VacantesModule = () => {
   const [vacanteSeleccionada, setVacanteSeleccionada] = useState(null);
 
   useEffect(() => {
-    if (!loading && user) cargarDatos();
-  }, [user, loading]);
+      if (!loading && user) cargarDatos();
+    }, [user, loading]);
 
-  const cargarDatos = async () => {
-    try {
-      setLoadingData(true);
-      const token = getStoredToken();
-      
-      const [deptData, statsData, vacantesData] = await Promise.all([
-        vacantesService.getDepartamentos(token),
-        vacantesService.getEstadisticas(user.role, token),
-        vacantesService.getVacantesActivas(token)
-      ]);
+    const cargarDatos = async () => {
+      try {
+        setLoadingData(true);
+        const token = getStoredToken();
+        
+        const [deptData, statsData, vacantesData] = await Promise.all([
+          vacantesService.getDepartamentos(token),
+          vacantesService.getEstadisticas(user.role, token),
+          vacantesService.getVacantesActivas(token)
+        ]);
 
-      setDepartamentos(deptData || []);
-      setEstadisticas(statsData || {});
-      setVacantes(vacantesData || []);
+        setDepartamentos(deptData || []);
+        setEstadisticas(statsData || {});
+        setVacantes(vacantesData || []);
 
-      // Cargar solicitudes (Director y Gerente crean, RRHH gestiona)
-      if (['Director', 'Gerente', 'Director RRHH', 'Gerente RRHH', 'RRHH', 'director', 'gerente'].includes(user.role)) {
-        const solData = await vacantesService.getSolicitudes(user.role, token);
-        setSolicitudes(solData || []);
+        // Cargar solicitudes (Director y Gerente crean, RRHH gestiona)
+       // Cargar solicitudes (Director y Gerente crean, RRHH gestiona)
+        const rolNormalizadoCarga = user.role?.toLowerCase().replace(/\s+/g, '_');
+        if (['director', 'gerente', 'director_rrhh', 'gerente_rrhh', 'rrhh'].includes(rolNormalizadoCarga)) {
+          console.log('🔄 Cargando solicitudes para:', {
+            nombre: user.name,
+            usuarioID: user.id,
+            empleadoID: user.empleadoId,
+            rol: user.role
+          });
+          
+          const solData = await vacantesService.getSolicitudes(user.id, user.role);
+          
+          console.log('📥 Solicitudes recibidas:', {
+            cantidad: solData?.length || 0,
+            datos: solData
+          });
+          
+          setSolicitudes(solData || []);
+        }
+
+        // Cargar postulaciones (Personal RRHH gestiona, Colaboradores ven las propias)
+        if (['director_rrhh', 'gerente_rrhh', 'rrhh'].includes(rolNormalizadoCarga)) {
+          const postData = await vacantesService.getPostulaciones('todas', token);
+          setPostulaciones(postData || []);
+        } else if (user.role === 'Colaborador') {
+          const postData = await vacantesService.getPostulacionesEmpleado(user.empleadoId, token);
+          setPostulaciones(postData || []);
+        }
+
+      } catch (err) {
+        console.error('Error:', err);
+        setError('Error al cargar datos del sistema');
+      } finally {
+        setLoadingData(false);
       }
+    };
 
-      // Cargar postulaciones (Personal RRHH gestiona, Colaboradores ven las propias)
-      if (['Director RRHH', 'Gerente RRHH', 'RRHH'].includes(user.role)) {
-        const postData = await vacantesService.getPostulaciones('todas', token);
-        setPostulaciones(postData || []);
-      } else if (user.role === 'Colaborador') {
-        const postData = await vacantesService.getPostulacionesEmpleado(user.empleadoId, token);
-        setPostulaciones(postData || []);
-      }
+   // Normalizar rol para comparación consistente
+const rolNormalizado = user?.role?.toLowerCase().replace(/\s+/g, '_');
 
-    } catch (err) {
-      console.error('Error:', err);
-      setError('Error al cargar datos del sistema');
-    } finally {
-      setLoadingData(false);
-    }
-  };
+// Permisos según la lógica de flujo RRHH actualizada
+const permisos = {
+  // Director y Gerente solicitan vacantes
+  crearSolicitud: ['director', 'gerente'].includes(rolNormalizado),
+  
+  // Director del Área aprueba solicitudes de sus gerentes
+  aprobarDirectorArea: ['director'].includes(rolNormalizado),
+  
+  // Gerente RRHH aprueba solicitudes aprobadas por el Director del Área
+  aprobarGerenteRRHH: ['gerente_rrhh'].includes(rolNormalizado),
+  
+  // Director RRHH aprueba después del Gerente RRHH
+  aprobarDirectorRRHH: ['director_rrhh'].includes(rolNormalizado),
+  
+  // Personal RRHH (Director RRHH, Gerente RRHH, RRHH) puede crear vacantes directas y publicar
+  crearVacante: ['director_rrhh', 'gerente_rrhh', 'rrhh'].includes(rolNormalizado),
+  publicarVacante: ['director_rrhh', 'gerente_rrhh', 'rrhh'].includes(rolNormalizado),
+  
+  // Colaboradores se postulan
+  postularse: ['colaborador', 'empleado'].includes(rolNormalizado),
+  
+  // Personal RRHH gestiona postulaciones, Directores y Gerentes ven progreso de sus solicitudes
+  gestionarPostulaciones: ['director_rrhh', 'gerente_rrhh', 'rrhh', 'director', 'gerente'].includes(rolNormalizado)
+};
 
-  // Permisos según la lógica de flujo RRHH actualizada
-  const permisos = {
-    // Director y Gerente solicitan vacantes
-    crearSolicitud: ['Director', 'Gerente', 'director', 'gerente'].includes(user?.role),
+// Funciones del flujo de aprobación
+const crearSolicitud = async (datos) => {
+  try {
+    const token = getStoredToken();
+    console.log('📝 Creando solicitud con empleadoId:', user.empleadoId);
     
-    // Director del Área aprueba solicitudes de sus gerentes (NUEVO PASO)
-    aprobarDirectorArea: ['Director', 'director'].includes(user?.role),
+    const nueva = await vacantesService.crearSolicitudVacante({
+      ...datos,
+      solicitanteId: user.empleadoId,
+      estado: 'Pendiente'
+    }, token);
     
-    // Gerente RRHH aprueba solicitudes aprobadas por el Director del Área
-    aprobarGerenteRRHH: ['Gerente RRHH', 'gerente rrhh'].includes(user?.role),
-    
-    // Director RRHH aprueba después del Gerente RRHH
-    aprobarDirectorRRHH: ['Director RRHH', 'director rrhh'].includes(user?.role),
-    
-    // Personal RRHH (Director RRHH, Gerente RRHH, RRHH) puede crear vacantes directas y publicar
-    crearVacante: ['Director RRHH', 'Gerente RRHH', 'RRHH', 'director rrhh', 'gerente rrhh', 'rrhh'].includes(user?.role),
-    publicarVacante: ['Director RRHH', 'Gerente RRHH', 'RRHH', 'director rrhh', 'gerente rrhh', 'rrhh'].includes(user?.role),
-    
-    // Colaboradores se postulan
-    postularse: ['Colaborador', 'colaborador', 'empleado'].includes(user?.role),
-    
-    // Personal RRHH gestiona postulaciones, Directores y Gerentes ven progreso de sus solicitudes
-    gestionarPostulaciones: ['Director RRHH', 'Gerente RRHH', 'RRHH', 'Director', 'Gerente', 'director rrhh', 'gerente rrhh', 'rrhh', 'director', 'gerente'].includes(user?.role)
-  };
-
-  // Funciones del flujo de aprobación
-  const crearSolicitud = async (datos) => {
-    try {
-      const token = getStoredToken();
-      const nueva = await vacantesService.crearSolicitudVacante({
-        ...datos,
-        solicitanteId: user.empleadoId,
-        estado: 'Pendiente'
-      }, token);
-      setSolicitudes(prev => [...prev, nueva]);
-      setModalSolicitud(false);
-      mostrarExito('Solicitud enviada al Área de Talento Humano');
-    } catch (err) {
-      setError('Error al crear solicitud');
-    }
-  };
-
-  const aprobarSolicitud = async (solicitudId, nivel) => {
-    try {
-      const token = getStoredToken();
-      let nuevoEstado, mensaje;
-      
-      if (nivel === 'director-area') {
-        await vacantesService.aprobarSolicitudDirectorArea(solicitudId, user.empleadoId, token);
-        nuevoEstado = 'Aprobada por Director de Área';
-        mensaje = 'Solicitud aprobada por Director de Área. Enviada a Gerente RRHH';
-      } else if (nivel === 'gerente-rrhh') {
-        await vacantesService.aprobarSolicitudGerenteRRHH(solicitudId, user.empleadoId, token);
-        nuevoEstado = 'Aprobada por Gerente RRHH';
-        mensaje = 'Solicitud aprobada por Gerente RRHH. Enviada al Director RRHH';
-      } else if (nivel === 'director-rrhh') {
-        await vacantesService.aprobarSolicitudDirectorRRHH(solicitudId, user.empleadoId, token);
-        nuevoEstado = 'Aprobada por Director RRHH';
-        mensaje = 'Solicitud autorizada por Director RRHH. Lista para publicación';
-      }
-      
-      setSolicitudes(prev => prev.map(s => 
-        s.id === solicitudId ? { ...s, estado: nuevoEstado } : s
-      ));
-      mostrarExito(mensaje);
-    } catch (err) {
-      setError('Error al aprobar solicitud');
-    }
-  };
-
-  const publicarVacante = async (solicitudId) => {
-    try {
-      const token = getStoredToken();
-      const nuevaVacante = await vacantesService.publicarVacanteDesdeSolicitud(solicitudId, user.empleadoId, token);
-      
-      setSolicitudes(prev => prev.map(s => 
-        s.id === solicitudId ? { ...s, estado: 'Publicada' } : s
-      ));
-      setVacantes(prev => [...prev, nuevaVacante]);
-      mostrarExito('Vacante publicada y habilitada para postulaciones');
-    } catch (err) {
-      setError('Error al publicar vacante');
-    }
-  };
-
-  const crearVacanteDirecta = async (datos) => {
-    try {
-      const token = getStoredToken();
-      const nueva = await vacantesService.crearVacanteDirecta({
-        ...datos,
-        creadoPor: user.empleadoId,
-        estado: 'Activa'
-      }, token);
-      setVacantes(prev => [...prev, nueva]);
-      setModalVacante(false);
-      mostrarExito('Vacante creada y publicada directamente');
-    } catch (err) {
-      setError('Error al crear vacante');
-    }
-  };
-
-  const postularse = async (datos) => {
-    try {
-      const token = getStoredToken();
-      const nueva = await vacantesService.crearPostulacion({
-        ...datos,
-        vacanteId: vacanteSeleccionada.id,
-        empleadoId: user.empleadoId,
-        estado: 'Recibida'
-      }, token);
-      setPostulaciones(prev => [...prev, nueva]);
-      setModalPostulacion(false);
-      setVacanteSeleccionada(null);
-      mostrarExito('Postulación enviada exitosamente');
-    } catch (err) {
-      setError('Error al enviar postulación');
-    }
-  };
-
-  const cambiarEstadoPostulacion = async (postulacionId, nuevoEstado) => {
-    try {
-      const token = getStoredToken();
-      await vacantesService.cambiarEstadoPostulacion(postulacionId, nuevoEstado, '', user.empleadoId, token);
-      setPostulaciones(prev => prev.map(p => 
-        p.id === postulacionId ? { ...p, estado: nuevoEstado } : p
-      ));
-      mostrarExito(`Estado actualizado: ${nuevoEstado}`);
-    } catch (err) {
-      setError('Error al actualizar estado');
-    }
-  };
-
-  const mostrarExito = (mensaje) => {
-    setSuccess(mensaje);
-    setTimeout(() => setSuccess(null), 5000);
-  };
-
-  if (loading || loadingData) {
-    return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '400px', flexDirection: 'column', gap: '1rem' }}>
-        <Loader size={48} style={{ color: '#3b82f6', animation: 'spin 1s linear infinite' }} />
-        <p>Cargando sistema de vacantes...</p>
-      </div>
-    );
+    console.log('✅ Solicitud creada:', nueva);
+    setSolicitudes(prev => [...prev, nueva]);
+    setModalSolicitud(false);
+    mostrarExito('Solicitud enviada al Área de Talento Humano');
+  } catch (err) {
+    console.error('❌ Error al crear solicitud:', err);
+    setError('Error al crear solicitud');
   }
+};
 
-  if (!user) {
-    return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '300px', flexDirection: 'column', gap: '1rem' }}>
-        <AlertCircle size={48} style={{ color: '#dc2626' }} />
-        <p style={{ color: '#dc2626' }}>Acceso no autorizado</p>
-      </div>
-    );
+const aprobarSolicitud = async (solicitudId, nivel) => {
+  try {
+    const token = getStoredToken();
+    let nuevoEstado, mensaje;
+    
+    if (nivel === 'director-area') {
+      await vacantesService.aprobarSolicitudDirectorArea(solicitudId, user.empleadoId, token);
+      nuevoEstado = 'Aprobada por Director de Área';
+      mensaje = 'Solicitud aprobada por Director de Área. Enviada a Gerente RRHH';
+    } else if (nivel === 'gerente-rrhh') {
+      await vacantesService.aprobarSolicitudGerenteRRHH(solicitudId, user.empleadoId, token);
+      nuevoEstado = 'Aprobada por Gerente RRHH';
+      mensaje = 'Solicitud aprobada por Gerente RRHH. Enviada al Director RRHH';
+    } else if (nivel === 'director-rrhh') {
+      await vacantesService.aprobarSolicitudDirectorRRHH(solicitudId, user.empleadoId, token);
+      nuevoEstado = 'Aprobada por Director RRHH';
+      mensaje = 'Solicitud autorizada por Director RRHH. Lista para publicación';
+    }
+    
+    setSolicitudes(prev => prev.map(s => 
+      s.id === solicitudId ? { ...s, estado: nuevoEstado } : s
+    ));
+    mostrarExito(mensaje);
+  } catch (err) {
+    setError('Error al aprobar solicitud');
   }
+};
 
+const publicarVacante = async (solicitudId) => {
+  try {
+    const token = getStoredToken();
+    const nuevaVacante = await vacantesService.publicarVacanteDesdeSolicitud(solicitudId, user.empleadoId, token);
+    
+    setSolicitudes(prev => prev.map(s => 
+      s.id === solicitudId ? { ...s, estado: 'Publicada' } : s
+    ));
+    setVacantes(prev => [...prev, nuevaVacante]);
+    mostrarExito('Vacante publicada y habilitada para postulaciones');
+  } catch (err) {
+    setError('Error al publicar vacante');
+  }
+};
+
+const crearVacanteDirecta = async (datos) => {
+  try {
+    const token = getStoredToken();
+    const nueva = await vacantesService.crearVacanteDirecta({
+      ...datos,
+      creadoPor: user.empleadoId,
+      estado: 'Activa'
+    }, token);
+    setVacantes(prev => [...prev, nueva]);
+    setModalVacante(false);
+    mostrarExito('Vacante creada y publicada directamente');
+  } catch (err) {
+    setError('Error al crear vacante');
+  }
+};
+
+const postularse = async (datos) => {
+  try {
+    const token = getStoredToken();
+    const nueva = await vacantesService.crearPostulacion({
+      ...datos,
+      vacanteId: vacanteSeleccionada.id,
+      empleadoId: user.empleadoId,
+      estado: 'Recibida'
+    }, token);
+    setPostulaciones(prev => [...prev, nueva]);
+    setModalPostulacion(false);
+    setVacanteSeleccionada(null);
+    mostrarExito('Postulación enviada exitosamente');
+  } catch (err) {
+    setError('Error al enviar postulación');
+  }
+};
+
+const cambiarEstadoPostulacion = async (postulacionId, nuevoEstado) => {
+  try {
+    const token = getStoredToken();
+    await vacantesService.cambiarEstadoPostulacion(postulacionId, nuevoEstado, '', user.empleadoId, token);
+    setPostulaciones(prev => prev.map(p => 
+      p.id === postulacionId ? { ...p, estado: nuevoEstado } : p
+    ));
+    mostrarExito(`Estado actualizado: ${nuevoEstado}`);
+  } catch (err) {
+    setError('Error al actualizar estado');
+  }
+};
+
+const mostrarExito = (mensaje) => {
+  setSuccess(mensaje);
+  setTimeout(() => setSuccess(null), 5000);
+};
+
+if (loading || loadingData) {
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: '#f8fafc', padding: '1.5rem' }}>
-      {/* Header Profesional */}
-      <div style={{ backgroundColor: 'white', borderRadius: '0.75rem', boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)', marginBottom: '1.5rem' }}>
-        <div style={{ background: 'linear-gradient(135deg, #1e40af 0%, #3730a3 100%)', color: 'white', padding: '2rem', borderRadius: '0.75rem 0.75rem 0 0' }}>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-              <Briefcase size={44} />
-              <div>
-                <h1 style={{ fontSize: '1.75rem', fontWeight: 'bold', margin: 0 }}>Sistema de Vacantes</h1>
-                <p style={{ opacity: 0.9, margin: 0 }}>Gestión profesional de reclutamiento y selección</p>
-              </div>
-            </div>
-            <div style={{ backgroundColor: 'rgba(255, 255, 255, 0.15)', borderRadius: '0.75rem', padding: '1rem' }}>
-              <div style={{ fontWeight: '600', fontSize: '1rem' }}>{user.name}</div>
-              <div style={{ opacity: 0.9 }}>{user.role}</div>
+    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '400px', flexDirection: 'column', gap: '1rem' }}>
+      <Loader size={48} style={{ color: '#3b82f6', animation: 'spin 1s linear infinite' }} />
+      <p>Cargando sistema de vacantes...</p>
+    </div>
+  );
+}
+
+if (!user) {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '300px', flexDirection: 'column', gap: '1rem' }}>
+      <AlertCircle size={48} style={{ color: '#dc2626' }} />
+      <p style={{ color: '#dc2626' }}>Acceso no autorizado</p>
+    </div>
+  );
+}
+
+return (
+  <div style={{ minHeight: '100vh', backgroundColor: '#f8fafc', padding: '1.5rem' }}>
+    {/* Header Profesional */}
+    <div style={{ backgroundColor: 'white', borderRadius: '0.75rem', boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)', marginBottom: '1.5rem' }}>
+      <div style={{ background: 'linear-gradient(135deg, #1e40af 0%, #3730a3 100%)', color: 'white', padding: '2rem', borderRadius: '0.75rem 0.75rem 0 0' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+            <Briefcase size={44} />
+            <div>
+              <h1 style={{ fontSize: '1.75rem', fontWeight: 'bold', margin: 0 }}>Sistema de Vacantes</h1>
+              <p style={{ opacity: 0.9, margin: 0 }}>Gestión profesional de reclutamiento y selección</p>
             </div>
           </div>
-
-          {/* Indicadores de rendimiento */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
-            <div style={{ backgroundColor: 'rgba(255, 255, 255, 0.1)', borderRadius: '0.5rem', padding: '1rem' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                <Clock size={20} />
-                <span style={{ fontSize: '0.875rem' }}>Solicitudes Pendientes</span>
-              </div>
-              <div style={{ fontSize: '2rem', fontWeight: 'bold' }}>{estadisticas.solicitudesPendientes || 0}</div>
-            </div>
-            <div style={{ backgroundColor: 'rgba(255, 255, 255, 0.1)', borderRadius: '0.5rem', padding: '1rem' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                <Briefcase size={20} />
-                <span style={{ fontSize: '0.875rem' }}>Vacantes Activas</span>
-              </div>
-              <div style={{ fontSize: '2rem', fontWeight: 'bold' }}>{estadisticas.vacantesActivas || 0}</div>
-            </div>
-            <div style={{ backgroundColor: 'rgba(255, 255, 255, 0.1)', borderRadius: '0.5rem', padding: '1rem' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                <Users size={20} />
-                <span style={{ fontSize: '0.875rem' }}>Postulaciones</span>
-              </div>
-              <div style={{ fontSize: '2rem', fontWeight: 'bold' }}>{estadisticas.postulaciones || 0}</div>
-            </div>
-            <div style={{ backgroundColor: 'rgba(255, 255, 255, 0.1)', borderRadius: '0.5rem', padding: '1rem' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                <CheckCircle size={20} />
-                <span style={{ fontSize: '0.875rem' }}>Tasa de Aprobación</span>
-              </div>
-              <div style={{ fontSize: '2rem', fontWeight: 'bold' }}>{estadisticas.tasaAprobacion || 0}%</div>
-            </div>
+          <div style={{ backgroundColor: 'rgba(255, 255, 255, 0.15)', borderRadius: '0.75rem', padding: '1rem' }}>
+            <div style={{ fontWeight: '600', fontSize: '1rem' }}>{user.name}</div>
+            <div style={{ opacity: 0.9 }}>{user.role}</div>
           </div>
         </div>
 
-        {/* Navegación con roles específicos */}
-        <div style={{ display: 'flex', overflowX: 'auto', backgroundColor: '#f8fafc' }}>
-          {[
-            { id: 'dashboard', nombre: 'Dashboard', show: true },
-            { id: 'solicitudes', nombre: 'Solicitudes', show: permisos.crearSolicitud || permisos.aprobarDirectorArea || permisos.aprobarGerenteRRHH || permisos.aprobarDirectorRRHH || permisos.publicarVacante },
-            { id: 'vacantes', nombre: 'Vacantes', show: true },
-            { id: 'postulaciones', nombre: 'Postulaciones', show: permisos.gestionarPostulaciones || permisos.postularse }
-          ].filter(v => v.show).map(vista => (
-            <button
-              key={vista.id}
-              onClick={() => setVistaActiva(vista.id)}
-              style={{
-                padding: '1rem 1.5rem',
-                border: 'none',
-                backgroundColor: 'transparent',
-                color: vistaActiva === vista.id ? '#1e40af' : '#6b7280',
-                borderBottom: `3px solid ${vistaActiva === vista.id ? '#1e40af' : 'transparent'}`,
-                cursor: 'pointer',
-                fontWeight: vistaActiva === vista.id ? '600' : '500',
-                fontSize: '0.875rem'
-              }}
-            >
-              {vista.nombre}
-            </button>
-          ))}
+        {/* Indicadores de rendimiento */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem' }}>
+          <div style={{ backgroundColor: 'rgba(255, 255, 255, 0.1)', borderRadius: '0.5rem', padding: '1rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+              <Clock size={20} />
+              <span style={{ fontSize: '0.875rem' }}>Solicitudes Pendientes</span>
+            </div>
+            <div style={{ fontSize: '2rem', fontWeight: 'bold' }}>{estadisticas.solicitudesPendientes || 0}</div>
+          </div>
+          <div style={{ backgroundColor: 'rgba(255, 255, 255, 0.1)', borderRadius: '0.5rem', padding: '1rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+              <Briefcase size={20} />
+              <span style={{ fontSize: '0.875rem' }}>Vacantes Activas</span>
+            </div>
+            <div style={{ fontSize: '2rem', fontWeight: 'bold' }}>{estadisticas.vacantesActivas || 0}</div>
+          </div>
+          <div style={{ backgroundColor: 'rgba(255, 255, 255, 0.1)', borderRadius: '0.5rem', padding: '1rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+              <Users size={20} />
+              <span style={{ fontSize: '0.875rem' }}>Postulaciones</span>
+            </div>
+            <div style={{ fontSize: '2rem', fontWeight: 'bold' }}>{estadisticas.postulaciones || 0}</div>
+          </div>
+          <div style={{ backgroundColor: 'rgba(255, 255, 255, 0.1)', borderRadius: '0.5rem', padding: '1rem' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+              <CheckCircle size={20} />
+              <span style={{ fontSize: '0.875rem' }}>Tasa de Aprobación</span>
+            </div>
+            <div style={{ fontSize: '2rem', fontWeight: 'bold' }}>{estadisticas.tasaAprobacion || 0}%</div>
+          </div>
         </div>
       </div>
+
+      {/* Navegación con roles específicos */}
+      <div style={{ display: 'flex', overflowX: 'auto', backgroundColor: '#f8fafc' }}>
+        {[
+          { id: 'dashboard', nombre: 'Dashboard', show: true },
+          { id: 'solicitudes', nombre: 'Solicitudes', show: permisos.crearSolicitud || permisos.aprobarDirectorArea || permisos.aprobarGerenteRRHH || permisos.aprobarDirectorRRHH || permisos.publicarVacante },
+          { id: 'vacantes', nombre: 'Vacantes', show: true },
+          { id: 'postulaciones', nombre: 'Postulaciones', show: permisos.gestionarPostulaciones || permisos.postularse }
+        ].filter(v => v.show).map(vista => (
+          <button
+            key={vista.id}
+            onClick={() => setVistaActiva(vista.id)}
+            style={{
+              padding: '1rem 1.5rem',
+              border: 'none',
+              backgroundColor: 'transparent',
+              color: vistaActiva === vista.id ? '#1e40af' : '#6b7280',
+              borderBottom: `3px solid ${vistaActiva === vista.id ? '#1e40af' : 'transparent'}`,
+              cursor: 'pointer',
+              fontWeight: vistaActiva === vista.id ? '600' : '500',
+              fontSize: '0.875rem'
+            }}
+          >
+            {vista.nombre}
+          </button>
+        ))}
+      </div>
+    </div>
 
       {/* Contenido Principal */}
       <div style={{ backgroundColor: 'white', borderRadius: '0.75rem', boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)', padding: '2rem' }}>
@@ -653,11 +676,12 @@ const EstadisticaTarjeta = ({ valor, etiqueta, color }) => (
 const TarjetaSolicitudProfesional = ({ solicitud, user, permisos, aprobarSolicitud, publicarVacante, solicitudEnProceso, setSolicitudEnProceso }) => {
   const [mostrarDetalles, setMostrarDetalles] = useState(false);
   
-  // Variables de permisos definidas correctamente
-  const puedeAprobarDirectorArea = permisos.aprobarDirectorArea && solicitud.estado === 'Pendiente';
-  const puedeAprobarGerenteRRHH = permisos.aprobarGerenteRRHH && solicitud.estado === 'Aprobada por Director de Área';
-  const puedeAprobarDirectorRRHH = permisos.aprobarDirectorRRHH && solicitud.estado === 'Aprobada por Gerente RRHH';
-  const puedePublicar = permisos.publicarVacante && solicitud.estado === 'Aprobada por Director RRHH';
+  const rolNormalizado = user?.role?.toLowerCase().replace(/\s+/g, '_');
+  
+  const puedeAprobarDirectorArea = rolNormalizado === 'director' && solicitud.estado === 'Pendiente';
+  const puedeAprobarGerenteRRHH = rolNormalizado === 'gerente_rrhh' && solicitud.estado === 'Aprobada por Director de Área';
+  const puedeAprobarDirectorRRHH = rolNormalizado === 'director_rrhh' && solicitud.estado === 'Aprobada por Gerente RRHH';
+  const puedePublicar = ['director_rrhh', 'gerente_rrhh', 'rrhh'].includes(rolNormalizado) && solicitud.estado === 'Aprobada por Director RRHH';
 
   const getProgresoFlujo = () => {
     switch (solicitud.estado) {
@@ -690,32 +714,160 @@ const TarjetaSolicitudProfesional = ({ solicitud, user, permisos, aprobarSolicit
 
   return (
     <div style={{ border: '1px solid #e5e7eb', borderRadius: '0.75rem', padding: '1.5rem', backgroundColor: 'white', boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)' }}>
-      {/* Header y contenido igual que antes... */}
-      
-      {/* Solo los botones cambian */}
+      {/* Header */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
+        <div style={{ flex: 1 }}>
+          <h3 style={{ fontSize: '1.25rem', fontWeight: '600', margin: '0 0 0.5rem 0', color: '#1e293b' }}>{solicitud.cargo}</h3>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', fontSize: '0.875rem', color: '#64748b', marginBottom: '0.5rem' }}>
+            <span><strong>Solicitante:</strong> {solicitud.solicitante}</span>
+            <span>•</span>
+            <span><strong>Departamento:</strong> {solicitud.departamento}</span>
+            <span>•</span>
+            <span><strong>Fecha:</strong> {solicitud.fechaSolicitud}</span>
+          </div>
+          <div style={{ fontSize: '1rem', fontWeight: '600', color: '#059669', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+            <DollarSign size={16} />
+            RD${(solicitud.salarioMin || 0).toLocaleString()} - RD${(solicitud.salarioMax || 0).toLocaleString()}
+          </div>
+        </div>
+        <EstadoBadge estado={solicitud.estado} />
+      </div>
+
+      {/* Barra de progreso */}
+      <div style={{ marginBottom: '1rem' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: '#6b7280', marginBottom: '0.5rem' }}>
+          <span>Progreso del flujo</span>
+          <span>{getProgresoFlujo()}%</span>
+        </div>
+        <div style={{ width: '100%', height: '8px', backgroundColor: '#e5e7eb', borderRadius: '1rem', overflow: 'hidden' }}>
+          <div style={{ width: `${getProgresoFlujo()}%`, height: '100%', backgroundColor: '#3b82f6', transition: 'width 0.3s ease' }}></div>
+        </div>
+      </div>
+
+      {/* Detalles expandibles */}
+      <button 
+        onClick={() => setMostrarDetalles(!mostrarDetalles)}
+        style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#3b82f6', border: 'none', background: 'none', cursor: 'pointer', fontSize: '0.875rem', fontWeight: '500', marginBottom: '1rem' }}
+      >
+        <Eye size={16} />
+        {mostrarDetalles ? 'Ocultar' : 'Ver'} detalles
+      </button>
+
+      {mostrarDetalles && (
+        <div style={{ backgroundColor: '#f8fafc', borderRadius: '0.5rem', padding: '1rem', marginBottom: '1rem' }}>
+          <div style={{ marginBottom: '1rem' }}>
+            <h4 style={{ fontSize: '0.875rem', fontWeight: '600', marginBottom: '0.5rem', color: '#1e293b' }}>Descripción:</h4>
+            <p style={{ fontSize: '0.875rem', color: '#64748b', margin: 0, lineHeight: '1.4' }}>{solicitud.descripcion || 'No especificada'}</p>
+          </div>
+          <div style={{ marginBottom: '1rem' }}>
+            <h4 style={{ fontSize: '0.875rem', fontWeight: '600', marginBottom: '0.5rem', color: '#1e293b' }}>Requisitos:</h4>
+            <p style={{ fontSize: '0.875rem', color: '#64748b', margin: 0, lineHeight: '1.4' }}>{solicitud.requisitos || 'No especificados'}</p>
+          </div>
+          <div>
+            <h4 style={{ fontSize: '0.875rem', fontWeight: '600', marginBottom: '0.5rem', color: '#1e293b' }}>Justificación:</h4>
+            <p style={{ fontSize: '0.875rem', color: '#64748b', margin: 0, lineHeight: '1.4' }}>{solicitud.justificacion}</p>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid #e5e7eb' }}>
+            <div>
+              <span style={{ fontSize: '0.75rem', color: '#6b7280' }}>Modalidad:</span>
+              <div style={{ fontSize: '0.875rem', fontWeight: '600', color: '#1e293b' }}>{solicitud.modalidad || 'Presencial'}</div>
+            </div>
+            <div>
+              <span style={{ fontSize: '0.75rem', color: '#6b7280' }}>Prioridad:</span>
+              <div style={{ fontSize: '0.875rem', fontWeight: '600', color: '#1e293b' }}>{solicitud.prioridad || 'Media'}</div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Botones de acción */}
       {(puedeAprobarDirectorArea || puedeAprobarGerenteRRHH || puedeAprobarDirectorRRHH || puedePublicar) && (
         <div style={{ display: 'flex', gap: '0.5rem', paddingTop: '1rem', borderTop: '1px solid #f1f5f9', flexWrap: 'wrap' }}>
           {puedeAprobarDirectorArea && (
-            <button onClick={() => handleAccion('aprobar-director-area', solicitud.id)} 
-                    style={{ backgroundColor: '#0ea5e9', color: 'white', padding: '0.5rem 1rem', borderRadius: '0.5rem', border: 'none', cursor: 'pointer' }}>
+            <button 
+              onClick={() => handleAccion('aprobar-director-area', solicitud.id)} 
+              disabled={solicitudEnProceso === solicitud.id}
+              style={{ 
+                backgroundColor: solicitudEnProceso === solicitud.id ? '#9ca3af' : '#0ea5e9', 
+                color: 'white', 
+                padding: '0.5rem 1rem', 
+                borderRadius: '0.5rem', 
+                border: 'none', 
+                cursor: solicitudEnProceso === solicitud.id ? 'not-allowed' : 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                fontSize: '0.875rem',
+                fontWeight: '500'
+              }}
+            >
+              {solicitudEnProceso === solicitud.id ? <Loader size={16} /> : <CheckCircle size={16} />}
               Aprobar como Director de Área
             </button>
           )}
           {puedeAprobarGerenteRRHH && (
-            <button onClick={() => handleAccion('aprobar-gerente-rrhh', solicitud.id)} 
-                    style={{ backgroundColor: '#059669', color: 'white', padding: '0.5rem 1rem', borderRadius: '0.5rem', border: 'none', cursor: 'pointer' }}>
+            <button 
+              onClick={() => handleAccion('aprobar-gerente-rrhh', solicitud.id)} 
+              disabled={solicitudEnProceso === solicitud.id}
+              style={{ 
+                backgroundColor: solicitudEnProceso === solicitud.id ? '#9ca3af' : '#059669', 
+                color: 'white', 
+                padding: '0.5rem 1rem', 
+                borderRadius: '0.5rem', 
+                border: 'none', 
+                cursor: solicitudEnProceso === solicitud.id ? 'not-allowed' : 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                fontSize: '0.875rem',
+                fontWeight: '500'
+              }}
+            >
+              {solicitudEnProceso === solicitud.id ? <Loader size={16} /> : <CheckCircle size={16} />}
               Aprobar como Gerente RRHH
             </button>
           )}
           {puedeAprobarDirectorRRHH && (
-            <button onClick={() => handleAccion('aprobar-director-rrhh', solicitud.id)} 
-                    style={{ backgroundColor: '#7c3aed', color: 'white', padding: '0.5rem 1rem', borderRadius: '0.5rem', border: 'none', cursor: 'pointer' }}>
+            <button 
+              onClick={() => handleAccion('aprobar-director-rrhh', solicitud.id)} 
+              disabled={solicitudEnProceso === solicitud.id}
+              style={{ 
+                backgroundColor: solicitudEnProceso === solicitud.id ? '#9ca3af' : '#7c3aed', 
+                color: 'white', 
+                padding: '0.5rem 1rem', 
+                borderRadius: '0.5rem', 
+                border: 'none', 
+                cursor: solicitudEnProceso === solicitud.id ? 'not-allowed' : 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                fontSize: '0.875rem',
+                fontWeight: '500'
+              }}
+            >
+              {solicitudEnProceso === solicitud.id ? <Loader size={16} /> : <CheckCircle size={16} />}
               Autorizar como Director RRHH
             </button>
           )}
           {puedePublicar && (
-            <button onClick={() => handleAccion('publicar', solicitud.id)} 
-                    style={{ backgroundColor: '#dc2626', color: 'white', padding: '0.5rem 1rem', borderRadius: '0.5rem', border: 'none', cursor: 'pointer' }}>
+            <button 
+              onClick={() => handleAccion('publicar', solicitud.id)} 
+              disabled={solicitudEnProceso === solicitud.id}
+              style={{ 
+                backgroundColor: solicitudEnProceso === solicitud.id ? '#9ca3af' : '#dc2626', 
+                color: 'white', 
+                padding: '0.5rem 1rem', 
+                borderRadius: '0.5rem', 
+                border: 'none', 
+                cursor: solicitudEnProceso === solicitud.id ? 'not-allowed' : 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                fontSize: '0.875rem',
+                fontWeight: '500'
+              }}
+            >
+              {solicitudEnProceso === solicitud.id ? <Loader size={16} /> : <Send size={16} />}
               Publicar Vacante
             </button>
           )}

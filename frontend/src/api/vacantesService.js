@@ -95,20 +95,21 @@ const vacantesService = {
   },
 
   // ===============================
-  // SOLICITUDES - FLUJO COMPLETO
+  // SOLICITUDES - FLUJO COMPLETO JERÁRQUICO
   // ===============================
   
-  async getSolicitudes(usuarioID, rol) {
+  async getSolicitudes(usuarioID, rol, token) {
     try {
-      console.log('Obteniendo solicitudes para usuario:', usuarioID, 'rol:', rol);
+      console.log('📡 Llamando getSolicitudes:', { usuarioID, rol });
       const params = new URLSearchParams();
       if (usuarioID) params.append('usuarioID', usuarioID);
       if (rol) params.append('rol', rol);
+      
       const response = await api.get(`/vacantes/solicitudes?${params.toString()}`);
-      console.log('Solicitudes obtenidas:', response.data?.length || 0);
+      console.log('✅ Respuesta del servidor:', response.data?.length || 0, 'solicitudes');
       return response.data;
     } catch (error) {
-      console.error('Error al obtener solicitudes:', error.response?.data || error.message);
+      console.error('❌ Error al obtener solicitudes:', error.response?.data || error.message);
       throw error;
     }
   },
@@ -130,14 +131,17 @@ const vacantesService = {
     return this.crearSolicitud(solicitud);
   },
 
+  // ========== NUEVOS MÉTODOS DEL FLUJO JERÁRQUICO ==========
+
   // Aprobar como Director de Área
-  async aprobarSolicitudDirectorArea(solicitudId, aprobadorID) {
+  async aprobarSolicitudDirectorArea(solicitudId, aprobadorID, token) {
     try {
       console.log('Director de Área aprobando solicitud:', solicitudId);
-      const response = await api.put(`/vacantes/solicitudes/${solicitudId}/aprobar`, { 
-        aprobadorID,
-        comentarios: 'Aprobado por Director de Área'
-      });
+      const response = await api.post(
+        `/vacantes/solicitudes/${solicitudId}/aprobar-director-area`, 
+        { aprobadorID },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
       console.log('Solicitud aprobada por Director de Área:', response.data);
       return response.data;
     } catch (error) {
@@ -147,13 +151,14 @@ const vacantesService = {
   },
 
   // Aprobar como Gerente RRHH
-  async aprobarSolicitudGerenteRRHH(solicitudId, aprobadorID) {
+  async aprobarSolicitudGerenteRRHH(solicitudId, aprobadorID, token) {
     try {
       console.log('Gerente RRHH aprobando solicitud:', solicitudId);
-      const response = await api.put(`/vacantes/solicitudes/${solicitudId}/aprobar`, { 
-        aprobadorID,
-        comentarios: 'Aprobado por Gerente RRHH'
-      });
+      const response = await api.post(
+        `/vacantes/solicitudes/${solicitudId}/aprobar-gerente-rrhh`, 
+        { aprobadorID },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
       console.log('Solicitud aprobada por Gerente RRHH:', response.data);
       return response.data;
     } catch (error) {
@@ -163,13 +168,14 @@ const vacantesService = {
   },
 
   // Aprobar como Director RRHH
-  async aprobarSolicitudDirectorRRHH(solicitudId, aprobadorID) {
+  async aprobarSolicitudDirectorRRHH(solicitudId, aprobadorID, token) {
     try {
       console.log('Director RRHH aprobando solicitud:', solicitudId);
-      const response = await api.put(`/vacantes/solicitudes/${solicitudId}/aprobar`, { 
-        aprobadorID,
-        comentarios: 'Aprobado por Director RRHH'
-      });
+      const response = await api.post(
+        `/vacantes/solicitudes/${solicitudId}/aprobar-director-rrhh`, 
+        { aprobadorID },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
       console.log('Solicitud aprobada por Director RRHH:', response.data);
       return response.data;
     } catch (error) {
@@ -178,27 +184,50 @@ const vacantesService = {
     }
   },
 
-  // Publicar vacante desde solicitud aprobada
-  async publicarVacanteDesdeSolicitud(solicitudId, publicadorID) {
+  // Asignar responsable de publicación (Personal RRHH)
+  async asignarResponsablePublicacion(solicitudId, responsableID, token) {
     try {
-      console.log('Publicando vacante desde solicitud:', solicitudId);
-      // Aquí usamos el endpoint de aprobar pero con un flag especial
-      const response = await api.put(`/vacantes/solicitudes/${solicitudId}/aprobar`, { 
-        aprobadorID: publicadorID,
-        comentarios: 'Vacante publicada y habilitada para postulaciones'
-      });
-      console.log('Vacante publicada:', response.data);
+      console.log('Asignando responsable de publicación para solicitud:', solicitudId);
+      const response = await api.post(
+        `/vacantes/solicitudes/${solicitudId}/asignar-responsable`, 
+        { responsableID },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      console.log('Responsable asignado:', response.data);
       return response.data;
     } catch (error) {
-      console.error('Error al publicar vacante:', error.response?.data || error.message);
+      console.error('Error al asignar responsable:', error.response?.data || error.message);
       throw error;
     }
   },
 
-  async aprobarSolicitud(solicitudId, comentarios = '') {
+  // ========== FIN NUEVOS MÉTODOS ==========
+
+  // Publicar vacante desde solicitud aprobada (usado por personal RRHH)
+  async publicarVacanteDesdeSolicitud(solicitudId, publicadorID, token) {
+      try {
+        console.log('Publicando vacante desde solicitud:', solicitudId);
+        const response = await api.post(  // ✅ POST
+          `/vacantes/solicitudes/${solicitudId}/publicar`,  // ✅ RUTA CORRECTA
+          { publicadorID },
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        console.log('Vacante publicada:', response.data);
+        return response.data;
+      } catch (error) {
+        console.error('Error al publicar vacante:', error.response?.data || error.message);
+        throw error;
+      }
+    },
+  // Métodos legacy para compatibilidad
+  async aprobarSolicitud(solicitudId, comentarios = '', token) {
     try {
-      console.log('Aprobando solicitud:', solicitudId, comentarios);
-      const response = await api.put(`/vacantes/solicitudes/${solicitudId}/aprobar`, { comentarios });
+      console.log('Aprobando solicitud (legacy):', solicitudId, comentarios);
+      const response = await api.put(
+        `/vacantes/solicitudes/${solicitudId}/aprobar`, 
+        { comentarios },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
       console.log('Solicitud aprobada:', response.data);
       return response.data;
     } catch (error) {
@@ -207,10 +236,14 @@ const vacantesService = {
     }
   },
 
-  async rechazarSolicitud(solicitudId, comentarios = '') {
+  async rechazarSolicitud(solicitudId, comentarios = '', token) {
     try {
       console.log('Rechazando solicitud:', solicitudId, comentarios);
-      const response = await api.put(`/vacantes/solicitudes/${solicitudId}/rechazar`, { comentarios });
+      const response = await api.put(
+        `/vacantes/solicitudes/${solicitudId}/rechazar`, 
+        { comentarios },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
       console.log('Solicitud rechazada:', response.data);
       return response.data;
     } catch (error) {

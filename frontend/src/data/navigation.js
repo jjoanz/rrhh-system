@@ -1,7 +1,7 @@
 import { 
   Users, Settings, Shield, Check, Plus, Edit, UserCheck,
   Briefcase, FileText, DollarSign, Calendar, GraduationCap,
-  Clock, Building, BadgeCheck, BarChart3, Send
+  Clock, Building, BadgeCheck, BarChart3, Send, User
 } from 'lucide-react';
 
 // Navegación principal
@@ -9,7 +9,7 @@ const NAVIGATION_ITEMS = [
   { id: 'dashboard', label: 'Dashboard', icon: BarChart3, modulo: null, path: '/dashboard' },
   { id: 'empleados', label: 'Empleados', icon: Users, modulo: 'empleados', path: '/empleados' },
   { id: 'vacantes', label: 'Vacantes', icon: Briefcase, modulo: 'vacantes', path: '/vacantes' },
-  { id: 'solicitudes', label: 'Solicitudes', icon: Send, modulo: 'solicitudes', path: '/solicitudes' },
+  { id: 'perfil', label: 'Perfil', icon: User, modulo: 'perfil', path: '/perfil' },
   { id: 'postulaciones', label: 'Postulaciones', icon: FileText, modulo: 'postulaciones', path: '/postulaciones' },
   { id: 'nomina', label: 'Nómina', icon: DollarSign, modulo: 'nomina', path: '/nomina' },
   { id: 'vacaciones', label: 'Vacaciones', icon: Calendar, modulo: 'vacaciones', path: '/vacaciones' },
@@ -20,6 +20,13 @@ const NAVIGATION_ITEMS = [
   { id: 'reportes', label: 'Reportes', icon: BarChart3, modulo: 'reportes', path: '/reportes' },
   { id: 'admin', label: 'Administración', icon: Settings, modulo: 'admin', path: '/admin' }
 ];
+
+// Roles que tienen acceso directo a ciertos módulos sin necesidad de permisos explícitos
+const ACCESO_DIRECTO_POR_ROL = {
+  vacantes: ['gerente', 'director', 'gerente_rrhh', 'director_rrhh', 'rrhh', 'colaborador', 'empleado'],
+  perfil: ['gerente', 'director', 'gerente_rrhh', 'director_rrhh', 'rrhh', 'colaborador', 'empleado', 'admin'],
+  postulaciones: ['gerente', 'director', 'gerente_rrhh', 'director_rrhh', 'rrhh', 'colaborador', 'empleado']
+};
 
 /**
  * Devuelve los elementos de navegación que un usuario puede ver según su rol y permisos
@@ -37,21 +44,31 @@ export const getNavigationByRoleAndPermissions = (user, permisos = []) => {
 
   if (!user) return [NAVIGATION_ITEMS[0]]; // Solo dashboard si no hay usuario
 
+  const rolUsuario = (user?.rol || user?.role)?.toLowerCase().replace(/\s+/g, '_');
+
   // Admin ve todo
-  if (user?.rol === 'admin' || user?.role === 'admin') {
+  if (rolUsuario === 'admin') {
     console.log('👑 Usuario admin - mostrando todo');
     return NAVIGATION_ITEMS;
   }
 
-  // Filtrar módulos según permisos
+  // Filtrar módulos según permisos y acceso directo por rol
   const navegacionFiltrada = NAVIGATION_ITEMS.filter(item => {
     // Siempre mostrar dashboard
     if (!item.modulo) {
       console.log('✅ Mostrando:', item.label, '(dashboard - siempre visible)');
       return true;
     }
+
+    // Verificar si el rol tiene acceso directo al módulo
+    const tieneAccesoDirecto = ACCESO_DIRECTO_POR_ROL[item.modulo]?.includes(rolUsuario);
     
-    // Buscar permiso correspondiente
+    if (tieneAccesoDirecto) {
+      console.log('✅ Acceso directo por rol:', item.label, '(rol:', rolUsuario, ')');
+      return true;
+    }
+    
+    // Buscar permiso correspondiente en la BD
     const permiso = permisos.find(p => {
       const moduloPermiso = p.NombreModulo?.toLowerCase();
       const moduloNavegacion = item.modulo?.toLowerCase();
@@ -80,5 +97,3 @@ export const getNavigationByRoleAndPermissions = (user, permisos = []) => {
 };
 
 export default NAVIGATION_ITEMS;
-
-

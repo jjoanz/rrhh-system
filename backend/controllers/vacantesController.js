@@ -290,267 +290,402 @@ class VacantesController {
   // SOLICITUDES - 100% REAL DE BD
   // ===============================
 
-  static async getSolicitudes(req, res) {
+static async getSolicitudes(req, res) {
+  try {
+    const pool = req.app.locals.db;
+    const { usuarioID, rol } = req.query;
+
+    console.log('📋 getSolicitudes - Params:', { usuarioID, rol });
+
+    let query = `
+      SELECT 
+        sv.SolicitudVacanteID as id,
+        sv.Titulo as cargo,
+        COALESCE(d.Nombre, 'Sin Departamento') as departamento,
+        COALESCE(e.NOMBRE + ' ' + e.APELLIDO, 'Usuario Desconocido') as solicitante,
+        sv.FechaSolicitud as fechaSolicitud,
+        sv.Estado as estado,
+        sv.Justificacion as justificacion,
+        sv.Descripcion as descripcion,
+        sv.Requisitos as requisitos,
+        sv.SalarioMinimo as salarioMin,
+        sv.SalarioMaximo as salarioMax,
+        sv.Modalidad as modalidad,
+        sv.Urgencia as prioridad,
+        sv.SolicitanteID as solicitanteId,
+        sv.SolicitanteID as empleadoId,
+        sv.DepartamentoID as departamentoId
+      FROM SolicitudesVacantes sv
+      LEFT JOIN Departamentos d ON sv.DepartamentoID = d.DepartamentoID
+      LEFT JOIN Empleados e ON sv.SolicitanteID = e.EmpleadoID
+    `;
+
+    const request = pool.request();
+    const rolNormalizado = rol?.toLowerCase().replace(/\s+/g, '_');
+
+    // GERENTES NORMALES (no RRHH): Solo ven sus propias solicitudes
+    if (rolNormalizado === 'gerente') {
+      const empleadoQuery = await pool.request()
+        .input('usuarioID', sql.Int, parseInt(usuarioID))
+        .query('SELECT EmpleadoID FROM Usuarios WHERE UsuarioID = @usuarioID');
+      
+      if (empleadoQuery.recordset.length > 0) {
+        const empleadoID = empleadoQuery.recordset[0].EmpleadoID;
+        query += ` WHERE sv.SolicitanteID = @empleadoID`;
+        request.input('empleadoID', sql.Int, empleadoID);
+        console.log('🔍 Gerente viendo sus propias solicitudes - EmpleadoID:', empleadoID);
+      }
+    } 
+    // DIRECTORES NORMALES (no RRHH): Ven todas las solicitudes de su departamento
+    else if (rolNormalizado === 'director') {
+      const deptQuery = await pool.request()
+        .input('usuarioID', sql.Int, parseInt(usuarioID))
+        .query(`
+          SELECT e.DEPARTAMENTOID 
+          FROM Usuarios u
+          JOIN Empleados e ON u.EmpleadoID = e.EmpleadoID
+          WHERE u.UsuarioID = @usuarioID
+        `);
+      
+      if (deptQuery.recordset.length > 0) {
+        const deptID = deptQuery.recordset[0].DEPARTAMENTOID;
+        query += ` WHERE sv.DepartamentoID = @departamentoID`;
+        request.input('departamentoID', sql.Int, deptID);
+        console.log('🔍 Director viendo solicitudes del departamento:', deptID);
+      }
+    }
+    // PERSONAL RRHH (Gerente RRHH, Director RRHH, RRHH): VEN TODAS LAS SOLICITUDES
+    else if (['gerente_rrhh', 'director_rrhh', 'rrhh'].includes(rolNormalizado)) {
+      console.log('👀 Personal RRHH ve TODAS las solicitudes (sin filtro)');
+      // No agregamos WHERE, ven todo
+    }
+    // Cualquier otro rol: no ve nada
+    else {
+      console.log('⚠️ Rol no reconocido, sin acceso:', rol);
+      query += ` WHERE 1=0`; // No devuelve nada
+    }
+
+    query += ` ORDER BY sv.FechaSolicitud DESC`;
+
+    console.log('📝 Query ejecutado para rol:', rolNormalizado);
+    const result = await request.query(query);
+    console.log('✅ Solicitudes encontradas:', result.recordset.length);
+
+    const solicitudes = result.recordset.map(solicitud => ({
+      ...solicitud,
+      fechaSolicitud: solicitud.fechaSolicitud?.toISOString().split('T')[0]
+    }));
+
+    res.json(solicitudes);
+
+  } catch (error) {
+    console.error('❌ Error en getSolicitudes:', error);
+    VacantesController.handleError(res, error, 'getSolicitudes');
+  }
+}
+
+static async aprobarSolicitudDirectorArea(req, res) {
+  try {
+    const { id } = req.params;
+    const { aprobadorID } = req.body;
+    const pool = req.app.locals.db;
+    
+    const result = await pool.request()
+      .input('id', sql.Int, parseInt(id))
+      .input('aprobadorID', sql.Int, aprobadorID)
+      .query(`
+        UPDATE SolicitudesVacantes 
+        SET Estado = 'Aprobada por Director de Área',
+            AprobadorID = @aprobadorID,
+            FechaAprobacion = GETDATE()
+        WHERE SolicitudVacanteID = @id AND Estado = 'Pendiente'
+      `);
+
+    if (result.rowsAffected[0] === 0) {
+      return res.status(404).json({ error: 'Solicitud no encontrada o ya procesada' });
+    }
+
+    res.json({ 
+      success: true,
+      message: 'Solicitud aprobada por Director de Área',
+      nuevoEstado: 'Aprobada por Director de Área'
+    });
+  } catch (error) {
+    VacantesController.handleError(res, error, 'aprobarSolicitudDirectorArea');
+  }
+}
+
+static async aprobarSolicitudGerenteRRHH(req, res) {
+  try {
+    const { id } = req.params;
+    const { aprobadorID } = req.body;
+    const pool = req.app.locals.db;
+    
+    const result = await pool.request()
+      .input('id', sql.Int, parseInt(id))
+      .input('aprobadorID', sql.Int, aprobadorID)
+      .query(`
+        UPDATE SolicitudesVacantes 
+        SET Estado = 'Aprobada por Gerente RRHH',
+            AprobadorID = @aprobadorID,
+            FechaAprobacion = GETDATE()
+        WHERE SolicitudVacanteID = @id AND Estado = 'Aprobada por Director de Área'
+      `);
+
+    if (result.rowsAffected[0] === 0) {
+      return res.status(404).json({ error: 'Solicitud no encontrada o ya procesada' });
+    }
+
+    res.json({ 
+      success: true,
+      message: 'Solicitud aprobada por Gerente RRHH',
+      nuevoEstado: 'Aprobada por Gerente RRHH'
+    });
+  } catch (error) {
+    VacantesController.handleError(res, error, 'aprobarSolicitudGerenteRRHH');
+  }
+}
+
+static async aprobarSolicitudDirectorRRHH(req, res) {
+  try {
+    const { id } = req.params;
+    const { aprobadorID } = req.body;
+    const pool = req.app.locals.db;
+    
+    const result = await pool.request()
+      .input('id', sql.Int, parseInt(id))
+      .input('aprobadorID', sql.Int, aprobadorID)
+      .query(`
+        UPDATE SolicitudesVacantes 
+        SET Estado = 'Aprobada por Director RRHH',
+            AprobadorID = @aprobadorID,
+            FechaAprobacion = GETDATE()
+        WHERE SolicitudVacanteID = @id AND Estado = 'Aprobada por Gerente RRHH'
+      `);
+
+    if (result.rowsAffected[0] === 0) {
+      return res.status(404).json({ error: 'Solicitud no encontrada o ya procesada' });
+    }
+
+    res.json({ 
+      success: true,
+      message: 'Solicitud autorizada por Director RRHH',
+      nuevoEstado: 'Aprobada por Director RRHH'
+    });
+  } catch (error) {
+    VacantesController.handleError(res, error, 'aprobarSolicitudDirectorRRHH');
+  }
+}
+
+static async asignarResponsablePublicacion(req, res) {
+  try {
+    const { id } = req.params;
+    const { responsableID } = req.body;
+    const pool = req.app.locals.db;
+    
+    const result = await pool.request()
+      .input('id', sql.Int, parseInt(id))
+      .input('responsableID', sql.Int, responsableID)
+      .query(`
+        UPDATE SolicitudesVacantes 
+        SET Estado = 'Asignada para Publicación',
+            ResponsablePublicacionID = @responsableID,
+            FechaAsignacion = GETDATE()
+        WHERE SolicitudVacanteID = @id AND Estado = 'Aprobada por Director RRHH'
+      `);
+
+    if (result.rowsAffected[0] === 0) {
+      return res.status(404).json({ error: 'Solicitud no encontrada o ya procesada' });
+    }
+
+    res.json({ 
+      success: true,
+      message: 'Responsable de publicación asignado',
+      nuevoEstado: 'Asignada para Publicación'
+    });
+  } catch (error) {
+    VacantesController.handleError(res, error, 'asignarResponsablePublicacion');
+  }
+}
+
+
+
+  static async crearSolicitud(req, res) {
     try {
       const pool = req.app.locals.db;
-      const { usuarioID, rol } = req.query;
+      
+      const { 
+        Titulo, titulo, cargo,
+        Descripcion, descripcion,
+        Requisitos, requisitos,
+        DepartamentoID, departamentoId,
+        Justificacion, justificacion,
+        SalarioMinimo, salarioMinimo, salarioMin,
+        SalarioMaximo, salarioMaximo, salarioMax,
+        Modalidad, modalidad,
+        Urgencia, urgencia, prioridad,
+        solicitanteId, SolicitanteID
+      } = req.body;
 
-      let query = `
-        SELECT 
-          sv.SolicitudVacanteID as id,
-          sv.Titulo as cargo,
-          COALESCE(d.Nombre, 'Sin Departamento') as departamento,
-          COALESCE(e.NOMBRE + ' ' + e.APELLIDO, 'Usuario Desconocido') as solicitante,
-          sv.FechaSolicitud as fechaSolicitud,
-          sv.Estado as estado,
-          sv.Justificacion as justificacion,
-          sv.SalarioMinimo as salarioMin,
-          sv.SalarioMaximo as salarioMax,
-          sv.Modalidad as modalidad,
-          sv.Urgencia as prioridad,
-          sv.SolicitanteID as solicitanteId
-        FROM SolicitudesVacantes sv
-        LEFT JOIN Departamentos d ON sv.DepartamentoID = d.DepartamentoID
-        LEFT JOIN Empleados e ON sv.SolicitanteID = e.EmpleadoID
-      `;
+      // Normalizar valores
+      const tituloFinal = Titulo || titulo || cargo;
+      const descripcionFinal = Descripcion || descripcion || '';
+      const requisitosFinal = Requisitos || requisitos || '';
+      const justificacionFinal = Justificacion || justificacion;
+      const departamentoFinal = DepartamentoID || departamentoId;
+      const solicitanteFinal = SolicitanteID || solicitanteId;
+      const modalidadFinal = Modalidad || modalidad || 'Presencial';
+      const urgenciaFinal = Urgencia || urgencia || prioridad || 'Media';
+      const salarioMinFinal = SalarioMinimo || salarioMinimo || salarioMin || 0;
+      const salarioMaxFinal = SalarioMaximo || salarioMaximo || salarioMax || 0;
 
-      const request = pool.request();
-
-      // Filtrar por usuario si es necesario
-      if (rol === 'director' && usuarioID) {
-        query += ` WHERE sv.SolicitanteID = (SELECT EmpleadoID FROM Usuarios WHERE UsuarioID = @usuarioID)`;
-        request.input('usuarioID', sql.Int, parseInt(usuarioID));
-      } else if (rol === 'gerente' && usuarioID) {
-        query += ` WHERE sv.SolicitanteID = (SELECT EmpleadoID FROM Usuarios WHERE UsuarioID = @usuarioID)`;
-        request.input('usuarioID', sql.Int, parseInt(usuarioID));
+      // Validaciones
+      if (!tituloFinal || !departamentoFinal || !justificacionFinal) {
+        return res.status(400).json({ 
+          error: 'Campos requeridos: Titulo, DepartamentoID, Justificacion'
+        });
       }
 
-      query += ` ORDER BY sv.FechaSolicitud DESC`;
+      if (!solicitanteFinal) {
+        return res.status(400).json({ 
+          error: 'Se requiere el ID del empleado solicitante (solicitanteId)'
+        });
+      }
 
-      const result = await request.query(query);
+      // Validar que el empleado existe
+      const empleadoCheck = await pool.request()
+        .input('empleadoID', sql.Int, parseInt(solicitanteFinal))
+        .query(`SELECT EmpleadoID FROM Empleados WHERE EmpleadoID = @empleadoID`);
 
-      const solicitudes = result.recordset.map(solicitud => ({
-        ...solicitud,
-        fechaSolicitud: solicitud.fechaSolicitud?.toISOString().split('T')[0]
-      }));
+      if (empleadoCheck.recordset.length === 0) {
+        return res.status(400).json({ 
+          error: `No se encontró el empleado con ID ${solicitanteFinal}`
+        });
+      }
 
-      res.json(solicitudes);
+      // Insertar solicitud con EmpleadoID
+      const result = await pool.request()
+        .input('titulo', sql.NVarChar(200), tituloFinal)
+        .input('descripcion', sql.NVarChar(sql.MAX), descripcionFinal)
+        .input('requisitos', sql.NVarChar(sql.MAX), requisitosFinal)
+        .input('departamentoID', sql.Int, parseInt(departamentoFinal))
+        .input('justificacion', sql.NVarChar(sql.MAX), justificacionFinal)
+        .input('salarioMin', sql.Decimal(10, 2), parseFloat(salarioMinFinal))
+        .input('salarioMax', sql.Decimal(10, 2), parseFloat(salarioMaxFinal))
+        .input('modalidad', sql.NVarChar(50), modalidadFinal)
+        .input('urgencia', sql.NVarChar(50), urgenciaFinal)
+        .input('empleadoID', sql.Int, parseInt(solicitanteFinal))
+        .query(`
+          INSERT INTO SolicitudesVacantes (
+            Titulo, Descripcion, Requisitos, DepartamentoID, Justificacion,
+            SalarioMinimo, SalarioMaximo, Modalidad, Urgencia, 
+            Estado, FechaSolicitud, SolicitanteID
+          )
+          OUTPUT INSERTED.SolicitudVacanteID, INSERTED.Estado, INSERTED.FechaSolicitud
+          VALUES (
+            @titulo, @descripcion, @requisitos, @departamentoID, @justificacion,
+            @salarioMin, @salarioMax, @modalidad, @urgencia,
+            'Pendiente', GETDATE(), @empleadoID
+          )
+        `);
+
+      const solicitudCreada = result.recordset[0];
+
+      res.status(201).json({
+        success: true,
+        message: 'Solicitud creada exitosamente',
+        solicitud: {
+          id: solicitudCreada.SolicitudVacanteID,
+          cargo: tituloFinal,
+          departamento: departamentoFinal,
+          estado: solicitudCreada.Estado,
+          fechaSolicitud: solicitudCreada.FechaSolicitud.toISOString().split('T')[0],
+          justificacion: justificacionFinal
+        }
+      });
 
     } catch (error) {
-      VacantesController.handleError(res, error, 'getSolicitudes');
+      console.error('Error detallado en crearSolicitud:', {
+        message: error.message,
+        stack: error.stack,
+        body: req.body
+      });
+      
+      VacantesController.handleError(res, error, 'crearSolicitud');
     }
   }
 
-  /**
- * CREAR SOLICITUD DE VACANTE
- * 
- * Flujo: 
- * 1. Director/Gerente solicita una nueva vacante
- * 2. Se crea registro en tabla SolicitudesVacantes con estado 'Pendiente'
- * 3. Inicia el flujo de aprobación (Director Área → Gerente RRHH → Director RRHH)
- * 
- * @param {Object} req.body - Datos de la solicitud
- * @param {string} req.body.Titulo - Título de la vacante solicitada
- * @param {string} req.body.Descripcion - Descripción del puesto
- * @param {string} req.body.Requisitos - Requisitos del puesto
- * @param {number} req.body.DepartamentoID - ID del departamento
- * @param {number} req.body.SalarioMinimo - Salario mínimo ofrecido
- * @param {number} req.body.SalarioMaximo - Salario máximo ofrecido
- * @param {string} req.body.Justificacion - Justificación de la necesidad
- * @param {string} req.body.Modalidad - Modalidad: Presencial/Remoto/Híbrido
- * @param {string} req.body.Urgencia - Prioridad: Baja/Media/Alta/Urgente
- * @param {number} req.body.solicitanteId - ID del empleado que solicita
- * 
- * @returns {Object} - Solicitud creada con ID y estado
- */
-    static async crearSolicitud(req, res) {
-      try {
-        const pool = req.app.locals.db;
-        
-        // Extraer datos del body - soporta múltiples formatos de nombres
-        const { 
-          Titulo, titulo, cargo,
-          Descripcion, descripcion,
-          Requisitos, requisitos,
-          DepartamentoID, departamentoId,
-          Justificacion, justificacion,
-          SalarioMinimo, salarioMinimo, salarioMin,
-          SalarioMaximo, salarioMaximo, salarioMax,
-          Modalidad, modalidad,
-          Urgencia, urgencia, prioridad,
-          solicitanteId, SolicitanteID
-        } = req.body;
+  static async aprobarSolicitud(req, res) {
+    try {
+      const { id } = req.params;
+      const { comentarios, aprobadorID } = req.body;
+      const pool = req.app.locals.db;
+      
+      const result = await pool.request()
+        .input('id', sql.Int, parseInt(id))
+        .input('comentarios', sql.NVarChar(sql.MAX), comentarios || '')
+        .input('aprobadorID', sql.Int, aprobadorID || 1)
+        .query(`
+          UPDATE SolicitudesVacantes 
+          SET Estado = 'Aprobada',
+              FechaAprobacion = GETDATE(),
+              AprobadorID = @aprobadorID,
+              Comentarios = @comentarios
+          WHERE SolicitudVacanteID = @id
+        `);
 
-        // Normalizar los valores finales (prioridad a mayúsculas)
-        const tituloFinal = Titulo || titulo || cargo;
-        const descripcionFinal = Descripcion || descripcion || '';
-        const requisitosFinal = Requisitos || requisitos || '';
-        const justificacionFinal = Justificacion || justificacion;
-        const departamentoFinal = DepartamentoID || departamentoId;
-        const solicitanteFinal = SolicitanteID || solicitanteId;
-        const modalidadFinal = Modalidad || modalidad || 'Presencial';
-        const urgenciaFinal = Urgencia || urgencia || prioridad || 'Media';
-        const salarioMinFinal = SalarioMinimo || salarioMinimo || salarioMin || 0;
-        const salarioMaxFinal = SalarioMaximo || salarioMaximo || salarioMax || 0;
-
-        // Validación de campos requeridos
-        if (!tituloFinal || !departamentoFinal || !justificacionFinal) {
-          return res.status(400).json({ 
-            error: 'Campos requeridos: Titulo, DepartamentoID, Justificacion',
-            camposFaltantes: {
-              titulo: !tituloFinal,
-              departamento: !departamentoFinal,
-              justificacion: !justificacionFinal
-            }
-          });
-        }
-
-        // Validación del solicitante
-        if (!solicitanteFinal) {
-          return res.status(400).json({ 
-            error: 'Se requiere el ID del solicitante (solicitanteId)'
-          });
-        }
-
-        // Insertar en tabla SolicitudesVacantes
-        const result = await pool.request()
-          .input('titulo', sql.NVarChar(200), tituloFinal)
-          .input('descripcion', sql.NVarChar(sql.MAX), descripcionFinal)
-          .input('requisitos', sql.NVarChar(sql.MAX), requisitosFinal)
-          .input('departamentoID', sql.Int, parseInt(departamentoFinal))
-          .input('justificacion', sql.NVarChar(sql.MAX), justificacionFinal)
-          .input('salarioMin', sql.Decimal(10, 2), parseFloat(salarioMinFinal))
-          .input('salarioMax', sql.Decimal(10, 2), parseFloat(salarioMaxFinal))
-          .input('modalidad', sql.NVarChar(50), modalidadFinal)
-          .input('urgencia', sql.NVarChar(50), urgenciaFinal)
-          .input('solicitanteID', sql.Int, parseInt(solicitanteFinal))
-          .query(`
-            INSERT INTO SolicitudesVacantes (
-              Titulo, Descripcion, Requisitos, DepartamentoID, Justificacion,
-              SalarioMinimo, SalarioMaximo, Modalidad, Urgencia, 
-              Estado, FechaSolicitud, SolicitanteID
-            )
-            OUTPUT INSERTED.SolicitudVacanteID, INSERTED.Estado, INSERTED.FechaSolicitud
-            VALUES (
-              @titulo, @descripcion, @requisitos, @departamentoID, @justificacion,
-              @salarioMin, @salarioMax, @modalidad, @urgencia,
-              'Pendiente', GETDATE(), @solicitanteID
-            )
-          `);
-
-        const solicitudCreada = result.recordset[0];
-
-        // Respuesta exitosa
-        res.status(201).json({
-          success: true,
-          message: 'Solicitud creada exitosamente',
-          solicitud: {
-            id: solicitudCreada.SolicitudVacanteID,
-            cargo: tituloFinal,
-            departamento: departamentoFinal,
-            estado: solicitudCreada.Estado,
-            fechaSolicitud: solicitudCreada.FechaSolicitud.toISOString().split('T')[0],
-            justificacion: justificacionFinal,
-            salarioMin: salarioMinFinal,
-            salarioMax: salarioMaxFinal,
-            modalidad: modalidadFinal,
-            urgencia: urgenciaFinal
-          }
-        });
-
-      } catch (error) {
-        // Log detallado del error para debugging
-        console.error('Error detallado en crearSolicitud:', {
-          message: error.message,
-          stack: error.stack,
-          body: req.body
-        });
-        
-        VacantesController.handleError(res, error, 'crearSolicitud');
+      if (result.rowsAffected[0] === 0) {
+        return res.status(404).json({ error: 'Solicitud no encontrada' });
       }
+
+      res.json({ 
+        success: true,
+        message: 'Solicitud aprobada exitosamente',
+        solicitudId: id,
+        estado: 'Aprobada',
+        fechaAprobacion: new Date().toISOString().split('T')[0]
+      });
+
+    } catch (error) {
+      VacantesController.handleError(res, error, 'aprobarSolicitud');
     }
-
-    /**
- * APROBAR SOLICITUD DE VACANTE
- * Actualiza el estado de una solicitud a 'Aprobada' en la tabla SolicitudesVacantes
- */
-static async aprobarSolicitud(req, res) {
-  try {
-    const { id } = req.params;
-    const { comentarios, aprobadorID } = req.body;
-    const pool = req.app.locals.db;
-    
-    const result = await pool.request()
-      .input('id', sql.Int, parseInt(id))
-      .input('comentarios', sql.NVarChar(sql.MAX), comentarios || '')
-      .input('aprobadorID', sql.Int, aprobadorID || 1)
-      .query(`
-        UPDATE SolicitudesVacantes 
-        SET Estado = 'Aprobada',
-            FechaAprobacion = GETDATE(),
-            AprobadorID = @aprobadorID,
-            Comentarios = @comentarios
-        WHERE SolicitudVacanteID = @id
-      `);
-
-    if (result.rowsAffected[0] === 0) {
-      return res.status(404).json({ error: 'Solicitud no encontrada' });
-    }
-
-    res.json({ 
-      success: true,
-      message: 'Solicitud aprobada exitosamente',
-      solicitudId: id,
-      estado: 'Aprobada',
-      fechaAprobacion: new Date().toISOString().split('T')[0]
-    });
-
-  } catch (error) {
-    VacantesController.handleError(res, error, 'aprobarSolicitud');
   }
-}
 
-/**
- * RECHAZAR SOLICITUD DE VACANTE
- * Actualiza el estado de una solicitud a 'Rechazada' en la tabla SolicitudesVacantes
- */
-static async rechazarSolicitud(req, res) {
-  try {
-    const { id } = req.params;
-    const { comentarios, rechazadorID } = req.body;
-    const pool = req.app.locals.db;
-    
-    const result = await pool.request()
-      .input('id', sql.Int, parseInt(id))
-      .input('comentarios', sql.NVarChar(sql.MAX), comentarios || '')
-      .input('rechazadorID', sql.Int, rechazadorID || 1)
-      .query(`
-        UPDATE SolicitudesVacantes 
-        SET Estado = 'Rechazada',
-            FechaRechazo = GETDATE(),
-            RechazadorID = @rechazadorID,
-            Comentarios = @comentarios
-        WHERE SolicitudVacanteID = @id
-      `);
+  static async rechazarSolicitud(req, res) {
+    try {
+      const { id } = req.params;
+      const { comentarios, rechazadorID } = req.body;
+      const pool = req.app.locals.db;
+      
+      const result = await pool.request()
+        .input('id', sql.Int, parseInt(id))
+        .input('comentarios', sql.NVarChar(sql.MAX), comentarios || '')
+        .input('rechazadorID', sql.Int, rechazadorID || 1)
+        .query(`
+          UPDATE SolicitudesVacantes 
+          SET Estado = 'Rechazada',
+              FechaRechazo = GETDATE(),
+              RechazadorID = @rechazadorID,
+              Comentarios = @comentarios
+          WHERE SolicitudVacanteID = @id
+        `);
 
-    if (result.rowsAffected[0] === 0) {
-      return res.status(404).json({ error: 'Solicitud no encontrada' });
+      if (result.rowsAffected[0] === 0) {
+        return res.status(404).json({ error: 'Solicitud no encontrada' });
+      }
+
+      res.json({ 
+        success: true,
+        message: 'Solicitud rechazada',
+        solicitudId: id,
+        estado: 'Rechazada',
+        fechaRechazo: new Date().toISOString().split('T')[0]
+      });
+
+    } catch (error) {
+      VacantesController.handleError(res, error, 'rechazarSolicitud');
     }
-
-    res.json({ 
-      success: true,
-      message: 'Solicitud rechazada',
-      solicitudId: id,
-      estado: 'Rechazada',
-      fechaRechazo: new Date().toISOString().split('T')[0]
-    });
-
-  } catch (error) {
-    VacantesController.handleError(res, error, 'rechazarSolicitud');
   }
-}
-
-
 
   // ===============================
   // POSTULACIONES - 100% REAL DE BD
@@ -733,6 +868,84 @@ static async rechazarSolicitud(req, res) {
     }
   }
 
+  static async publicarVacanteDesdeSolicitud(req, res) {
+  try {
+    const { id } = req.params;
+    const { publicadorID } = req.body;
+    const pool = req.app.locals.db;
+    
+    const transaction = new sql.Transaction(pool);
+    await transaction.begin();
+
+    try {
+      // 1. Obtener los datos de la solicitud
+      const solicitudResult = await transaction.request()
+        .input('id', sql.Int, parseInt(id))
+        .query(`
+          SELECT * FROM SolicitudesVacantes 
+          WHERE SolicitudVacanteID = @id AND Estado = 'Aprobada por Director RRHH'
+        `);
+
+      if (solicitudResult.recordset.length === 0) {
+        await transaction.rollback();
+        return res.status(404).json({ error: 'Solicitud no encontrada o no está lista para publicar' });
+      }
+
+      const solicitud = solicitudResult.recordset[0];
+
+      // 2. Crear la vacante en la tabla Vacantes
+      const vacanteResult = await transaction.request()
+        .input('titulo', sql.NVarChar(200), solicitud.Titulo)
+        .input('descripcion', sql.NVarChar(sql.MAX), solicitud.Descripcion)
+        .input('requisitos', sql.NVarChar(sql.MAX), solicitud.Requisitos)
+        .input('salarioMin', sql.Decimal(10, 2), solicitud.SalarioMinimo)
+        .input('salarioMax', sql.Decimal(10, 2), solicitud.SalarioMaximo)
+        .input('departamentoID', sql.Int, solicitud.DepartamentoID)
+        .input('modalidad', sql.NVarChar(50), solicitud.Modalidad || 'Presencial')
+        .input('creadoPor', sql.Int, publicadorID)
+        .query(`
+          INSERT INTO Vacantes (
+            Titulo, Descripcion, Requisitos, SalarioMinimo, SalarioMaximo,
+            DepartamentoID, Modalidad, Estado, FechaPublicacion, CreadoPor
+          )
+          OUTPUT INSERTED.VacanteID
+          VALUES (
+            @titulo, @descripcion, @requisitos, @salarioMin, @salarioMax,
+            @departamentoID, @modalidad, 'Activa', GETDATE(), @creadoPor
+          )
+        `);
+
+      const vacanteID = vacanteResult.recordset[0].VacanteID;
+
+      // 3. Actualizar la solicitud
+      await transaction.request()
+        .input('solicitudID', sql.Int, parseInt(id))
+        .input('vacanteID', sql.Int, vacanteID)
+        .query(`
+          UPDATE SolicitudesVacantes 
+          SET Estado = 'Publicada',
+              FechaAprobacion = GETDATE()
+          WHERE SolicitudVacanteID = @solicitudID
+        `);
+
+      await transaction.commit();
+
+      res.json({ 
+        success: true,
+        message: 'Vacante publicada exitosamente',
+        vacanteID,
+        solicitudID: id
+      });
+
+    } catch (error) {
+      await transaction.rollback();
+      throw error;
+    }
+
+  } catch (error) {
+    VacantesController.handleError(res, error, 'publicarVacanteDesdeSolicitud');
+  }
+}
   // ===============================
   // ESTADÍSTICAS - 100% REAL DE BD
   // ===============================
@@ -751,7 +964,7 @@ static async rechazarSolicitud(req, res) {
         pool.request().query(`SELECT COUNT(*) as total FROM Vacantes WHERE Estado = 'Activa'`),
         pool.request().query(`SELECT COUNT(*) as total FROM Postulaciones`),
         pool.request().query(`
-          SELECT COUNT(*) as total FROM Postulaciones 
+          SELECT COUNT(*) as total FROM Postulaciones
           WHERE MONTH(FechaPostulacion) = MONTH(GETDATE()) 
           AND YEAR(FechaPostulacion) = YEAR(GETDATE())
         `),
@@ -814,7 +1027,7 @@ static async rechazarSolicitud(req, res) {
           SELECT 
             Estado,
             COUNT(*) as total
-            FROM SolicitudesVacantes
+          FROM SolicitudesVacantes
           GROUP BY Estado
         `)
       ]);

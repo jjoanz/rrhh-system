@@ -242,7 +242,7 @@ const FormularioPostulacion = () => {
           />
         </div>
         <div style={styles.headerContent}>
-          <Briefcase size={48} style={{ color: '#0aa4ebff' }} />
+          
           <h1 style={styles.title}>Formulario de Postulación</h1>
           <p style={styles.subtitle}>Complete todos los pasos para postularse a una vacante</p>
         </div>

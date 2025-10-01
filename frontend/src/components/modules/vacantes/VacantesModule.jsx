@@ -20,6 +20,8 @@ const VacantesModule = () => {
   const [modalVacante, setModalVacante] = useState(false);
   const [modalPostulacion, setModalPostulacion] = useState(false);
   const [vacanteSeleccionada, setVacanteSeleccionada] = useState(null);
+  const [modalEditarVacante, setModalEditarVacante] = useState(false);
+  const [modalCerrarVacante, setModalCerrarVacante] = useState(false);
 
   useEffect(() => {
       if (!loading && user) cargarDatos();
@@ -206,13 +208,52 @@ const editarVacante = async (vacanteId, datos) => {
   try {
     const token = getStoredToken();
     await vacantesService.actualizarVacante(vacanteId, datos, token);
-    setVacantes(prev => prev.map(v => v.id === vacanteId ? { ...v, ...datos } : v));
-    setModalVacante(false);
+    
+    // Recargar la vacante actualizada desde el servidor
+    const vacanteActualizada = await vacantesService.getVacanteById(vacanteId, token);
+    setVacantes(prev => prev.map(v => v.id === vacanteId ? vacanteActualizada : v));
+    
+    setModalEditarVacante(false);
+    setVacanteSeleccionada(null);
     mostrarExito('Vacante actualizada exitosamente');
   } catch (err) {
     setError('Error al actualizar vacante');
   }
 };
+
+const togglePublicacionVacante = async (vacanteId, publicarEnPortal) => {
+  try {
+    const token = getStoredToken();
+    await vacantesService.actualizarVacante(vacanteId, { 
+      PublicaEnPortal: publicarEnPortal ? 1 : 0 
+    }, token);
+    
+    setVacantes(prev => prev.map(v => 
+      v.id === vacanteId ? { ...v, PublicaEnPortal: publicarEnPortal ? 1 : 0 } : v
+    ));
+    
+    mostrarExito(publicarEnPortal ? 'Vacante publicada en portal externo' : 'Vacante removida del portal externo');
+  } catch (err) {
+    setError('Error al cambiar estado de publicación');
+  }
+};
+const cerrarVacante = async (vacanteId, motivoCierre) => {
+  try {
+    const token = getStoredToken();
+    await vacantesService.cerrarVacante(vacanteId, motivoCierre, user.empleadoId, token);
+    
+    setVacantes(prev => prev.map(v => 
+      v.id === vacanteId ? { ...v, estado: 'Cerrada', motivoCierre } : v
+    ));
+    
+    setModalCerrarVacante(false);
+    setVacanteSeleccionada(null);
+    mostrarExito('Vacante cerrada exitosamente');
+  } catch (err) {
+    setError('Error al cerrar vacante');
+  }
+};
+
 const postularse = async (datos) => {
   try {
     const token = getStoredToken();
@@ -351,14 +392,30 @@ return (
       <div style={{ backgroundColor: 'white', borderRadius: '0.75rem', boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)', padding: '2rem' }}>
         {vistaActiva === 'dashboard' && <VistaDashboard permisos={permisos} setModalSolicitud={setModalSolicitud} setModalVacante={setModalVacante} estadisticas={estadisticas} user={user} />}
         {vistaActiva === 'solicitudes' && <VistaSolicitudes solicitudes={solicitudes} user={user} permisos={permisos} setModalSolicitud={setModalSolicitud} aprobarSolicitud={aprobarSolicitud} rechazarSolicitud={rechazarSolicitud} publicarVacante={publicarVacante} />}
-        {vistaActiva === 'vacantes' && <VistaVacantes vacantes={vacantes} permisos={permisos} setModalVacante={setModalVacante} setVacanteSeleccionada={setVacanteSeleccionada} setModalPostulacion={setModalPostulacion} />}
+        {vistaActiva === 'vacantes' && <VistaVacantes vacantes={vacantes} permisos={permisos} setModalVacante={setModalVacante} setVacanteSeleccionada={setVacanteSeleccionada} setModalPostulacion={setModalPostulacion} setModalEditarVacante={setModalEditarVacante} togglePublicacionVacante={togglePublicacionVacante} setModalCerrarVacante={setModalCerrarVacante} />}
         {vistaActiva === 'postulaciones' && <VistaPostulaciones postulaciones={postulaciones} permisos={permisos} cambiarEstadoPostulacion={cambiarEstadoPostulacion} user={user} />}
       </div>
 
       {/* Modales */}
       {modalSolicitud && <ModalSolicitud onClose={() => setModalSolicitud(false)} onGuardar={crearSolicitud} departamentos={departamentos} />}
       {modalVacante && <ModalVacante onClose={() => setModalVacante(false)} onGuardar={crearVacanteDirecta} departamentos={departamentos} />}
+        {modalEditarVacante && vacanteSeleccionada && (
+          <ModalEditarVacante 
+            vacante={vacanteSeleccionada} 
+            onClose={() => { setModalEditarVacante(false); setVacanteSeleccionada(null); }} 
+            onGuardar={editarVacante} 
+            departamentos={departamentos} 
+          />
+        )}
+      
       {modalPostulacion && <ModalPostulacion vacante={vacanteSeleccionada} onClose={() => { setModalPostulacion(false); setVacanteSeleccionada(null); }} onGuardar={postularse} />}
+        {modalCerrarVacante && vacanteSeleccionada && (
+        <ModalCerrarVacante 
+          vacante={vacanteSeleccionada} 
+          onClose={() => { setModalCerrarVacante(false); setVacanteSeleccionada(null); }} 
+          onGuardar={cerrarVacante} 
+        />
+      )}
 
       {/* Notificaciones */}
       {error && <Notificacion type="error" message={error} onClose={() => setError(null)} />}
@@ -537,7 +594,7 @@ const VistaSolicitudes = ({ solicitudes, user, permisos, setModalSolicitud, apro
 };
 
 // Vista de Vacantes
-const VistaVacantes = ({ vacantes, permisos, setModalVacante, setVacanteSeleccionada, setModalPostulacion }) => (
+const VistaVacantes = ({ vacantes, permisos, setModalVacante, setVacanteSeleccionada, setModalPostulacion, setModalEditarVacante, togglePublicacionVacante, setModalCerrarVacante }) => (
   <div>
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
       <div>
@@ -561,15 +618,18 @@ const VistaVacantes = ({ vacantes, permisos, setModalVacante, setVacanteSeleccio
           <p style={{ color: '#6b7280' }}>No hay oportunidades de empleo publicadas actualmente</p>
         </div>
       ) : (
-        vacantes.map(vacante => (
-          <TarjetaVacanteProfesional 
-            key={vacante.id}
-            vacante={vacante}
-            permisos={permisos}
-            setVacanteSeleccionada={setVacanteSeleccionada}
-            setModalPostulacion={setModalPostulacion}
-          />
-        ))
+       vacantes.map(vacante => (
+        <TarjetaVacanteProfesional 
+          key={vacante.id}
+          vacante={vacante}
+          permisos={permisos}
+          setVacanteSeleccionada={setVacanteSeleccionada}
+          setModalPostulacion={setModalPostulacion}
+          setModalEditarVacante={setModalEditarVacante}
+          togglePublicacionVacante={togglePublicacionVacante}
+          setModalCerrarVacante={setModalCerrarVacante}
+        />
+      ))
       )}
     </div>
   </div>
@@ -935,7 +995,7 @@ const TarjetaSolicitudProfesional = ({ solicitud, user, permisos, aprobarSolicit
   );
 };
 // Tarjeta de vacante profesional
-const TarjetaVacanteProfesional = ({ vacante, permisos, setVacanteSeleccionada, setModalPostulacion }) => (
+const TarjetaVacanteProfesional = ({ vacante, permisos, setVacanteSeleccionada, setModalPostulacion, setModalEditarVacante, togglePublicacionVacante, setModalCerrarVacante }) => (
   <div style={{ border: '1px solid #e5e7eb', borderRadius: '0.75rem', padding: '1.5rem', backgroundColor: 'white', boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)' }}>
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
       <div style={{ flex: 1 }}>
@@ -963,68 +1023,120 @@ const TarjetaVacanteProfesional = ({ vacante, permisos, setVacanteSeleccionada, 
       <div style={{ textAlign: 'right' }}>
         <EstadoBadge estado={vacante.estado} />
         {vacante.PublicaEnPortal && (
-        <div style={{ 
-          marginTop: '0.5rem',
-          fontSize: '0.75rem', 
-          color: '#0891b2', 
-          backgroundColor: '#e0f2fe',
-          padding: '0.25rem 0.5rem',
-          borderRadius: '0.375rem',
-          fontWeight: '500'
-        }}>
-          🌐 Pública
-        </div>
-      )}
-        
+          <div style={{ 
+            marginTop: '0.5rem',
+            fontSize: '0.75rem', 
+            color: '#0891b2', 
+            backgroundColor: '#e0f2fe',
+            padding: '0.25rem 0.5rem',
+            borderRadius: '0.375rem',
+            fontWeight: '500'
+          }}>
+            🌐 Pública
+          </div>
+        )}
       </div>
     </div>
 
     <p style={{ color: '#374151', marginBottom: '1rem', lineHeight: '1.5' }}>{vacante.descripcion}</p>
 
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '1rem', borderTop: '1px solid #f3f4f6' }}>
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '1rem', borderTop: '1px solid #f3f4f6', flexWrap: 'wrap', gap: '0.5rem' }}>
       <div style={{ fontSize: '0.875rem', color: '#6b7280' }}>
         <strong>Modalidad:</strong> {vacante.modalidad || 'Presencial'}
       </div>
 
-      {permisos.crearVacante && (
-  <button 
-          onClick={() => {
-            // Aquí necesitas abrir un modal de edición
-            // Por simplicidad, usa prompt temporalmente
-            const nuevoTitulo = prompt('Nuevo título:', vacante.titulo);
-            if (nuevoTitulo) {
-              vacantesService.actualizarVacante(vacante.id, { Titulo: nuevoTitulo });
-            }
-          }}
-          style={{ 
-            backgroundColor: '#f59e0b', 
-            color: 'white', 
-            padding: '0.5rem 1rem', 
-            borderRadius: '0.5rem', 
-            border: 'none', 
-            cursor: 'pointer', 
-            display: 'flex', 
-            alignItems: 'center', 
-            gap: '0.5rem', 
-            fontSize: '0.875rem', 
-            fontWeight: '500',
-            marginRight: '0.5rem'
-          }}
-        >
-          <Edit size={16} />
-          Editar
-        </button>
-      )}
-      
-      {permisos.postularse && vacante.estado === 'Activa' && (
-        <button 
-          onClick={() => { setVacanteSeleccionada(vacante); setModalPostulacion(true); }}
-          style={{ backgroundColor: '#3b82f6', color: 'white', padding: '0.5rem 1rem', borderRadius: '0.5rem', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem', fontWeight: '500' }}
-        >
-          <Send size={16} />
-          Postularse
-        </button>
-      )}
+      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+        {permisos.crearVacante && (
+          <>
+            <button 
+              onClick={() => { 
+                setVacanteSeleccionada(vacante); 
+                setModalEditarVacante(true); 
+              }}
+              style={{ 
+                backgroundColor: '#f59e0b', 
+                color: 'white', 
+                padding: '0.5rem 1rem', 
+                borderRadius: '0.5rem', 
+                border: 'none', 
+                cursor: 'pointer', 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: '0.5rem', 
+                fontSize: '0.875rem', 
+                fontWeight: '500'
+              }}
+            >
+              <Edit size={16} />
+              Editar
+            </button>
+            
+            <button 
+              onClick={() => togglePublicacionVacante(vacante.id, !vacante.PublicaEnPortal)}
+              style={{ 
+                backgroundColor: vacante.PublicaEnPortal ? '#dc2626' : '#10b981', 
+                color: 'white', 
+                padding: '0.5rem 1rem', 
+                borderRadius: '0.5rem', 
+                border: 'none', 
+                cursor: 'pointer', 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: '0.5rem', 
+                fontSize: '0.875rem', 
+                fontWeight: '500'
+              }}
+            >
+              {vacante.PublicaEnPortal ? (
+                <>
+                  <X size={16} />
+                  Despublicar
+                </>
+              ) : (
+                <>
+                  <CheckCircle size={16} />
+                  Publicar en Portal
+                </>
+              )}
+            </button>
+
+            {vacante.estado === 'Activa' && (
+              <button 
+                onClick={() => { 
+                  setVacanteSeleccionada(vacante); 
+                  setModalCerrarVacante(true); 
+                }}
+                style={{ 
+                  backgroundColor: '#7c3aed', 
+                  color: 'white', 
+                  padding: '0.5rem 1rem', 
+                  borderRadius: '0.5rem', 
+                  border: 'none', 
+                  cursor: 'pointer', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: '0.5rem', 
+                  fontSize: '0.875rem', 
+                  fontWeight: '500'
+                }}
+              >
+                <XCircle size={16} />
+                Cerrar Vacante
+              </button>
+            )}
+          </>
+        )}
+        
+        {permisos.postularse && vacante.estado === 'Activa' && (
+          <button 
+            onClick={() => { setVacanteSeleccionada(vacante); setModalPostulacion(true); }}
+            style={{ backgroundColor: '#3b82f6', color: 'white', padding: '0.5rem 1rem', borderRadius: '0.5rem', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.875rem', fontWeight: '500' }}
+          >
+            <Send size={16} />
+            Postularse
+          </button>
+        )}
+      </div>
     </div>
   </div>
 );
@@ -1390,6 +1502,7 @@ const ModalVacante = ({ onClose, onGuardar, departamentos }) => {
     }
   };
 
+  
   const mostrarError = (campo) => errores[campo] && (
     <div style={{ color: '#ef4444', fontSize: '0.75rem', marginTop: '0.25rem' }}>
       {errores[campo]}
@@ -1529,6 +1642,189 @@ const ModalVacante = ({ onClose, onGuardar, departamentos }) => {
         </div>
         
         <BotonesModal onSubmit="Publicar Vacante" onCancel={onClose} />
+      </form>
+    </ModalBase>
+  );
+};
+  const ModalEditarVacante = ({ vacante, onClose, onGuardar, departamentos }) => {
+  const [datos, setDatos] = useState({
+    titulo: vacante.titulo || '',
+    departamentoId: vacante.departamentoId || '',
+    descripcion: vacante.descripcion || '',
+    requisitos: vacante.requisitos || '',
+    salarioMinimo: vacante.salarioMinimo || '',
+    salarioMaximo: vacante.salarioMaximo || '',
+    modalidad: vacante.modalidad || 'Presencial',
+    fechaCierre: vacante.fechaCierre || '',
+    publicaEnPortal: vacante.PublicaEnPortal === 1
+  });
+
+  const [errores, setErrores] = useState({});
+
+  const validarFormulario = () => {
+    const nuevosErrores = {};
+    
+    if (!datos.titulo.trim()) nuevosErrores.titulo = 'El título es requerido';
+    if (!datos.descripcion.trim()) nuevosErrores.descripcion = 'La descripción es requerida';
+    if (!datos.requisitos.trim()) nuevosErrores.requisitos = 'Los requisitos son requeridos';
+    if (!datos.salarioMinimo || datos.salarioMinimo <= 0) nuevosErrores.salarioMinimo = 'El salario mínimo es requerido';
+    if (!datos.salarioMaximo || datos.salarioMaximo <= 0) nuevosErrores.salarioMaximo = 'El salario máximo es requerido';
+    if (parseInt(datos.salarioMaximo) <= parseInt(datos.salarioMinimo)) {
+      nuevosErrores.salarioMaximo = 'El salario máximo debe ser mayor al mínimo';
+    }
+
+    setErrores(nuevosErrores);
+    return Object.keys(nuevosErrores).length === 0;
+  };
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (validarFormulario()) {
+      onGuardar(vacante.id, {
+        Titulo: datos.titulo,
+        DepartamentoID: parseInt(datos.departamentoId),
+        Descripcion: datos.descripcion,
+        Requisitos: datos.requisitos,
+        SalarioMinimo: parseFloat(datos.salarioMinimo),
+        SalarioMaximo: parseFloat(datos.salarioMaximo),
+        modalidad: datos.modalidad,
+        fechaCierre: datos.fechaCierre || null,
+        PublicaEnPortal: datos.publicaEnPortal ? 1 : 0
+      });
+    }
+  };
+
+  const mostrarError = (campo) => errores[campo] && (
+    <div style={{ color: '#ef4444', fontSize: '0.75rem', marginTop: '0.25rem' }}>
+      {errores[campo]}
+    </div>
+  );
+
+  return (
+    <ModalBase titulo={`Editar Vacante: ${vacante.titulo}`} onClose={onClose} ancho="600px">
+      <form onSubmit={handleSubmit} style={{ display: 'grid', gap: '1rem' }}>
+        <Input 
+          label="Título de la Vacante" 
+          value={datos.titulo} 
+          onChange={(e) => setDatos(prev => ({ ...prev, titulo: e.target.value }))} 
+          required 
+          placeholder="ej. Desarrollador Full Stack"
+        />
+        {mostrarError('titulo')}
+        
+        <div>
+          <label style={labelStyle}>Departamento *</label>
+          <select 
+            value={datos.departamentoId} 
+            onChange={(e) => setDatos(prev => ({ ...prev, departamentoId: e.target.value }))} 
+            style={inputStyle} 
+            required
+          >
+            <option value="">Seleccionar departamento</option>
+            {departamentos.map(d => <option key={d.id} value={d.id}>{d.nombre}</option>)}
+          </select>
+        </div>
+        
+        <div>
+          <label style={labelStyle}>Descripción del Puesto *</label>
+          <textarea 
+            value={datos.descripcion} 
+            onChange={(e) => setDatos(prev => ({ ...prev, descripcion: e.target.value }))} 
+            rows={4} 
+            style={inputStyle} 
+            placeholder="Responsabilidades principales y funciones del puesto..."
+            required 
+          />
+          {mostrarError('descripcion')}
+        </div>
+        
+        <div style={{ 
+          padding: '1rem', 
+          backgroundColor: '#f0f9ff', 
+          borderRadius: '0.5rem', 
+          border: '1px solid #bae6fd' 
+        }}>
+          <label style={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            gap: '0.75rem', 
+            cursor: 'pointer' 
+          }}>
+            <input 
+              type="checkbox" 
+              checked={datos.publicaEnPortal} 
+              onChange={(e) => setDatos(prev => ({ ...prev, publicaEnPortal: e.target.checked }))}
+              style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+            />
+            <div>
+              <span style={{ fontSize: '0.875rem', fontWeight: '600', color: '#0369a1' }}>
+                Publicar en portal externo
+              </span>
+              <div style={{ fontSize: '0.75rem', color: '#0891b2', marginTop: '0.25rem' }}>
+                Candidatos externos podrán postularse desde el formulario público
+              </div>
+            </div>
+          </label>
+        </div>
+
+        <div>
+          <label style={labelStyle}>Requisitos y Cualificaciones *</label>
+          <textarea 
+            value={datos.requisitos} 
+            onChange={(e) => setDatos(prev => ({ ...prev, requisitos: e.target.value }))} 
+            rows={4} 
+            style={inputStyle} 
+            placeholder="Experiencia, educación, habilidades requeridas..."
+            required 
+          />
+          {mostrarError('requisitos')}
+        </div>
+        
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+          <div>
+            <Input 
+              label="Salario Mínimo (RD$)" 
+              type="number" 
+              value={datos.salarioMinimo} 
+              onChange={(e) => setDatos(prev => ({ ...prev, salarioMinimo: e.target.value }))} 
+              required 
+              placeholder="45000"
+            />
+            {mostrarError('salarioMinimo')}
+          </div>
+          <div>
+            <Input 
+              label="Salario Máximo (RD$)" 
+              type="number" 
+              value={datos.salarioMaximo} 
+              onChange={(e) => setDatos(prev => ({ ...prev, salarioMaximo: e.target.value }))} 
+              required 
+              placeholder="65000"
+            />
+            {mostrarError('salarioMaximo')}
+          </div>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+          <div>
+            <label style={labelStyle}>Modalidad</label>
+            <select value={datos.modalidad} onChange={(e) => setDatos(prev => ({ ...prev, modalidad: e.target.value }))} style={inputStyle}>
+              <option value="Presencial">Presencial</option>
+              <option value="Remoto">Remoto</option>
+              <option value="Híbrido">Híbrido</option>
+            </select>
+          </div>
+          <div>
+            <Input 
+              label="Fecha Límite (Opcional)" 
+              type="date" 
+              value={datos.fechaCierre} 
+              onChange={(e) => setDatos(prev => ({ ...prev, fechaCierre: e.target.value }))} 
+            />
+          </div>
+        </div>
+        
+        <BotonesModal onSubmit="Guardar Cambios" onCancel={onClose} />
       </form>
     </ModalBase>
   );
@@ -1677,6 +1973,59 @@ const ModalPostulacion = ({ vacante, onClose, onGuardar }) => {
   );
 };
 
+const ModalCerrarVacante = ({ vacante, onClose, onGuardar }) => {
+  const [motivoCierre, setMotivoCierre] = useState('');
+  const [error, setError] = useState('');
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (!motivoCierre.trim()) {
+      setError('Debe especificar el motivo del cierre');
+      return;
+    }
+    onGuardar(vacante.id, motivoCierre);
+  };
+
+  return (
+    <ModalBase titulo={`Cerrar Vacante: ${vacante.titulo}`} onClose={onClose} ancho="500px">
+      <div style={{ marginBottom: '1.5rem', padding: '1rem', backgroundColor: '#fef2f2', borderRadius: '0.5rem', border: '1px solid #fecaca' }}>
+        <div style={{ fontSize: '0.875rem', color: '#991b1b', fontWeight: '600', marginBottom: '0.5rem' }}>
+          ⚠️ Cerrar Vacante
+        </div>
+        <div style={{ fontSize: '0.75rem', color: '#991b1b', lineHeight: '1.4' }}>
+          Esta acción cambiará el estado de la vacante a "Cerrada". No se podrán recibir más postulaciones pero el registro se mantendrá en el historial.
+        </div>
+      </div>
+
+      <form onSubmit={handleSubmit} style={{ display: 'grid', gap: '1rem' }}>
+        <div>
+          <label style={labelStyle}>Motivo del Cierre *</label>
+          <textarea 
+            value={motivoCierre} 
+            onChange={(e) => { setMotivoCierre(e.target.value); setError(''); }} 
+            rows={5} 
+            style={inputStyle} 
+            placeholder="Ej: Vacante cubierta - Se contrató personal interno&#10;Ej: No se aprobó el presupuesto para esta posición&#10;Ej: Cambio en las prioridades del departamento"
+            required 
+          />
+          {error && (
+            <div style={{ color: '#ef4444', fontSize: '0.75rem', marginTop: '0.5rem' }}>
+              {error}
+            </div>
+          )}
+        </div>
+
+        <div style={{ padding: '1rem', backgroundColor: '#f0f9ff', borderRadius: '0.5rem', border: '1px solid #bae6fd' }}>
+          <div style={{ fontSize: '0.75rem', color: '#0369a1', lineHeight: '1.4' }}>
+            <strong>Nota:</strong> El motivo quedará registrado en el historial y podrá ser consultado posteriormente por el personal autorizado.
+          </div>
+        </div>
+        
+        <BotonesModal onSubmit="Cerrar Vacante" onCancel={onClose} />
+      </form>
+    </ModalBase>
+  );
+};
 // Componentes base para modales
 const ModalBase = ({ titulo, children, onClose, ancho = '500px' }) => (
   <div style={{ 

@@ -68,7 +68,7 @@ const LoginPage = () => {
   return (
     <div style={{
       minHeight: '100vh',
-      background: 'linear-gradient(135deg, rgb(37, 99, 235) 0%, rgb(29, 78, 216) 30%, rgb(67, 56, 202) 70%, rgb(55, 48, 163) 100%)',
+      background: 'linear-gradient(135deg, rgb(37, 99, 235) 0%, rgb(29, 78, 216) 30%, rgba(5, 56, 151, 1) 70%, rgba(5, 53, 141, 1) 100%)',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
@@ -170,7 +170,7 @@ const LoginPage = () => {
               border: '2px solid rgba(37, 99, 235, 0.1)'
             }}>
               <img 
-                src="/PD-Logo-RGB-CEI.png" 
+                src="./PD-Logo-RGB-CEI.png" 
                 alt="ProDominicana Logo" 
                 style={{ height: '40px', width: 'auto' }} 
               />

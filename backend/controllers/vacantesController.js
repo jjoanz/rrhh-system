@@ -345,6 +345,44 @@ class VacantesController {
         VacantesController.handleError(res, error, 'actualizarVacante');
       }
     }
+
+
+    static async cerrarVacante(req, res) {
+  try {
+    const { id } = req.params;
+    const pool = req.app.locals.db;
+    const { motivoCierre, cerradoPor } = req.body;
+
+    if (!motivoCierre || !motivoCierre.trim()) {
+      return res.status(400).json({ error: 'Se requiere un motivo de cierre' });
+    }
+
+    const result = await pool.request()
+      .input('id', sql.Int, parseInt(id))
+      .input('motivoCierre', sql.NVarChar(sql.MAX), motivoCierre)
+      .input('cerradoPor', sql.Int, cerradoPor)
+      .query(`
+        UPDATE Vacantes 
+        SET Estado = 'Cerrada',
+            MotivoCierre = @motivoCierre,
+            CerradoPor = @cerradoPor,
+            FechaCierre = GETDATE()
+        WHERE VacanteID = @id
+      `);
+
+    if (result.rowsAffected[0] === 0) {
+      return res.status(404).json({ error: 'Vacante no encontrada' });
+    }
+
+    res.json({ 
+      success: true, 
+      message: 'Vacante cerrada exitosamente',
+      motivoCierre 
+    });
+  } catch (error) {
+    VacantesController.handleError(res, error, 'cerrarVacante');
+  }
+}
   // ===============================
   // SOLICITUDES - 100% REAL DE BD
   // ===============================
@@ -953,26 +991,26 @@ static async asignarResponsablePublicacion(req, res) {
       const solicitud = solicitudResult.recordset[0];
 
       // 2. Crear la vacante en la tabla Vacantes
-      const vacanteResult = await transaction.request()
-        .input('titulo', sql.NVarChar(200), solicitud.Titulo)
-        .input('descripcion', sql.NVarChar(sql.MAX), solicitud.Descripcion)
-        .input('requisitos', sql.NVarChar(sql.MAX), solicitud.Requisitos)
-        .input('salarioMin', sql.Decimal(10, 2), solicitud.SalarioMinimo)
-        .input('salarioMax', sql.Decimal(10, 2), solicitud.SalarioMaximo)
-        .input('departamentoID', sql.Int, solicitud.DepartamentoID)
-        .input('modalidad', sql.NVarChar(50), solicitud.Modalidad || 'Presencial')
-        .input('creadoPor', sql.Int, publicadorID)
-        .query(`
-          INSERT INTO Vacantes (
-            Titulo, Descripcion, Requisitos, SalarioMinimo, SalarioMaximo,
-            DepartamentoID, Modalidad, Estado, FechaPublicacion, CreadoPor
-          )
-          OUTPUT INSERTED.VacanteID
-          VALUES (
-            @titulo, @descripcion, @requisitos, @salarioMin, @salarioMax,
-            @departamentoID, @modalidad, 'Activa', GETDATE(), @creadoPor
-          )
-        `);
+const vacanteResult = await transaction.request()
+  .input('titulo', sql.NVarChar(200), solicitud.Titulo)
+  .input('descripcion', sql.NVarChar(sql.MAX), solicitud.Descripcion)
+  .input('requisitos', sql.NVarChar(sql.MAX), solicitud.Requisitos)
+  .input('salarioMin', sql.Decimal(10, 2), solicitud.SalarioMinimo)
+  .input('salarioMax', sql.Decimal(10, 2), solicitud.SalarioMaximo)
+  .input('departamentoID', sql.Int, solicitud.DepartamentoID)
+  .input('modalidad', sql.NVarChar(50), solicitud.Modalidad || 'Presencial')
+  .input('creadoPor', sql.Int, publicadorID)
+  .query(`
+    INSERT INTO Vacantes (
+      Titulo, Descripcion, Requisitos, SalarioMinimo, SalarioMaximo,
+      DepartamentoID, Modalidad, Estado, FechaPublicacion, CreadoPor, PublicaEnPortal
+    )
+    OUTPUT INSERTED.VacanteID
+    VALUES (
+      @titulo, @descripcion, @requisitos, @salarioMin, @salarioMax,
+      @departamentoID, @modalidad, 'Activa', GETDATE(), @creadoPor, 1
+    )
+  `);
 
       const vacanteID = vacanteResult.recordset[0].VacanteID;
 

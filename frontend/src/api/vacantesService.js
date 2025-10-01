@@ -70,10 +70,12 @@ const vacantesService = {
     }
   },
 
-  async actualizarVacante(id, datos) {
+  async actualizarVacante(id, datos, token) {
     try {
       console.log('Actualizando vacante:', id);
-      const response = await api.put(`/vacantes/${id}`, datos);
+      const response = await api.put(`/vacantes/${id}`, datos, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
       console.log('Vacante actualizada:', response.data);
       return response.data;
     } catch (error) {
@@ -82,22 +84,14 @@ const vacantesService = {
     }
   },
 
-    async actualizarVacante(id, datos, token) {
+  async cerrarVacante(vacanteId, motivoCierre, cerradoPor, token) {
     try {
-      const response = await api.put(`/vacantes/${id}`, datos, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      return response.data;
-    } catch (error) {
-      console.error('Error al actualizar vacante:', error);
-      throw error;
-    }
-  },
-
-  async cerrarVacante(id, motivo) {
-    try {
-      console.log('Cerrando vacante:', id);
-      const response = await api.put(`/vacantes/${id}/cerrar`, { motivo });
+      console.log('Cerrando vacante:', vacanteId);
+      const response = await api.put(
+        `/vacantes/${vacanteId}/cerrar`, 
+        { motivoCierre, cerradoPor },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
       console.log('Vacante cerrada:', response.data);
       return response.data;
     } catch (error) {
@@ -105,7 +99,6 @@ const vacantesService = {
       throw error;
     }
   },
-
   // ===============================
   // SOLICITUDES - FLUJO COMPLETO JERÁRQUICO
   // ===============================

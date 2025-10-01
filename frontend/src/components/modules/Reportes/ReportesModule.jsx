@@ -89,7 +89,33 @@ const PLANTILLAS_RRHH = [
       WHERE e.Estado = 1
       ORDER BY e.Cedula;
     `
-  }
+  },
+{
+  id: "historico-vacantes-cerradas",
+  nombre: "Histórico de Vacantes Cerradas",
+  descripcion: "Detalle completo de vacantes cerradas con motivo y estadísticas",
+  sql: `
+    SELECT 
+      v.VacanteID AS ID,
+      v.Titulo AS Vacante,
+      d.Nombre AS Departamento,
+      v.FechaPublicacion,
+      v.FechaCierre,
+      DATEDIFF(DAY, v.FechaPublicacion, v.FechaCierre) AS DiasActiva,
+      CONCAT(e.NOMBRE, ' ', e.APELLIDO) AS CerradaPor,
+      v.MotivoCierre,
+      COUNT(p.PostulacionID) AS TotalPostulaciones
+    FROM Vacantes v
+    LEFT JOIN Departamentos d ON v.DepartamentoID = d.DepartamentoID
+    LEFT JOIN Empleados e ON v.CerradoPor = e.EmpleadoID
+    LEFT JOIN Postulaciones p ON v.VacanteID = p.VacanteID
+    WHERE v.Estado = 'Cerrada'
+    GROUP BY 
+      v.VacanteID, v.Titulo, d.Nombre, v.FechaPublicacion, 
+      v.FechaCierre, e.NOMBRE, e.APELLIDO, v.MotivoCierre
+    ORDER BY v.FechaCierre DESC
+  `
+}
 ];
 
 // Modal de confirmación para eliminar

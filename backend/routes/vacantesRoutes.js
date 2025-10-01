@@ -82,7 +82,15 @@ router.get('/:id', VacantesController.getVacanteById);
 // Crear nueva vacante
 router.post('/', authenticateToken, authorizeRoles(['rrhh', 'admin']), VacantesController.crearVacante);
 
-// Actualizar vacante
+// Cerrar vacante - DEBE IR ANTES DE PUT /:id
+router.put(
+  '/:id/cerrar',
+  authenticateToken,
+  authorizeRoles(['rrhh', 'gerente_rrhh', 'director_rrhh', 'admin']),
+  VacantesController.cerrarVacante
+);
+
+// Actualizar vacante - DESPUÉS de las rutas específicas
 router.put(
   '/:id',
   authenticateToken,

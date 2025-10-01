@@ -1159,18 +1159,7 @@ const styles = {
                       >
                         <Edit size={16} />
                       </button>
-                      <button
-                        onClick={() => {
-                          if (window.confirm('¿Estás seguro de que quieres eliminar este empleado?')) {
-                            eliminarEmpleado(empleado.id);
-                          }
-                        }}
-                        style={{ ...styles.actionButton, color: '#dc2626' }}
-                        className="action-button"
-                        title="Eliminar"
-                      >
-                        <Trash2 size={16} />
-                      </button>
+                      
                     <button
                       onClick={() => {
                         if (window.confirm('¿Estás seguro de que quieres eliminar este empleado?')) {

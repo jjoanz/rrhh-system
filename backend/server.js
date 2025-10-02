@@ -20,6 +20,7 @@ import adminRoutes from './routes/adminRoutes.js';
 import reportesRoutes from "./routes/reportesRoutes.js";
 import vacantesRoutes from './routes/vacantesRoutes.js';
 import vacacionesRoutes from './routes/vacacionesRoutes.js';
+import perfilRoutes from './routes/perfilRoutes.js';
 
 // Importar middleware de autenticación
 import { authenticateToken } from './middleware/auth.js';
@@ -114,6 +115,7 @@ app.use('/api/admin', authenticateToken, adminRoutes);
 app.use("/api/reportes", authenticateToken, reportesRoutes);
 app.use('/api/vacantes', authenticateToken, vacantesRoutes);
 app.use('/api/vacaciones', authenticateToken, vacacionesRoutes);
+app.use('/api/perfil', authenticateToken, perfilRoutes);
 
 
 // --- MANEJO DE ERRORES GLOBAL ---
@@ -194,6 +196,7 @@ const server = app.listen(PORT, HOST, () => {
   console.log(`🌐 Endpoints públicos de postulaciones: http://${HOST}:${PORT}/api/postulaciones-publicas`);
   console.log(`📁 Archivos uploads: http://${HOST}:${PORT}/uploads`);
   console.log(`⚡ API Health check: http://${HOST}:${PORT}/api/health`);
+  console.log(`👤 Endpoints de perfil: http://${HOST}:${PORT}/api/perfil`);
 });
 
 // --- MANEJO GRACEFUL DE SHUTDOWN ---

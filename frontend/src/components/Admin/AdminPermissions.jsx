@@ -237,7 +237,7 @@ const [nuevoEmpleado, setNuevoEmpleado] = useState({
           fechaIngreso: nuevoEmpleado.fechaIngreso,
           salario: parseFloat(nuevoEmpleado.salario) || 0,
           tipoContrato: nuevoEmpleado.tipoContrato,
-          estado: 'Activo'
+          estado: 1
         })
       });
       

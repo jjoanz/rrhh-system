@@ -12,7 +12,7 @@ const router = express.Router();
 // Listar empleados
 router.get('/list', getEmpleados);
 
-// Obtener empleado por ID - NUEVA RUTA
+// Obtener empleado por ID
 router.get('/:id', async (req, res) => {
   try {
     const { id } = req.params;
@@ -25,9 +25,9 @@ router.get('/:id', async (req, res) => {
           e.EmpleadoID,
           e.NOMBRE,
           e.APELLIDO,
-          e.CORREO,
-          e.TELEFONO,
-          e.ROL,
+          e.Email,
+          e.Telefono,
+          e.CARGO,
           e.DEPARTAMENTOID,
           e.PUESTOID,
           d.Nombre as Departamento,
@@ -50,7 +50,7 @@ router.get('/:id', async (req, res) => {
 });
 
 // Crear nuevo empleado
-router.post('/create', createEmpleado);
+router.post('/', createEmpleado);
 
 // Actualizar empleado
 router.put('/update/:EmpleadoID', updateEmpleado);

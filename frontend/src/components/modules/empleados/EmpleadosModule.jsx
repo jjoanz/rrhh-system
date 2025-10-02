@@ -1,92 +1,43 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import axios from 'axios';
 import { 
-  Users, 
-  Plus, 
-  Search, 
-  Filter, 
-  Download, 
-  Upload, 
-  Eye, 
-  Edit, 
-  Trash2, 
-  Mail, 
-  Phone, 
-  MapPin, 
-  Calendar, 
-  DollarSign, 
-  Building, 
-  User, 
-  FileText, 
-  MoreVertical,
-  X,
-  Save,
-  Camera,
-  Star,
-  Shield,
-  Award,
-  TrendingUp,
-  Clock,
-  CheckCircle,
-  AlertCircle
+  Users, Plus, Search, Download, Edit, Trash2, X, Save,
+  CheckCircle, Building, Star
 } from 'lucide-react';
 
 const EmpleadosModule = () => {
-  // Estados principales
   const [empleados, setEmpleados] = useState([]);
   const [departamentos, setDepartamentos] = useState([]);
   const [puestos, setPuestos] = useState([]);
   const [filtros, setFiltros] = useState({
     busqueda: '',
     departamento: '',
-    puesto: '',
     estado: 'todos'
   });
   const [modalActivo, setModalActivo] = useState(null);
   const [empleadoSeleccionado, setEmpleadoSeleccionado] = useState(null);
   const [paginaActual, setPaginaActual] = useState(1);
   const [cargando, setCargando] = useState(true);
+  const [guardando, setGuardando] = useState(false);
   const empleadosPorPagina = 10;
 
-  // Datos de empleados basados en usuarios reales del sistema
-  
+  const API_URL = process.env.REACT_APP_API_URL || 'http://192.168.0.239:5000/api';
+  const getToken = () => localStorage.getItem("rrhh_token");
 
-  const departamentosMock = [
-    { id: 1, nombre: 'Recursos Humanos', empleados: 3, jefe: 'Luis Martínez' },
-    { id: 2, nombre: 'Tecnología', empleados: 2, jefe: 'María González' },
-    { id: 3, nombre: 'Operaciones', empleados: 1, jefe: 'Carlos Rodríguez' },
-    { id: 4, nombre: 'Administración', empleados: 1, jefe: 'Sistema Admin' }
-  ];
+  // Cargar datos iniciales
+  useEffect(() => {
+    cargarEmpleados();
+  }, []);
 
-  const puestosMock = [
-    'Desarrollador Frontend', 'Gerente de Tecnología', 'Director de Operaciones', 
-    'Especialista en RRHH', 'Director de RRHH', 'Gerente de RRHH',
-    'Administrador del Sistema', 'Analista de Sistemas', 'Desarrollador Backend',
-    'Especialista en Seguridad', 'Coordinador de Operaciones'
-  ];
-
-// Inicialización
-useEffect(() => {
-  const fetchData = async () => {
-    console.log('🔍 API_URL env var:', process.env.REACT_APP_API_URL);
-    
+  const cargarEmpleados = async () => {
     try {
       setCargando(true);
-
-      // 🔹 Obtener el token de localStorage
-      const token = localStorage.getItem("rrhh_token");
-      console.log('🔍 Token exists:', !!token);
-      console.log('🔍 Token preview:', token ? token.substring(0, 20) + '...' : 'No token');
+      const token = getToken();
       
       if (!token) {
-        throw new Error("No hay token en localStorage, inicia sesión primero");
+        alert("No hay sesión activa. Por favor inicia sesión.");
+        return;
       }
 
-      // 🔹 Llamar API con token en headers
-      const API_URL = process.env.REACT_APP_API_URL || 'http://192.168.0.239:5000/api';
-      console.log('🔍 API_URL final:', API_URL);
-      console.log('🔍 URL completa:', `${API_URL}/empleados/list`);
-      
       const response = await fetch(`${API_URL}/empleados/list`, {
         headers: {
           "Content-Type": "application/json",
@@ -94,206 +45,166 @@ useEffect(() => {
         },
       });
 
-      console.log('🔍 Response status:', response.status);
-      console.log('🔍 Response URL:', response.url);
-      console.log('🔍 Response ok:', response.ok);
-
-      // 🔹 Manejo de errores HTTP
       if (!response.ok) {
-        if (response.status === 401) {
-          console.error('❌ Token inválido o expirado');
-          throw new Error("Token inválido o expirado. Por favor inicia sesión nuevamente.");
-        }
-        const errorText = await response.text();
-        console.error('❌ Error HTTP:', response.status, errorText);
-        throw new Error(`Error HTTP: ${response.status} - ${errorText}`);
+        throw new Error(`Error ${response.status}: ${await response.text()}`);
       }
 
       const data = await response.json();
-      console.log("📌 Respuesta cruda del backend:", data);
+      const empleadosRaw = Array.isArray(data) ? data : data.empleados || [];
 
-      // ✅ Detectar si data es array o viene en { empleados: [...] }
-      const empleadosRaw = Array.isArray(data) ? data : data.empleados;
-
-      if (!empleadosRaw || empleadosRaw.length === 0) {
-        console.warn("⚠ No hay empleados disponibles en la respuesta");
-        setEmpleados([]);
-        setDepartamentos([]);
-        setPuestos([]);
-        return;
-      }
-
-      console.log("Datos SIN mapear:", empleadosRaw[0]);
-      console.log("Fecha original ejemplo:", empleadosRaw[0]?.FECHAINGRESO);
-
-      // 🔹 Mapear empleados
       const empleadosMapeados = empleadosRaw.map(emp => ({
         id: emp.EmpleadoID,
         codigo: `EMP${String(emp.EmpleadoID).padStart(3, "0")}`,
         nombre: emp.NOMBRE || "",
         apellido: emp.APELLIDO || "",
-        email:
-          emp.Email ||
-          `${(emp.NOMBRE || "empleado").split(" ")[0].toLowerCase()}${(emp.APELLIDO || "empleado")
-            .split(" ")[0]
-            .toLowerCase()}@prodominicana.gob.do`,
+        email: emp.Email || "",
         telefono: emp.Telefono || "",
         direccion: emp.Direccion || "",
+        cedula: emp.CEDULA || "",
         departamento: emp.DEPARTAMENTO_NOMBRE || "Sin departamento",
+        departamentoId: emp.DEPARTAMENTOID || null,
         puesto: emp.CARGO || "Sin puesto",
-        supervisor: "",
+        puestoId: emp.PUESTOID || null,
         fechaIngreso: emp.FECHAINGRESO ? emp.FECHAINGRESO.split("T")[0] : "",
-        fechaIngresoDisplay: emp.FECHAINGRESO
-          ? (() => {
-              try {
-                const fecha = new Date(emp.FECHAINGRESO);
-                if (isNaN(fecha.getTime())) return "Fecha no válida";
-                return fecha.toLocaleDateString("es-DO");
-              } catch (error) {
-                return "Fecha no válida";
-              }
-            })()
+        fechaIngresoDisplay: emp.FECHAINGRESO 
+          ? new Date(emp.FECHAINGRESO).toLocaleDateString("es-DO")
           : "Sin fecha",
         salario: emp.Salario || 0,
-        estado: emp.ESTADO === true ? "activo" : "inactivo",
-        foto: "/api/placeholder/80/80",
-        cedula: emp.CEDULA || "",
+        estado: emp.ESTADO === true || emp.ESTADO === 1 ? "activo" : "inactivo",
+        foto: "/api/placeholder/80/80"
       }));
 
-      console.log("Empleados mapeados:", empleadosMapeados[0]);
       setEmpleados(empleadosMapeados);
 
-      // 🔹 EXTRAER departamentos únicos
-      const departamentosUnicos = [
-        ...new Set(
-          empleadosMapeados
-            .map(emp => emp.departamento)
-            .filter(dept => dept && dept !== "Sin departamento")
-        ),
-      ];
+      // Extraer departamentos y puestos únicos
+      const depts = [...new Set(empleadosMapeados
+        .map(emp => emp.departamento)
+        .filter(dept => dept && dept !== "Sin departamento")
+      )].map((nombre, index) => ({ id: index + 1, nombre }));
 
-      const departamentosReales = departamentosUnicos.map((nombre, index) => ({
-        id: index + 1,
-        nombre,
-      }));
+      const psts = [...new Set(empleadosMapeados
+        .map(emp => emp.puesto)
+        .filter(puesto => puesto && puesto !== "Sin puesto")
+      )].map((nombre, index) => ({ id: index + 1, nombre }));
 
-      console.log("Departamentos únicos encontrados:", departamentosReales.length);
-      setDepartamentos(departamentosReales);
+      setDepartamentos(depts);
+      setPuestos(psts);
 
-      // 🔹 EXTRAER puestos únicos
-      const puestosUnicos = [
-        ...new Set(
-          empleadosMapeados
-            .map(emp => emp.puesto)
-            .filter(puesto => puesto && puesto !== "Sin puesto")
-        ),
-      ];
-
-      const puestosReales = puestosUnicos.map((nombre, index) => ({
-        id: index + 1,
-        nombre,
-      }));
-
-      console.log("Puestos únicos encontrados:", puestosReales.length);
-      setPuestos(puestosReales);
     } catch (error) {
-      console.error("❌ Error cargando empleados:", error);
-      console.error("❌ Error stack:", error.stack);
-      // 🔹 Limpieza de estados en caso de error
-      setEmpleados([]);
-      setDepartamentos([]);
-      setPuestos([]);
+      console.error("Error cargando empleados:", error);
+      alert(`Error al cargar empleados: ${error.message}`);
     } finally {
       setCargando(false);
     }
   };
 
-  fetchData();
-}, []);
+  // Actualizar empleado
+  const actualizarEmpleado = async (empleadoEditado) => {
+    try {
+      setGuardando(true);
+      const token = getToken();
 
+      const response = await fetch(`${API_URL}/empleados/update/${empleadoEditado.id}`, {
+        method: 'PUT',
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          nombre: empleadoEditado.nombre,
+          apellido: empleadoEditado.apellido,
+          cedula: empleadoEditado.cedula,
+          email: empleadoEditado.email,
+          telefono: empleadoEditado.telefono,
+          direccion: empleadoEditado.direccion,
+          cargo: empleadoEditado.puesto,
+          salario: parseFloat(empleadoEditado.salario) || 0,
+          fechaIngreso: empleadoEditado.fechaIngreso,
+          estado: empleadoEditado.estado === 'activo' ? 1 : 0,
+          departamentoID: parseInt(empleadoEditado.departamentoId) || null
+        })
+      });
 
+      if (!response.ok) {
+        throw new Error(`Error al actualizar: ${await response.text()}`);
+      }
 
+      alert('Empleado actualizado correctamente');
+      await cargarEmpleados();
+      setModalActivo(null);
+      setEmpleadoSeleccionado(null);
 
-// 🔹 BUSCADOR ARREGLADO - Filtrado y búsqueda
-const empleadosFiltrados = useMemo(() => {
-  return empleados.filter(empleado => {
-    if (!empleado) return false;
-    
-    // Búsqueda en múltiples campos
-    const terminoBusqueda = filtros.busqueda.toLowerCase().trim();
-    const coincideBusqueda = terminoBusqueda === '' || [
-      empleado.nombre,
-      empleado.apellido, 
-      empleado.email,
-      empleado.codigo,
-      empleado.cedula,
-      empleado.puesto,
-      empleado.departamento
-    ].some(campo => 
-      (campo || '').toLowerCase().includes(terminoBusqueda)
-    );
-    
-    // Filtro por departamento
-    const coincideDepartamento = 
-      filtros.departamento === '' || 
-      empleado.departamento === filtros.departamento;
-    
-    // Filtro por puesto
-    const coincidePuesto = 
-      filtros.puesto === '' || 
-      empleado.puesto === filtros.puesto;
-    
-    // Filtro por estado
-    const coincideEstado = 
-      filtros.estado === 'todos' || 
-      empleado.estado === filtros.estado;
-    
-    return coincideBusqueda && coincideDepartamento && coincidePuesto && coincideEstado;
-  });
-}, [empleados, filtros]);
+    } catch (error) {
+      console.error("Error actualizando empleado:", error);
+      alert(`Error: ${error.message}`);
+    } finally {
+      setGuardando(false);
+    }
+  };
 
-// 🔹 ESTADÍSTICAS CORREGIDAS
-const estadisticas = useMemo(() => {
-  const empleadosActivos = empleados.filter(emp => emp.estado === 'activo').length;
-  const departamentosUnicos = new Set(
-    empleados
+  // Eliminar empleado
+  const eliminarEmpleado = async (id) => {
+    if (!window.confirm('¿Estás seguro de eliminar este empleado? Esta acción no se puede deshacer.')) {
+      return;
+    }
+
+    try {
+      const token = getToken();
+
+      const response = await fetch(`${API_URL}/empleados/delete/${id}`, {
+        method: 'DELETE',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`Error al eliminar: ${await response.text()}`);
+      }
+
+      alert('Empleado eliminado correctamente');
+      await cargarEmpleados();
+
+    } catch (error) {
+      console.error("Error eliminando empleado:", error);
+      alert(`Error: ${error.message}`);
+    }
+  };
+
+  // Filtrado
+  const empleadosFiltrados = useMemo(() => {
+    return empleados.filter(empleado => {
+      const terminoBusqueda = filtros.busqueda.toLowerCase().trim();
+      const coincideBusqueda = terminoBusqueda === '' || [
+        empleado.nombre, empleado.apellido, empleado.email,
+        empleado.codigo, empleado.cedula, empleado.puesto, empleado.departamento
+      ].some(campo => (campo || '').toLowerCase().includes(terminoBusqueda));
+      
+      const coincideDepartamento = filtros.departamento === '' || 
+        empleado.departamento === filtros.departamento;
+      
+      const coincideEstado = filtros.estado === 'todos' || 
+        empleado.estado === filtros.estado;
+      
+      return coincideBusqueda && coincideDepartamento && coincideEstado;
+    });
+  }, [empleados, filtros]);
+
+  // Estadísticas
+  const estadisticas = useMemo(() => ({
+    totalEmpleados: empleados.length,
+    empleadosActivos: empleados.filter(emp => emp.estado === 'activo').length,
+    departamentos: new Set(empleados
       .map(emp => emp.departamento)
       .filter(dept => dept && dept !== 'Sin departamento')
-  ).size;
-  
-  // Empleados del mes actual
-  const fechaActual = new Date();
-  const mesActual = fechaActual.getMonth();
-  const añoActual = fechaActual.getFullYear();
-  
-  const nuevosEsteMes = empleados.filter(emp => {
-    if (!emp.fechaIngreso || emp.fechaIngreso === 'Fecha no válida' || emp.fechaIngreso === 'Sin fecha') {
-      return false;
-    }
-    
-    try {
-     // Parsear fecha en formato YYYY-MM-DD
-        const partes = emp.fechaIngreso.split('-'); // ["2020","08","16"]
-        if (partes.length !== 3) return false;
-
-        const [año, mes, dia] = partes.map(p => parseInt(p));
-        const fechaIngreso = new Date(año, mes - 1, dia);
-
-        if (isNaN(fechaIngreso.getTime())) return false;
-
-        return fechaIngreso.getMonth() === mesActual && fechaIngreso.getFullYear() === añoActual;
-            } catch (error) {
-      return false;
-    }
-  }).length;
-
-  return {
-    totalEmpleados: empleados.length,
-    empleadosActivos,
-    departamentos: departamentosUnicos,
-    nuevosEsteMes
-  };
-}, [empleados]);
+    ).size,
+    nuevosEsteMes: empleados.filter(emp => {
+      if (!emp.fechaIngreso) return false;
+      const [año, mes] = emp.fechaIngreso.split('-').map(Number);
+      const hoy = new Date();
+      return año === hoy.getFullYear() && mes === hoy.getMonth() + 1;
+    }).length
+  }), [empleados]);
 
   // Paginación
   const totalPaginas = Math.ceil(empleadosFiltrados.length / empleadosPorPagina);
@@ -302,418 +213,37 @@ const estadisticas = useMemo(() => {
     paginaActual * empleadosPorPagina
   );
 
-  // Funciones de empleados
-  const agregarEmpleado = (nuevoEmpleado) => {
-    const empleadoConId = {
-      ...nuevoEmpleado,
-      id: empleados.length + 1,
-      codigo: `EMP${String(empleados.length + 1).padStart(3, '0')}`,
-      foto: '/api/placeholder/80/80'
-    };
-    setEmpleados([...empleados, empleadoConId]);
-    setModalActivo(null);
-  };
-
-  const editarEmpleado = (empleadoEditado) => {
-    setEmpleados(empleados.map(emp => 
-      emp.id === empleadoEditado.id ? empleadoEditado : emp
-    ));
-    setModalActivo(null);
-  };
-
-  const eliminarEmpleado = (id) => {
-    setEmpleados(empleados.filter(emp => emp.id !== id));
-    setModalActivo(null);
-  };
-
-  // Estilos en línea
-const styles = {
-  container: {
-    padding: '24px'
-  },
-  header: {
-    display: 'flex',
-    flexDirection: 'column',
-    gap: '16px',
-    marginBottom: '32px'
-  },
-  headerContent: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    gap: '16px'
-  },
-  title: {
-    fontSize: '24px',
-    fontWeight: 'bold',
-    color: '#1f2937',
-    display: 'flex',
-    alignItems: 'center',
-    gap: '12px'
-  },
-  subtitle: {
-    color: '#6b7280',
-    marginTop: '4px'
-  },
-  button: {
-    padding: '8px 16px',
-    borderRadius: '8px',
-    border: 'none',
-    cursor: 'pointer',
-    display: 'flex',
-    alignItems: 'center',
-    gap: '8px',
-    fontSize: '14px',
-    fontWeight: '500',
-    transition: 'all 0.2s'
-  },
-  buttonPrimary: {
-    backgroundColor: '#2563eb',
-    color: 'white'
-  },
-  buttonSecondary: {
-    backgroundColor: '#f3f4f6',
-    color: '#374151',
-    border: '1px solid #d1d5db'
-  },
-  buttonFilter: {
-    height: '40px',
-    whiteSpace: 'nowrap',
-    flex: '0 0 auto'
-  },
-  statsGrid: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-    gap: '24px',
-    marginBottom: '32px'
-  },
-  statCard: {
-    backgroundColor: 'white',
-    padding: '24px',
-    borderRadius: '12px',
-    boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
-    border: '1px solid #e5e7eb'
-  },
-  statCardContent: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center'
-  },
-  statNumber: {
-    fontSize: '24px',
-    fontWeight: 'bold',
-    color: '#1f2937'
-  },
-  statLabel: {
-    fontSize: '14px',
-    color: '#6b7280',
-    fontWeight: '500'
-  },
-  statIcon: {
-    padding: '12px',
-    borderRadius: '12px',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center'
-  },
-  filtersCard: {
-    backgroundColor: 'white',
-    borderRadius: '12px',
-    boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
-    border: '1px solid #e5e7eb',
-    padding: '15px',
-    marginBottom: '24px'
-  },
-  filtersContent: {
-      display: 'flex',
-      flexWrap: 'nowrap',   // 🚫 no deja que se vayan a otra línea
-      gap: '20px',
-      alignItems: 'center',
-      justifyContent: 'space-between'
-      },
-    searchContainer: {
-      position: 'relative',
-      flex: '0 0 300px',    // ancho fijo de 300px, no se estira más
-      },
-  searchInput: {
-    width: '100%',
-    height: '40px',
-    padding: '8px 8px 8px 40px',
-    border: '1px solid #d1d5db',
-    borderRadius: '8px',
-    fontSize: '14px',
-    outline: 'none'
-  },
-  searchIcon: {
-    position: 'absolute',
-    left: '12px',
-    top: '50%',
-    transform: 'translateY(-50%)',
-    color: '#9ca3af'
-  },
-  select: {
-    flex: '0 0 200px',      // ancho fijo para cada select
-    height: '40px',
-    padding: '0 12px',
-    border: '1px solid #d1d5db',
-    borderRadius: '8px',
-    backgroundColor: 'white',
-    fontSize: '14px',
-    outline: 'none'
-  },
-  tableCard: {
-    backgroundColor: 'white',
-    borderRadius: '12px',
-    boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
-    border: '1px solid #e5e7eb',
-    overflow: 'hidden'
-  },
-  table: {
-    width: '100%',
-    borderCollapse: 'collapse'
-  },
-  tableHeader: {
-    backgroundColor: '#f9fafb',
-    borderBottom: '1px solid #e5e7eb'
-  },
-  tableHeaderCell: {
-    padding: '12px 16px',
-    textAlign: 'left',
-    fontWeight: '500',
-    color: '#1f2937',
-    fontSize: '14px'
-  },
-  tableRow: {
-    borderBottom: '1px solid #e5e7eb',
-    transition: 'background-color 0.2s'
-  },
-  tableCell: {
-    padding: '16px',
-    fontSize: '14px',
-    color: '#1f2937'
-  },
-  employeeInfo: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '12px'
-  },
-  employeePhoto: {
-    width: '40px',
-    height: '40px',
-    borderRadius: '50%',
-    objectFit: 'cover'
-  },
-  employeeName: {
-    fontWeight: '500',
-    color: '#1f2937'
-  },
-  employeeEmail: {
-    fontSize: '12px',
-    color: '#6b7280'
-  },
-  statusBadge: {
-    padding: '4px 8px',
-    borderRadius: '12px',
-    fontSize: '12px',
-    fontWeight: '500'
-  },
-  statusActive: {
-    backgroundColor: '#dcfce7',
-    color: '#166534'
-  },
-  statusVacations: {
-    backgroundColor: '#fef3c7',
-    color: '#92400e'
-  },
-  statusInactive: {
-    backgroundColor: '#fee2e2',
-    color: '#991b1b'
-  },
-  actionButtons: {
-    display: 'flex',
-    gap: '8px'
-  },
-  actionButton: {
-    padding: '4px',
-    border: 'none',
-    borderRadius: '4px',
-    cursor: 'pointer',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    transition: 'all 0.2s'
-  },
-  modal: {
-    position: 'fixed',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    zIndex: 50,
-    padding: '16px'
-  },
-  modalContent: {
-    backgroundColor: 'white',
-    borderRadius: '12px',
-    maxWidth: '800px',
-    width: '100%',
-    maxHeight: '90vh',
-    overflow: 'auto'
-  },
-  modalHeader: {
-    padding: '24px',
-    borderBottom: '1px solid #e5e7eb',
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center'
-  },
-  modalTitle: {
-    fontSize: '20px',
-    fontWeight: 'bold',
-    color: '#1f2937'
-  },
-  modalBody: {
-    padding: '24px'
-  },
-  formGrid: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
-    gap: '24px'
-  },
-  formSection: {
-    marginBottom: '24px'
-  },
-  formSectionTitle: {
-    fontSize: '16px',
-    fontWeight: '600',
-    color: '#1f2937',
-    marginBottom: '16px',
-    paddingBottom: '8px',
-    borderBottom: '1px solid #e5e7eb'
-  },
-  formGroup: {
-    marginBottom: '16px'
-  },
-  label: {
-    display: 'block',
-    fontSize: '14px',
-    fontWeight: '500',
-    color: '#374151',
-    marginBottom: '4px'
-  },
-  input: {
-    width: '100%',
-    padding: '8px 12px',
-    border: '1px solid #d1d5db',
-    borderRadius: '8px',
-    fontSize: '14px',
-    outline: 'none'
-  },
-  textarea: {
-    width: '100%',
-    padding: '8px 12px',
-    border: '1px solid #d1d5db',
-    borderRadius: '8px',
-    fontSize: '14px',
-    outline: 'none',
-    resize: 'vertical',
-    minHeight: '80px'
-  },
-  modalActions: {
-    display: 'flex',
-    justifyContent: 'flex-end',
-    gap: '12px',
-    marginTop: '32px',
-    paddingTop: '24px',
-    borderTop: '1px solid #e5e7eb'
-  },
-  pagination: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: '16px 24px',
-    borderTop: '1px solid #e5e7eb'
-  },
-  paginationInfo: {
-    fontSize: '14px',
-    color: '#6b7280'
-  },
-  paginationButtons: {
-    display: 'flex',
-    gap: '8px'
-  },
-  paginationButton: {
-    padding: '6px 12px',
-    border: '1px solid #d1d5db',
-    borderRadius: '6px',
-    backgroundColor: 'white',
-    cursor: 'pointer',
-    fontSize: '14px'
-  },
-  paginationButtonActive: {
-    backgroundColor: '#2563eb',
-    color: 'white',
-    borderColor: '#2563eb'
-  }
-};
-
-
-
-  // Componente de formulario de empleado
+  // Formulario de empleado
   const FormularioEmpleado = ({ empleado, onGuardar, onCancelar }) => {
     const [formData, setFormData] = useState(() => {
-  // Función para convertir fecha de SQL Server
-          const convertirFecha = (fecha) => {
-            if (!fecha) return '';
-            try {
-              const fechaValida = new Date(fecha);
-              if (isNaN(fechaValida.getTime())) return '';
-              return fechaValida.toISOString().split('T')[0];
-            } catch (error) {
-              console.error('Error al convertir fecha en formulario:', error);
-              return '';
-            }
-          };
-
-          if (empleado) {
-            return {
-              id: empleado.id || '',
-              nombre: empleado.nombre || '',
-              apellido: empleado.apellido || '',
-              email: empleado.email || '',
-              telefono: empleado.telefono || '',
-              direccion: empleado.direccion || '',
-              departamento: empleado.departamento || '',
-              puesto: empleado.puesto || '',
-              supervisor: empleado.supervisor || '',
-              fechaIngreso: convertirFecha(empleado.fechaIngreso),
-              salario: empleado.salario || '',
-              estado: empleado.estado || 'activo'
-            };
-          }
-          return {
-            nombre: '',
-            apellido: '',
-            email: '',
-            telefono: '',
-            direccion: '',
-            departamento: '',
-            puesto: '',
-            supervisor: '',
-            fechaIngreso: '',
-            salario: '',
-            estado: 'activo'
-          };
-        });
+      if (empleado) {
+        return {
+          id: empleado.id,
+          nombre: empleado.nombre,
+          apellido: empleado.apellido,
+          cedula: empleado.cedula,
+          email: empleado.email,
+          telefono: empleado.telefono,
+          direccion: empleado.direccion,
+          departamento: empleado.departamento,
+          departamentoId: empleado.departamentoId,
+          puesto: empleado.puesto,
+          puestoId: empleado.puestoId,
+          fechaIngreso: empleado.fechaIngreso,
+          salario: empleado.salario,
+          estado: empleado.estado
+        };
+      }
+      return {
+        nombre: '', apellido: '', cedula: '', email: '', telefono: '',
+        direccion: '', departamento: '', puesto: '', fechaIngreso: '',
+        salario: '', estado: 'activo'
+      };
+    });
 
     const handleGuardar = () => {
-      if (!formData.nombre || !formData.apellido || !formData.email || !formData.departamento || !formData.puesto || !formData.fechaIngreso) {
-        alert('Por favor completa todos los campos obligatorios (*)');
+      if (!formData.nombre || !formData.apellido || !formData.email) {
+        alert('Completa los campos obligatorios: Nombre, Apellido, Email');
         return;
       }
       onGuardar(formData);
@@ -723,13 +253,8 @@ const styles = {
       <div style={styles.modal}>
         <div style={styles.modalContent}>
           <div style={styles.modalHeader}>
-            <h3 style={styles.modalTitle}>
-              {empleado ? 'Editar Empleado' : 'Nuevo Empleado'}
-            </h3>
-            <button 
-              onClick={onCancelar}
-              style={{ ...styles.actionButton, color: '#6b7280' }}
-            >
+            <h3 style={styles.modalTitle}>Editar Empleado</h3>
+            <button onClick={onCancelar} style={styles.closeButton}>
               <X size={24} />
             </button>
           </div>
@@ -737,8 +262,7 @@ const styles = {
           <div style={styles.modalBody}>
             <div style={styles.formGrid}>
               <div>
-                <h4 style={styles.formSectionTitle}>Información Personal</h4>
-                
+                <h4 style={styles.sectionTitle}>Información Personal</h4>
                 <div style={styles.formGroup}>
                   <label style={styles.label}>Nombre *</label>
                   <input
@@ -748,7 +272,6 @@ const styles = {
                     style={styles.input}
                   />
                 </div>
-                
                 <div style={styles.formGroup}>
                   <label style={styles.label}>Apellido *</label>
                   <input
@@ -758,7 +281,15 @@ const styles = {
                     style={styles.input}
                   />
                 </div>
-                
+                <div style={styles.formGroup}>
+                  <label style={styles.label}>Cédula</label>
+                  <input
+                    type="text"
+                    value={formData.cedula}
+                    onChange={(e) => setFormData({...formData, cedula: e.target.value})}
+                    style={styles.input}
+                  />
+                </div>
                 <div style={styles.formGroup}>
                   <label style={styles.label}>Email *</label>
                   <input
@@ -768,7 +299,6 @@ const styles = {
                     style={styles.input}
                   />
                 </div>
-                
                 <div style={styles.formGroup}>
                   <label style={styles.label}>Teléfono</label>
                   <input
@@ -778,7 +308,6 @@ const styles = {
                     style={styles.input}
                   />
                 </div>
-                
                 <div style={styles.formGroup}>
                   <label style={styles.label}>Dirección</label>
                   <textarea
@@ -790,56 +319,39 @@ const styles = {
               </div>
               
               <div>
-                <h4 style={styles.formSectionTitle}>Información Laboral</h4>
-                
+                <h4 style={styles.sectionTitle}>Información Laboral</h4>
                 <div style={styles.formGroup}>
-                  <label style={styles.label}>Departamento *</label>
+                  <label style={styles.label}>Puesto</label>
+                  <input
+                    type="text"
+                    value={formData.puesto}
+                    onChange={(e) => setFormData({...formData, puesto: e.target.value})}
+                    style={styles.input}
+                    placeholder="Ej: Desarrollador, Gerente"
+                  />
+                </div>
+                <div style={styles.formGroup}>
+                  <label style={styles.label}>Departamento</label>
                   <select
                     value={formData.departamento}
-                    onChange={(e) => setFormData({...formData, departamento: e.target.value})}
+                    onChange={(e) => {
+                      const deptSeleccionado = departamentos.find(d => d.nombre === e.target.value);
+                      setFormData({
+                        ...formData, 
+                        departamento: e.target.value,
+                        departamentoId: deptSeleccionado?.id || null
+                      });
+                    }}
                     style={styles.select}
                   >
-                    <option value="">Seleccionar departamento</option>
-                    {Array.isArray(departamentos) && departamentos.map(dept => (
+                    <option value="">Seleccionar</option>
+                    {departamentos.map(dept => (
                       <option key={dept.id} value={dept.nombre}>{dept.nombre}</option>
                     ))}
                   </select>
                 </div>
-                
                 <div style={styles.formGroup}>
-                  <label style={styles.label}>Puesto *</label>
-                  <select
-                      value={formData.puesto}
-                      onChange={(e) => setFormData({...formData, puesto: e.target.value})}
-                      style={styles.select}
-                        >
-                      <option value="">Seleccionar puesto</option>
-                      {Array.isArray(puestos) && puestos.map(puesto => (
-                        <option key={puesto.id || puesto.nombre} value={puesto.nombre}>
-                          {puesto.nombre}
-                        </option>
-                      ))}
-                    </select>
-                </div>
-                
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>Supervisor</label>
-                  <select
-                    value={formData.supervisor}
-                    onChange={(e) => setFormData({...formData, supervisor: e.target.value})}
-                    style={styles.select}
-                  >
-                    <option value="">Sin supervisor</option>
-                    {Array.isArray(empleados) && empleados.map(emp => (
-                      <option key={emp.id} value={`${emp.nombre} ${emp.apellido}`}>
-                        {emp.nombre} {emp.apellido}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>Fecha de Ingreso *</label>
+                  <label style={styles.label}>Fecha de Ingreso</label>
                   <input
                     type="date"
                     value={formData.fechaIngreso}
@@ -847,7 +359,6 @@ const styles = {
                     style={styles.input}
                   />
                 </div>
-                
                 <div style={styles.formGroup}>
                   <label style={styles.label}>Salario (RD$)</label>
                   <input
@@ -857,7 +368,6 @@ const styles = {
                     style={styles.input}
                   />
                 </div>
-                
                 <div style={styles.formGroup}>
                   <label style={styles.label}>Estado</label>
                   <select
@@ -867,26 +377,22 @@ const styles = {
                   >
                     <option value="activo">Activo</option>
                     <option value="inactivo">Inactivo</option>
-                    <option value="vacaciones">En Vacaciones</option>
-                    <option value="licencia">En Licencia</option>
                   </select>
                 </div>
               </div>
             </div>
             
             <div style={styles.modalActions}>
-              <button
-                onClick={onCancelar}
-                style={{ ...styles.button, ...styles.buttonSecondary }}
-              >
+              <button onClick={onCancelar} style={{...styles.button, ...styles.buttonSecondary}}>
                 Cancelar
               </button>
-              <button
-                onClick={handleGuardar}
-                style={{ ...styles.button, ...styles.buttonPrimary }}
+              <button 
+                onClick={handleGuardar} 
+                disabled={guardando}
+                style={{...styles.button, ...styles.buttonPrimary}}
               >
                 <Save size={16} />
-                {empleado ? 'Actualizar' : 'Crear'} Empleado
+                {guardando ? 'Guardando...' : 'Actualizar Empleado'}
               </button>
             </div>
           </div>
@@ -897,163 +403,105 @@ const styles = {
 
   if (cargando) {
     return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '400px' }}>
-        <div style={{ 
-          width: '32px', 
-          height: '32px', 
-          border: '3px solid #f3f3f3', 
-          borderTop: '3px solid #2563eb', 
-          borderRadius: '50%', 
-          animation: 'spin 1s linear infinite' 
-        }}></div>
+      <div style={styles.loadingContainer}>
+        <div style={styles.spinner}></div>
+        <p>Cargando empleados...</p>
       </div>
     );
   }
-    // DEBUGGING - QUITAR DESPUÉS
-  console.log('Primer empleado:', empleados[0]);
-  if (empleados[0]) {
-    console.log('Fecha del primer empleado:', empleados[0].fechaIngreso);
-    console.log('Tipo de fecha:', typeof empleados[0].fechaIngreso);
-  }
+
   return (
     <div style={styles.container}>
-      <style>
-        {`
-          @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-          }
-          
-          .table-row:hover {
-            background-color: #f9fafb;
-          }
-          
-          .action-button:hover {
-            background-color: #f3f4f6;
-          }
-          
-          .button-primary:hover {
-            background-color: #1d4ed8;
-          }
-          
-          .button-secondary:hover {
-            background-color: #e5e7eb;
-          }
-          
-          .search-input:focus {
-            border-color: #2563eb;
-            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
-          }
-          
-          .select:focus, .input:focus, .textarea:focus {
-            border-color: #2563eb;
-            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
-          }
-        `}
-      </style>
+      <style>{styles.css}</style>
 
       {/* Header */}
       <div style={styles.header}>
-        <div style={styles.headerContent}>
-          <div>
-            <h1 style={styles.title}>
-              <Users size={32} color="#2563eb" />
-              Gestión de Empleados
-            </h1>
-            <p style={styles.subtitle}>
-              Administra la información completa de tu personal
-            </p>
-          </div>
-          
-          <button 
-            onClick={() => setModalActivo('agregar')}
-            style={{ ...styles.button, ...styles.buttonPrimary }}
-            className="button-primary"
-          >
-            <Plus size={16} />
-            Nuevo Empleado
-          </button>
+        <div>
+          <h1 style={styles.title}>
+            <Users size={32} color="#2563eb" />
+            Gestión de Empleados
+          </h1>
+          <p style={styles.subtitle}>
+            {empleados.length} empleados registrados
+          </p>
         </div>
       </div>
 
       {/* Estadísticas */}
       <div style={styles.statsGrid}>
         <div style={styles.statCard}>
-          <div style={styles.statCardContent}>
+          <div style={styles.statContent}>
             <div>
-              <div style={{ ...styles.statLabel, marginBottom: '4px' }}>Total Empleados</div>
-              <div style={styles.statNumber}>{empleados.length}</div>
+              <div style={styles.statLabel}>Total Empleados</div>
+              <div style={styles.statNumber}>{estadisticas.totalEmpleados}</div>
             </div>
-            <div style={{ ...styles.statIcon, backgroundColor: '#dbeafe' }}>
+            <div style={{...styles.statIcon, backgroundColor: '#dbeafe'}}>
               <Users size={24} color="#2563eb" />
             </div>
           </div>
         </div>
         
         <div style={styles.statCard}>
-          <div style={styles.statCardContent}>
+          <div style={styles.statContent}>
             <div>
-              <div style={{ ...styles.statLabel, marginBottom: '4px' }}>Empleados Activos</div>
-              <div style={{ ...styles.statNumber, color: '#059669' }}>
-                {empleados.filter(emp => emp.estado === 'activo').length}
+              <div style={styles.statLabel}>Activos</div>
+              <div style={{...styles.statNumber, color: '#059669'}}>
+                {estadisticas.empleadosActivos}
               </div>
             </div>
-            <div style={{ ...styles.statIcon, backgroundColor: '#d1fae5' }}>
+            <div style={{...styles.statIcon, backgroundColor: '#d1fae5'}}>
               <CheckCircle size={24} color="#059669" />
             </div>
           </div>
         </div>
         
         <div style={styles.statCard}>
-          <div style={styles.statCardContent}>
+          <div style={styles.statContent}>
             <div>
-              <div style={{ ...styles.statLabel, marginBottom: '4px' }}>Departamentos</div>
-              <div style={{ ...styles.statNumber, color: '#7c3aed' }}>{departamentos.length}</div>
+              <div style={styles.statLabel}>Departamentos</div>
+              <div style={{...styles.statNumber, color: '#7c3aed'}}>
+                {estadisticas.departamentos}
+              </div>
             </div>
-            <div style={{ ...styles.statIcon, backgroundColor: '#e9d5ff' }}>
+            <div style={{...styles.statIcon, backgroundColor: '#e9d5ff'}}>
               <Building size={24} color="#7c3aed" />
             </div>
           </div>
         </div>
         
         <div style={styles.statCard}>
-          <div style={styles.statCardContent}>
+          <div style={styles.statContent}>
             <div>
-              <div style={{ ...styles.statLabel, marginBottom: '4px' }}>Nuevos Este Mes</div>
-              <div style={{ ...styles.statNumber, color: '#ea580c' }}>1</div>
+              <div style={styles.statLabel}>Nuevos Este Mes</div>
+              <div style={{...styles.statNumber, color: '#ea580c'}}>
+                {estadisticas.nuevosEsteMes}
+              </div>
             </div>
-            <div style={{ ...styles.statIcon, backgroundColor: '#fed7aa' }}>
+            <div style={{...styles.statIcon, backgroundColor: '#fed7aa'}}>
               <Star size={24} color="#ea580c" />
             </div>
           </div>
         </div>
       </div>
 
-     {/* Filtros */}
+      {/* Filtros */}
       <div style={styles.filtersCard}>
         <div style={styles.filtersContent}>
           <div style={styles.searchContainer}>
             <Search size={16} style={styles.searchIcon} />
             <input
               type="text"
-              placeholder="Buscar por nombre, email o código..."
+              placeholder="Buscar por nombre, email, código..."
               value={filtros.busqueda}
-              onChange={(e) => setFiltros({ ...filtros, busqueda: e.target.value })}
+              onChange={(e) => setFiltros({...filtros, busqueda: e.target.value})}
               style={styles.searchInput}
-              className="search-input"
             />
           </div>
-          <br />
-          <br />
-          <br />
-          <br />
-          <br />
 
           <select
             value={filtros.departamento}
-            onChange={(e) => setFiltros({ ...filtros, departamento: e.target.value })}
+            onChange={(e) => setFiltros({...filtros, departamento: e.target.value})}
             style={styles.select}
-            className="select"
           >
             <option value="">Todos los departamentos</option>
             {departamentos.map(dept => (
@@ -1063,49 +511,35 @@ const styles = {
 
           <select
             value={filtros.estado}
-            onChange={(e) => setFiltros({ ...filtros, estado: e.target.value })}
+            onChange={(e) => setFiltros({...filtros, estado: e.target.value})}
             style={styles.select}
-            className="select"
           >
             <option value="todos">Todos los estados</option>
             <option value="activo">Activos</option>
             <option value="inactivo">Inactivos</option>
-            <option value="vacaciones">En Vacaciones</option>
-            <option value="licencia">En Licencia</option>
           </select>
-
-          <button
-            style={{ ...styles.button, ...styles.buttonSecondary, ...styles.buttonFilter }}
-            className="button-secondary"
-          >
-            <Download size={16} />
-            Exportar
-          </button>
         </div>
       </div>
+
       {/* Tabla */}
       <div style={styles.tableCard}>
         <table style={styles.table}>
           <thead style={styles.tableHeader}>
             <tr>
-              <th style={styles.tableHeaderCell}>Empleado</th>
-              <th style={styles.tableHeaderCell}>Departamento</th>
-              <th style={styles.tableHeaderCell}>Puesto</th>
-              <th style={styles.tableHeaderCell}>Estado</th>
-              <th style={styles.tableHeaderCell}>Fecha Ingreso</th>
-              <th style={styles.tableHeaderCell}>Acciones</th>
+              <th style={styles.th}>Empleado</th>
+              <th style={styles.th}>Departamento</th>
+              <th style={styles.th}>Puesto</th>
+              <th style={styles.th}>Estado</th>
+              <th style={styles.th}>Fecha Ingreso</th>
+              <th style={styles.th}>Acciones</th>
             </tr>
           </thead>
           <tbody>
             {empleadosPaginados.map((empleado) => (
-              <tr key={empleado.id} style={styles.tableRow} className="table-row">
-                <td style={styles.tableCell}>
+              <tr key={empleado.id} style={styles.tr}>
+                <td style={styles.td}>
                   <div style={styles.employeeInfo}>
-                    <img 
-                      src={empleado.foto} 
-                      alt={`${empleado.nombre} ${empleado.apellido}`}
-                      style={styles.employeePhoto}
-                    />
+                    <img src={empleado.foto} alt="" style={styles.employeePhoto} />
                     <div>
                       <div style={styles.employeeName}>
                         {empleado.nombre} {empleado.apellido}
@@ -1114,60 +548,32 @@ const styles = {
                     </div>
                   </div>
                 </td>
-                <td style={styles.tableCell}>{empleado.departamento}</td>
-                <td style={styles.tableCell}>{empleado.puesto}</td>
-                <td style={styles.tableCell}>
+                <td style={styles.td}>{empleado.departamento}</td>
+                <td style={styles.td}>{empleado.puesto}</td>
+                <td style={styles.td}>
                   <span style={{
-                    ...styles.statusBadge,
-                    ...(empleado.estado === 'activo' ? styles.statusActive :
-                        empleado.estado === 'vacaciones' ? styles.statusVacations :
-                        styles.statusInactive)
+                    ...styles.badge,
+                    ...(empleado.estado === 'activo' ? styles.badgeActive : styles.badgeInactive)
                   }}>
-                    {empleado.estado === 'activo' ? 'Activo' :
-                     empleado.estado === 'vacaciones' ? 'Vacaciones' :
-                     empleado.estado === 'licencia' ? 'Licencia' : 'Inactivo'}
+                    {empleado.estado === 'activo' ? 'Activo' : 'Inactivo'}
                   </span>
                 </td>
-                <td style={styles.tableCell}>
-                  {empleado.fechaIngresoDisplay || 'Sin fecha'}
-                </td>
-                <td style={styles.tableCell}>
+                <td style={styles.td}>{empleado.fechaIngresoDisplay}</td>
+                <td style={styles.td}>
                   <div style={styles.actionButtons}>
                     <button
-                        onClick={() => {
-                          const empleadoLimpio = {
-                            id: empleado.id || '',
-                            nombre: empleado.nombre || '',
-                            apellido: empleado.apellido || '',
-                            email: empleado.email || '',
-                            telefono: empleado.telefono || '',
-                            direccion: empleado.direccion || '',
-                            departamento: empleado.departamento || '',
-                            puesto: empleado.puesto || '',
-                            supervisor: empleado.supervisor || '',
-                            fechaIngreso: empleado.fechaIngreso || '',
-                            salario: empleado.salario || '',
-                            estado: empleado.estado || 'activo'
-                          };
-                          
-                          setEmpleadoSeleccionado(empleadoLimpio);
-                          setModalActivo('editar');
-                        }}
-                        style={{ ...styles.actionButton, color: '#059669' }}
-                        className="action-button"
-                        title="Editar"
-                      >
-                        <Edit size={16} />
-                      </button>
-                      
-                    <button
                       onClick={() => {
-                        if (window.confirm('¿Estás seguro de que quieres eliminar este empleado?')) {
-                          eliminarEmpleado(empleado.id);
-                        }
+                        setEmpleadoSeleccionado(empleado);
+                        setModalActivo('editar');
                       }}
-                      style={{ ...styles.actionButton, color: '#dc2626' }}
-                      className="action-button"
+                      style={{...styles.actionButton, color: '#059669'}}
+                      title="Editar"
+                    >
+                      <Edit size={16} />
+                    </button>
+                    <button
+                      onClick={() => eliminarEmpleado(empleado.id)}
+                      style={{...styles.actionButton, color: '#dc2626'}}
                       title="Eliminar"
                     >
                       <Trash2 size={16} />
@@ -1178,45 +584,37 @@ const styles = {
             ))}
           </tbody>
         </table>
-        
+
         {/* Paginación */}
         {totalPaginas > 1 && (
           <div style={styles.pagination}>
             <div style={styles.paginationInfo}>
-              Mostrando {((paginaActual - 1) * empleadosPorPagina) + 1} a {Math.min(paginaActual * empleadosPorPagina, empleadosFiltrados.length)} de {empleadosFiltrados.length} empleados
+              Mostrando {((paginaActual - 1) * empleadosPorPagina) + 1} a {Math.min(paginaActual * empleadosPorPagina, empleadosFiltrados.length)} de {empleadosFiltrados.length}
             </div>
             <div style={styles.paginationButtons}>
               <button
                 onClick={() => setPaginaActual(Math.max(1, paginaActual - 1))}
                 disabled={paginaActual === 1}
-                style={{
-                  ...styles.paginationButton,
-                  opacity: paginaActual === 1 ? 0.5 : 1,
-                  cursor: paginaActual === 1 ? 'not-allowed' : 'pointer'
-                }}
+                style={styles.paginationButton}
               >
                 Anterior
               </button>
-              {Array.from({length: totalPaginas}, (_, i) => i + 1).map(numero => (
+              {Array.from({length: totalPaginas}, (_, i) => i + 1).map(num => (
                 <button
-                  key={numero}
-                  onClick={() => setPaginaActual(numero)}
+                  key={num}
+                  onClick={() => setPaginaActual(num)}
                   style={{
                     ...styles.paginationButton,
-                    ...(paginaActual === numero ? styles.paginationButtonActive : {})
+                    ...(paginaActual === num ? styles.paginationButtonActive : {})
                   }}
                 >
-                  {numero}
+                  {num}
                 </button>
               ))}
               <button
                 onClick={() => setPaginaActual(Math.min(totalPaginas, paginaActual + 1))}
                 disabled={paginaActual === totalPaginas}
-                style={{
-                  ...styles.paginationButton,
-                  opacity: paginaActual === totalPaginas ? 0.5 : 1,
-                  cursor: paginaActual === totalPaginas ? 'not-allowed' : 'pointer'
-                }}
+                style={styles.paginationButton}
               >
                 Siguiente
               </button>
@@ -1225,11 +623,11 @@ const styles = {
         )}
       </div>
 
-      {/* Modal de formulario */}
-      {(modalActivo === 'agregar' || modalActivo === 'editar') && (
+      {/* Modal */}
+      {modalActivo === 'editar' && empleadoSeleccionado && (
         <FormularioEmpleado
-          empleado={modalActivo === 'editar' ? empleadoSeleccionado : null}
-          onGuardar={modalActivo === 'agregar' ? agregarEmpleado : editarEmpleado}
+          empleado={empleadoSeleccionado}
+          onGuardar={actualizarEmpleado}
           onCancelar={() => {
             setModalActivo(null);
             setEmpleadoSeleccionado(null);
@@ -1238,6 +636,78 @@ const styles = {
       )}
     </div>
   );
+};
+
+// Estilos (continúa en siguiente mensaje por límite de longitud)
+const styles = {
+  container: { padding: '24px' },
+  header: { marginBottom: '32px' },
+  title: { fontSize: '24px', fontWeight: 'bold', color: '#1f2937', display: 'flex', alignItems: 'center', gap: '12px' },
+  subtitle: { color: '#6b7280', marginTop: '4px' },
+  statsGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '24px', marginBottom: '32px' },
+  statCard: { backgroundColor: 'white', padding: '24px', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', border: '1px solid #e5e7eb' },
+  statContent: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
+  statNumber: { fontSize: '24px', fontWeight: 'bold', color: '#1f2937' },
+  statLabel: { fontSize: '14px', color: '#6b7280', fontWeight: '500', marginBottom: '4px' },
+  statIcon: { padding: '12px', borderRadius: '12px', display: 'flex' },
+  filtersCard: { backgroundColor: 'white', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', border: '1px solid #e5e7eb', padding: '20px', marginBottom: '24px' },
+  filtersContent: { display: 'flex', gap: '16px', flexWrap: 'wrap' },
+  searchContainer: { position: 'relative', flex: '1', minWidth: '250px' },
+  searchInput: { width: '100%', padding: '8px 8px 8px 40px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px' },
+  searchIcon: { position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#9ca3af' },
+  select: { padding: '8px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', minWidth: '200px' },
+  tableCard: { backgroundColor: 'white', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', border: '1px solid #e5e7eb', overflow: 'hidden' },
+  table: { width: '100%', borderCollapse: 'collapse' },
+  tableHeader: { backgroundColor: '#f9fafb', borderBottom: '1px solid #e5e7eb' },
+  th: { padding: '12px 16px', textAlign: 'left', fontWeight: '500', color: '#1f2937', fontSize: '14px' },
+  tr: { borderBottom: '1px solid #e5e7eb' },
+  td: { padding: '16px', fontSize: '14px', color: '#1f2937' },
+  employeeInfo: { display: 'flex', alignItems: 'center', gap: '12px' },
+  employeePhoto: { width: '40px', height: '40px', borderRadius: '50%' },
+  employeeName: { fontWeight: '500', color: '#1f2937' },
+  employeeEmail: { fontSize: '12px', color: '#6b7280' },
+  badge: { padding: '4px 8px', borderRadius: '12px', fontSize: '12px', fontWeight: '500' },
+  badgeActive: { backgroundColor: '#dcfce7', color: '#166534' },
+  badgeInactive: { backgroundColor: '#fee2e2', color: '#991b1b' },
+  actionButtons: { display: 'flex', gap: '8px' },
+  actionButton: { padding: '6px', border: 'none', borderRadius: '6px', cursor: 'pointer', backgroundColor: '#f3f4f6' },
+  pagination: { display: 'flex', justifyContent: 'space-between', padding: '16px 24px', borderTop: '1px solid #e5e7eb' },
+  paginationInfo: { fontSize: '14px', color: '#6b7280' },
+  paginationButtons: { display: 'flex', gap: '8px' },
+  paginationButton: { padding: '6px 12px', border: '1px solid #d1d5db', borderRadius: '6px', backgroundColor: 'white', cursor: 'pointer' },
+  paginationButtonActive: { backgroundColor: '#2563eb', color: 'white', borderColor: '#2563eb' },
+  modal: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50, padding: '16px' },
+  modalContent: { backgroundColor: 'white', borderRadius: '12px', maxWidth: '900px', width: '100%', maxHeight: '90vh', overflow: 'auto' },
+  modalHeader: { padding: '24px', borderBottom: '1px solid #e5e7eb', display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
+  modalTitle: { fontSize: '20px', fontWeight: 'bold', color: '#1f2937' },
+  closeButton: { padding: '4px', border: 'none', background: 'none', cursor: 'pointer', color: '#6b7280' },
+  modalBody: { padding: '24px' },
+  formGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(350px, 1fr))', gap: '24px' },
+  sectionTitle: { fontSize: '16px', fontWeight: '600', color: '#1f2937', marginBottom: '16px', paddingBottom: '8px', borderBottom: '1px solid #e5e7eb' },
+  formGroup: { marginBottom: '16px' },
+  label: { display: 'block', fontSize: '14px', fontWeight: '500', color: '#374151', marginBottom: '4px' },
+  input: { width: '100%', padding: '8px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px' },
+  textarea: { width: '100%', padding: '8px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', resize: 'vertical', minHeight: '80px' },
+  button: { padding: '8px 16px', borderRadius: '8px', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', fontWeight: '500' },
+  buttonPrimary: { backgroundColor: '#2563eb', color: 'white' },
+  buttonSecondary: { backgroundColor: '#f3f4f6', color: '#374151', border: '1px solid #d1d5db' },
+  modalActions: { display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '24px', paddingTop: '24px', borderTop: '1px solid #e5e7eb' },
+  loadingContainer: { display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', height: '400px', gap: '16px' },
+  spinner: { width: '32px', height: '32px', border: '3px solid #f3f3f3', borderTop: '3px solid #2563eb', borderRadius: '50%', animation: 'spin 1s linear infinite' },
+  css: `
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    tr:hover { background-color: #f9fafb; }
+    button:hover { opacity: 0.9; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    input:focus, select:focus, textarea:focus {
+      outline: none;
+      border-color: #2563eb;
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+    }
+  `
 };
 
 export default EmpleadosModule;

@@ -21,7 +21,7 @@ export const createUser = async ({ username, email, password, role, empleadoId =
   const hashedPassword = await bcrypt.hash(password, salt);
 
   const result = await executeQuery(
-    `INSERT INTO Usuarios (Username, Email, Password, Rol, EmpleadoID, Estado, FechaCreacion) 
+    `INSERT INTO Usuarios (Username, Email, PasswordHash, Rol, EmpleadoID, Estado, FechaCreacion) 
      OUTPUT INSERTED.* 
      VALUES (@username, @email, @password, @role, @empleadoId, 1, GETDATE())`,
     [
@@ -173,8 +173,8 @@ export const deleteUser = async (userId) => {
   // Soft delete
   const result = await executeQuery(
     `UPDATE Usuarios 
-     SET Estado = 0 
-     WHERE UsuarioID = @userId`,
+    SET PasswordHash = @password 
+    WHERE UsuarioID = @userId`,
     [{ name: "userId", type: sql.Int, value: userId }]
   );
   

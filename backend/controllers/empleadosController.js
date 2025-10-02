@@ -1,4 +1,5 @@
 import { poolPromise } from '../db.js';
+import sql from 'mssql';
 
 // Listar empleados
 export const getEmpleados = async (req, res) => {
@@ -41,34 +42,49 @@ export const getEmpleados = async (req, res) => {
 // Crear empleado
 export const createEmpleado = async (req, res) => {
   try {
+    console.log('Datos recibidos en el backend:', req.body);
+
     const {
-      Nombre,
-      Apellido,
-      Cedula,
-      Email,
-      Telefono,
-      Direccion,
-      Cargo,
-      Salario,
-      FechaIngreso,
-      Estado,
-      DepartamentoID
+      nombre,
+      apellido,
+      cedula,
+      email,
+      telefono,
+      direccion,
+      cargo,
+      salario,
+      fechaIngreso,
+      estado,
+      departamentoID
     } = req.body;
+
+    // Validación de campos obligatorios
+    if (!nombre || !apellido) {
+      return res.status(400).json({ 
+        error: 'Los campos nombre y apellido son obligatorios' 
+      });
+    }
+
+    if (!cedula) {
+      return res.status(400).json({ 
+        error: 'La cédula es obligatoria' 
+      });
+    }
 
     const pool = await poolPromise;
 
     const result = await pool.request()
-      .input("Nombre", Nombre)
-      .input("Apellido", Apellido)
-      .input("Cedula", Cedula)
-      .input("Email", Email)
-      .input("Telefono", Telefono)
-      .input("Direccion", Direccion)
-      .input("Cargo", Cargo)
-      .input("Salario", Salario)
-      .input("FechaIngreso", FechaIngreso)
-      .input("Estado", Estado)
-      .input("DepartamentoID", DepartamentoID)
+      .input("Nombre", sql.NVarChar, nombre)
+      .input("Apellido", sql.NVarChar, apellido)
+      .input("Cedula", sql.NVarChar, cedula)
+      .input("Email", sql.NVarChar, email || null)
+      .input("Telefono", sql.NVarChar, telefono || null)
+      .input("Direccion", sql.NVarChar, direccion || null)
+      .input("Cargo", sql.NVarChar, cargo || null)
+      .input("Salario", sql.Decimal(10, 2), salario || null)
+      .input("FechaIngreso", sql.Date, fechaIngreso || null)
+      .input("Estado", sql.Bit, estado !== undefined ? parseInt(estado) || 1 : 1)
+      .input("DepartamentoID", sql.Int, departamentoID || null)
       .query(`
         INSERT INTO Empleados
         (NOMBRE, APELLIDO, CEDULA, Email, Telefono, Direccion, CARGO, Salario, FECHAINGRESO, ESTADO, DEPARTAMENTOID)
@@ -79,11 +95,16 @@ export const createEmpleado = async (req, res) => {
 
     res.status(201).json({ 
       message: "Empleado creado exitosamente", 
-      EmpleadoID: result.recordset[0].EmpleadoID 
+      empleadoId: result.recordset[0].EmpleadoID,  // ← minúscula para coincidir con frontend
+      id: result.recordset[0].EmpleadoID,          // ← alternativa
+      EmpleadoID: result.recordset[0].EmpleadoID   // ← formato SQL Server
     });
   } catch (err) {
     console.error('Error al crear empleado:', err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ 
+      error: 'Error al crear empleado',
+      detalles: err.message 
+    });
   }
 };
 
@@ -91,35 +112,46 @@ export const createEmpleado = async (req, res) => {
 export const updateEmpleado = async (req, res) => {
   try {
     const { EmpleadoID } = req.params;
+    
+    console.log('Actualizando empleado:', EmpleadoID);
+    console.log('Datos recibidos:', req.body);
+
     const {
-      Nombre,
-      Apellido,
-      Cedula,
-      Email,
-      Telefono,
-      Direccion,
-      Cargo,
-      Salario,
-      FechaIngreso,
-      Estado,
-      DepartamentoID
+      nombre,
+      apellido,
+      cedula,
+      email,
+      telefono,
+      direccion,
+      cargo,
+      salario,
+      fechaIngreso,
+      estado,
+      departamentoID
     } = req.body;
+
+    // Validación de campos obligatorios
+    if (!nombre || !apellido) {
+      return res.status(400).json({ 
+        error: 'Los campos nombre y apellido son obligatorios' 
+      });
+    }
 
     const pool = await poolPromise;
 
     await pool.request()
-      .input("EmpleadoID", EmpleadoID)
-      .input("Nombre", Nombre)
-      .input("Apellido", Apellido)
-      .input("Cedula", Cedula)
-      .input("Email", Email)
-      .input("Telefono", Telefono)
-      .input("Direccion", Direccion)
-      .input("Cargo", Cargo)
-      .input("Salario", Salario)
-      .input("FechaIngreso", FechaIngreso)
-      .input("Estado", Estado)
-      .input("DepartamentoID", DepartamentoID)
+      .input("EmpleadoID", sql.Int, EmpleadoID)
+      .input("Nombre", sql.NVarChar, nombre)
+      .input("Apellido", sql.NVarChar, apellido)
+      .input("Cedula", sql.NVarChar, cedula)
+      .input("Email", sql.NVarChar, email || null)
+      .input("Telefono", sql.NVarChar, telefono || null)
+      .input("Direccion", sql.NVarChar, direccion || null)
+      .input("Cargo", sql.NVarChar, cargo || null)
+      .input("Salario", sql.Decimal(10, 2), salario || null)
+      .input("FechaIngreso", sql.Date, fechaIngreso || null)
+      .input("Estado", sql.Bit, estado !== undefined ? parseInt(estado) || 1 : 1)
+      .input("DepartamentoID", sql.Int, departamentoID || null)
       .query(`
         UPDATE Empleados
         SET NOMBRE=@Nombre,
@@ -140,7 +172,10 @@ export const updateEmpleado = async (req, res) => {
     res.json({ message: "Empleado actualizado correctamente" });
   } catch (err) {
     console.error('Error al actualizar empleado:', err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ 
+      error: 'Error al actualizar empleado',
+      detalles: err.message 
+    });
   }
 };
 
@@ -148,15 +183,21 @@ export const updateEmpleado = async (req, res) => {
 export const deleteEmpleado = async (req, res) => {
   try {
     const { EmpleadoID } = req.params;
+    
+    console.log('Eliminando empleado:', EmpleadoID);
+    
     const pool = await poolPromise;
 
     await pool.request()
-      .input("EmpleadoID", EmpleadoID)
+      .input("EmpleadoID", sql.Int, EmpleadoID)
       .query("DELETE FROM Empleados WHERE EmpleadoID=@EmpleadoID");
 
     res.json({ message: "Empleado eliminado correctamente" });
   } catch (err) {
     console.error('Error al eliminar empleado:', err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ 
+      error: 'Error al eliminar empleado',
+      detalles: err.message 
+    });
   }
 };

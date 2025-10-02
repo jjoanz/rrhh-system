@@ -81,34 +81,92 @@ const FormularioPostulacion = () => {
     }));
   };
 
-  const handleFileChange = (e) => {
-    const { name, files } = e.target;
-    if (files && files[0]) {
-      setArchivos(prev => ({
-        ...prev,
-        [name]: files[0]
-      }));
+const handleFileChange = (e) => {
+  const { name, files } = e.target;
+  if (files && files[0]) {
+    const file = files[0];
+    const maxSize = 5 * 1024 * 1024; // 5MB
+    
+    // Nombres descriptivos para mensajes
+    const fieldNames = {
+      cv: 'CV',
+      fotoCedula: 'Foto de Cédula',
+      foto2x2: 'Foto 2x2'
+    };
+    
+    // Validar tamaño inmediatamente
+    if (file.size > maxSize) {
+      const tamañoMB = (file.size / 1024 / 1024).toFixed(2);
+      setError(`El archivo "${fieldNames[name]}" (${tamañoMB}MB) excede el tamaño máximo de 5MB`);
+      e.target.value = '';
+      return;
     }
-  };
+    
+    // Validar tipo de archivo
+    const allowedTypes = {
+      cv: ['.pdf', '.doc', '.docx'],
+      fotoCedula: ['.jpg', '.jpeg', '.png', '.pdf'],
+      foto2x2: ['.jpg', '.jpeg', '.png']
+    };
+    
+    const ext = '.' + file.name.split('.').pop().toLowerCase();
+    if (!allowedTypes[name]?.includes(ext)) {
+      setError(`Tipo de archivo no válido para ${fieldNames[name]}. Tipos permitidos: ${allowedTypes[name]?.join(', ')}`);
+      e.target.value = '';
+      return;
+    }
+    
+    // Si pasa las validaciones, guardar el archivo
+    setError(null);
+    setArchivos(prev => ({
+      ...prev,
+      [name]: file
+    }));
+  }
+};
 
   const handleSubmit = async (e) => {
-    e.preventDefault();
-    
-    try {
-      setEnviando(true);
-      setError(null);
-      
-      await postulacionesPublicasService.enviarPostulacion(datos, archivos);
-      
-      setSuccess(true);
+  e.preventDefault();
+  
+  // Validar tamaños de archivos ANTES de enviar
+  const maxSize = 5 * 1024 * 1024; // 5MB en bytes
+  const archivosArray = [
+    { nombre: 'CV', archivo: archivos.cv },
+    { nombre: 'Foto de Cédula', archivo: archivos.fotoCedula },
+    { nombre: 'Foto 2x2', archivo: archivos.foto2x2 }
+  ];
+  
+  for (const { nombre, archivo } of archivosArray) {
+    if (archivo && archivo.size > maxSize) {
+      const tamañoMB = (archivo.size / 1024 / 1024).toFixed(2);
+      setError(`El archivo "${nombre}" (${tamañoMB}MB) excede el tamaño máximo de 5MB`);
       window.scrollTo(0, 0);
-    } catch (err) {
-      setError(err.response?.data?.error || 'Error al enviar la postulación');
-      window.scrollTo(0, 0);
-    } finally {
-      setEnviando(false);
+      return;
     }
-  };
+  }
+  
+  // Validar que todos los archivos requeridos estén presentes
+  if (!archivos.cv || !archivos.fotoCedula || !archivos.foto2x2) {
+    setError('Debe adjuntar todos los documentos requeridos (CV, Foto de Cédula, Foto 2x2)');
+    window.scrollTo(0, 0);
+    return;
+  }
+  
+  try {
+    setEnviando(true);
+    setError(null);
+    
+    await postulacionesPublicasService.enviarPostulacion(datos, archivos);
+    
+    setSuccess(true);
+    window.scrollTo(0, 0);
+  } catch (err) {
+    setError(err.response?.data?.error || 'Error al enviar la postulación');
+    window.scrollTo(0, 0);
+  } finally {
+    setEnviando(false);
+  }
+};
 
   const siguientePaso = () => {
     if (validarPaso(paso)) {
@@ -123,33 +181,48 @@ const FormularioPostulacion = () => {
   };
 
   const validarPaso = (pasoActual) => {
-    switch (pasoActual) {
-      case 1:
-        if (!datos.vacanteId) {
-          setError('Debe seleccionar una vacante');
-          return false;
-        }
-        if (!datos.nombre || !datos.email || !datos.cedula) {
-          setError('Complete todos los campos requeridos');
-          return false;
-        }
-        break;
-      case 2:
-        if (!datos.nivelEducativo) {
-          setError('Indique su nivel educativo');
-          return false;
-        }
-        break;
-      case 3:
-        if (!datos.experienciaLaboral) {
-          setError('Describa su experiencia laboral');
-          return false;
-        }
-        break;
-    }
-    setError(null);
-    return true;
-  };
+  switch (pasoActual) {
+    case 1:
+      if (!datos.vacanteId) {
+        setError('Debe seleccionar una vacante');
+        return false;
+      }
+      if (!datos.nombre || !datos.email || !datos.cedula) {
+        setError('Complete todos los campos requeridos');
+        return false;
+      }
+      break;
+    case 2:
+      if (!datos.nivelEducativo) {
+        setError('Indique su nivel educativo');
+        return false;
+      }
+      break;
+    case 3:
+      if (!datos.experienciaLaboral) {
+        setError('Describa su experiencia laboral');
+        return false;
+      }
+      break;
+    case 4:
+      // Validar que todos los archivos requeridos estén presentes
+      if (!archivos.cv) {
+        setError('Debe adjuntar su Curriculum Vitae (CV)');
+        return false;
+      }
+      if (!archivos.fotoCedula) {
+        setError('Debe adjuntar la foto de su cédula');
+        return false;
+      }
+      if (!archivos.foto2x2) {
+        setError('Debe adjuntar su foto 2x2');
+        return false;
+      }
+      break;
+  }
+  setError(null);
+  return true;
+};
 
   if (loading) {
     return (

@@ -1,4 +1,3 @@
-// backend/routes/postulacionesPublicasRoutes.js
 import express from 'express';
 import PostulacionesController from '../controllers/postulacionesController.js';
 import upload from '../config/multerConfig.js';

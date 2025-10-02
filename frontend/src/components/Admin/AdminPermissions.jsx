@@ -39,6 +39,41 @@ const AdminPermissions = () => {
   const [message, setMessage] = useState({ type: '', text: '' });
   const [changedRoles, setChangedRoles] = useState({});
 
+  // ⬇️ omponente AdminPermissions nuevo user ⬇️
+const [showCreateUserModal, setShowCreateUserModal] = useState(false);
+const [showCreateEmpleadoModal, setShowCreateEmpleadoModal] = useState(false);
+const [empleadosDisponibles, setEmpleadosDisponibles] = useState([]);
+const [nuevoUsuario, setNuevoUsuario] = useState({
+  empleadoId: '',
+  username: '',
+  email: '',
+  password: '',
+  confirmPassword: '',
+  rol: 'colaborador'
+});
+const [nuevoEmpleado, setNuevoEmpleado] = useState({
+  nombre: '',
+  apellido: '',
+  cedula: '',
+  email: '',
+  telefono: '',
+  direccion: '',
+  ciudad: '',
+  provincia: '',
+  fechaNacimiento: '',
+  genero: '',
+  estadoCivil: '',
+  departamentoId: '',
+  puestoId: '',
+  fechaIngreso: new Date().toISOString().split('T')[0],
+  salario: '',
+  tipoContrato: 'Indefinido',
+  username: '',
+  password: '',
+  confirmPassword: '',
+  rol: 'colaborador'
+});
+  
   // Lista de roles disponibles
   const rolesDisponibles = [
     'colaborador',
@@ -62,6 +97,208 @@ const AdminPermissions = () => {
       setError('Endpoint no encontrado. Verifica la configuración del servidor.');
     } else {
       setError(error.message || 'Error interno del servidor');
+    }
+  };
+
+    // Nueva función para cargar empleados sin usuario
+  const loadEmpleadosSinUsuario = async () => {
+    try {
+      const res = await fetch(`${API_BASE_URL}/empleados`, {
+        headers: { 'Authorization': `Bearer ${getToken()}` }
+      });
+      
+      if (res.ok) {
+        const data = await res.json();
+        const empleados = data.empleados || data;
+        
+        const empleadosConUsuario = usuarios.map(u => u.empleadoId);
+        const sinUsuario = empleados.filter(emp => 
+          !empleadosConUsuario.includes(emp.EMPLEADO_ID)
+        );
+        
+        setEmpleadosDisponibles(sinUsuario);
+      }
+    } catch (err) {
+      console.error('Error cargando empleados:', err);
+    }
+  };
+
+  // Función para crear usuario para empleado existente
+  const crearUsuarioParaEmpleado = async (e) => {
+    e.preventDefault();
+    
+    if (!nuevoUsuario.empleadoId) {
+      setMessage({ type: 'error', text: 'Debe seleccionar un empleado' });
+      return;
+    }
+    
+    if (!nuevoUsuario.username || !nuevoUsuario.email || !nuevoUsuario.password) {
+      setMessage({ type: 'error', text: 'Complete todos los campos requeridos' });
+      return;
+    }
+    
+    if (nuevoUsuario.password !== nuevoUsuario.confirmPassword) {
+      setMessage({ type: 'error', text: 'Las contraseñas no coinciden' });
+      return;
+    }
+    
+    if (nuevoUsuario.password.length < 6) {
+      setMessage({ type: 'error', text: 'La contraseña debe tener al menos 6 caracteres' });
+      return;
+    }
+    
+    setLoading(true);
+    try {
+      const res = await fetch(`${AUTH_API_URL}/register`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${getToken()}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          username: nuevoUsuario.username,
+          email: nuevoUsuario.email,
+          password: nuevoUsuario.password,
+          role: nuevoUsuario.rol,
+          empleadoId: parseInt(nuevoUsuario.empleadoId)
+        })
+      });
+      
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || 'Error al crear usuario');
+      }
+      
+      setMessage({ type: 'success', text: 'Usuario creado exitosamente' });
+      setShowCreateUserModal(false);
+      setNuevoUsuario({
+        empleadoId: '',
+        username: '',
+        email: '',
+        password: '',
+        confirmPassword: '',
+        rol: 'colaborador'
+      });
+      await loadUsuarios();
+    } catch (err) {
+      setMessage({ type: 'error', text: err.message });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Función para crear empleado completo con usuario
+  const crearEmpleadoConUsuario = async (e) => {
+    e.preventDefault();
+    
+    if (!nuevoEmpleado.nombre || !nuevoEmpleado.apellido || !nuevoEmpleado.cedula) {
+      setMessage({ type: 'error', text: 'Complete todos los campos requeridos del empleado' });
+      return;
+    }
+    
+    if (!nuevoEmpleado.username || !nuevoEmpleado.password) {
+      setMessage({ type: 'error', text: 'Complete los datos del usuario' });
+      return;
+    }
+    
+    if (nuevoEmpleado.password !== nuevoEmpleado.confirmPassword) {
+      setMessage({ type: 'error', text: 'Las contraseñas no coinciden' });
+      return;
+    }
+    
+    if (nuevoEmpleado.password.length < 6) {
+      setMessage({ type: 'error', text: 'La contraseña debe tener al menos 6 caracteres' });
+      return;
+    }
+    
+    setLoading(true);
+    try {
+      // 1. Crear el empleado
+      const resEmpleado = await fetch(`${API_BASE_URL}/empleados`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${getToken()}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          nombre: nuevoEmpleado.nombre,
+          apellido: nuevoEmpleado.apellido,
+          cedula: nuevoEmpleado.cedula,
+          email: nuevoEmpleado.email,
+          telefono: nuevoEmpleado.telefono,
+          direccion: nuevoEmpleado.direccion,
+          ciudad: nuevoEmpleado.ciudad,
+          provincia: nuevoEmpleado.provincia,
+          fechaNacimiento: nuevoEmpleado.fechaNacimiento,
+          genero: nuevoEmpleado.genero,
+          estadoCivil: nuevoEmpleado.estadoCivil,
+          departamentoId: parseInt(nuevoEmpleado.departamentoId) || null,
+          puestoId: parseInt(nuevoEmpleado.puestoId) || null,
+          fechaIngreso: nuevoEmpleado.fechaIngreso,
+          salario: parseFloat(nuevoEmpleado.salario) || 0,
+          tipoContrato: nuevoEmpleado.tipoContrato,
+          estado: 'Activo'
+        })
+      });
+      
+      if (!resEmpleado.ok) {
+        const errorData = await resEmpleado.json();
+        throw new Error(errorData.error || 'Error al crear empleado');
+      }
+      
+      const dataEmpleado = await resEmpleado.json();
+      const empleadoId = dataEmpleado.empleadoId || dataEmpleado.id;
+      
+      // 2. Crear el usuario asociado
+      const resUsuario = await fetch(`${AUTH_API_URL}/register`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${getToken()}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          username: nuevoEmpleado.username,
+          email: nuevoEmpleado.email,
+          password: nuevoEmpleado.password,
+          role: nuevoEmpleado.rol,
+          empleadoId: empleadoId
+        })
+      });
+      
+      if (!resUsuario.ok) {
+        const errorData = await resUsuario.json();
+        throw new Error(errorData.error || 'Empleado creado pero error al crear usuario');
+      }
+      
+      setMessage({ type: 'success', text: 'Empleado y usuario creados exitosamente' });
+      setShowCreateEmpleadoModal(false);
+      setNuevoEmpleado({
+        nombre: '',
+        apellido: '',
+        cedula: '',
+        email: '',
+        telefono: '',
+        direccion: '',
+        ciudad: '',
+        provincia: '',
+        fechaNacimiento: '',
+        genero: '',
+        estadoCivil: '',
+        departamentoId: '',
+        puestoId: '',
+        fechaIngreso: new Date().toISOString().split('T')[0],
+        salario: '',
+        tipoContrato: 'Indefinido',
+        username: '',
+        password: '',
+        confirmPassword: '',
+        rol: 'colaborador'
+      });
+      await loadUsuarios();
+    } catch (err) {
+      setMessage({ type: 'error', text: err.message });
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -513,15 +750,14 @@ const AdminPermissions = () => {
   };
 
   // --- Cargar datos al inicio ---
-  useEffect(() => {
-    console.log('🚀 Componente montado, tab activo:', activeTab);
-    
-    if (activeTab === 'usuarios') {
-      loadUsuarios();
-    } else if (activeTab === 'permisos') {
-      loadRoles();
-    }
-  }, [activeTab]);
+ useEffect(() => {
+  if (activeTab === 'usuarios') {
+    loadUsuarios();
+    loadEmpleadosSinUsuario(); // ⬅️ AGREGAR ESTA LÍNEA
+  } else if (activeTab === 'permisos') {
+    loadRoles();
+  }
+}, [activeTab]);
 
   // Limpiar mensajes después de 5 segundos
   useEffect(() => {
@@ -634,7 +870,28 @@ const AdminPermissions = () => {
                     <span className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm font-medium">
                       {usuarios.length} usuarios
                     </span>
-                    
+                     <div className="flex gap-2">
+                      <button
+                        onClick={() => {
+                          loadEmpleadosSinUsuario();
+                          setShowCreateUserModal(true);
+                        }}
+                        className="inline-flex items-center px-3 py-2 border border-blue-600 text-sm font-medium rounded-md text-blue-600 bg-white hover:bg-blue-50 transition-colors"
+                      >
+                        <Plus className="mr-1.5 h-4 w-4" />
+                        Usuario para Empleado
+                      </button>
+                      
+                      <button
+                        onClick={() => setShowCreateEmpleadoModal(true)}
+                        className="inline-flex items-center px-3 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-green-600 hover:bg-green-700 transition-colors"
+                      >
+                        <Users className="mr-1.5 h-4 w-4" />
+                        Nuevo Empleado + Usuario
+                      </button>
+                    </div>
+                    {/* ⬆️ FIN ⬆️ */}
+
                     {/* Botones para cambios pendientes */}
                     {Object.keys(changedRoles).length > 0 && (
                       <div className="flex items-center gap-2">
@@ -1094,6 +1351,329 @@ const AdminPermissions = () => {
             )}
           </div>
         </div>
+
+        {/* Modal: Crear Usuario para Empleado Existente */}
+        {showCreateUserModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
+              <div className="bg-blue-600 text-white px-6 py-4 rounded-t-lg">
+                <h3 className="text-lg font-semibold flex items-center">
+                  <Plus className="mr-2 h-5 w-5" />
+                  Crear Usuario para Empleado Existente
+                </h3>
+              </div>
+              
+              <form onSubmit={crearUsuarioParaEmpleado} className="p-6 space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Seleccionar Empleado *
+                  </label>
+                  <select
+                    value={nuevoUsuario.empleadoId}
+                    onChange={(e) => setNuevoUsuario({...nuevoUsuario, empleadoId: e.target.value})}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    required
+                  >
+                    <option value="">-- Seleccione un empleado --</option>
+                    {empleadosDisponibles.map(emp => (
+                      <option key={emp.EMPLEADO_ID} value={emp.EMPLEADO_ID}>
+                        {emp.NOMBRE} {emp.APELLIDO} - {emp.CEDULA}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-xs text-gray-500 mt-1">
+                    Solo se muestran empleados sin usuario asignado
+                  </p>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Nombre de Usuario *
+                  </label>
+                  <input
+                    type="text"
+                    value={nuevoUsuario.username}
+                    onChange={(e) => setNuevoUsuario({...nuevoUsuario, username: e.target.value})}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="usuario123"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Email *
+                  </label>
+                  <input
+                    type="email"
+                    value={nuevoUsuario.email}
+                    onChange={(e) => setNuevoUsuario({...nuevoUsuario, email: e.target.value})}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="usuario@empresa.com"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Contraseña *
+                  </label>
+                  <input
+                    type="password"
+                    value={nuevoUsuario.password}
+                    onChange={(e) => setNuevoUsuario({...nuevoUsuario, password: e.target.value})}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="Mínimo 6 caracteres"
+                    minLength="6"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Confirmar Contraseña *
+                  </label>
+                  <input
+                    type="password"
+                    value={nuevoUsuario.confirmPassword}
+                    onChange={(e) => setNuevoUsuario({...nuevoUsuario, confirmPassword: e.target.value})}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="Repita la contraseña"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Rol *
+                  </label>
+                  <select
+                    value={nuevoUsuario.rol}
+                    onChange={(e) => setNuevoUsuario({...nuevoUsuario, rol: e.target.value})}
+                    className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    required
+                  >
+                    {rolesDisponibles.map(rol => (
+                      <option key={rol} value={rol}>
+                        {rol.charAt(0).toUpperCase() + rol.slice(1).replace('_', ' ')}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="flex gap-3 pt-4">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowCreateUserModal(false);
+                      setNuevoUsuario({
+                        empleadoId: '',
+                        username: '',
+                        email: '',
+                        password: '',
+                        confirmPassword: '',
+                        rol: 'colaborador'
+                      });
+                    }}
+                    className="flex-1 px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {loading ? 'Creando...' : 'Crear Usuario'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* Modal: Crear Empleado Completo */}
+        {showCreateEmpleadoModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+              <div className="bg-green-600 text-white px-6 py-4 rounded-t-lg sticky top-0 z-10">
+                <h3 className="text-lg font-semibold flex items-center">
+                  <Users className="mr-2 h-5 w-5" />
+                  Crear Nuevo Empleado + Usuario
+                </h3>
+              </div>
+              
+              <form onSubmit={crearEmpleadoConUsuario} className="p-6 space-y-6">
+                <div>
+                  <h4 className="text-md font-semibold text-gray-900 mb-3 border-b pb-2">
+                    Datos Personales del Empleado
+                  </h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Nombre *</label>
+                      <input
+                        type="text"
+                        value={nuevoEmpleado.nombre}
+                        onChange={(e) => setNuevoEmpleado({...nuevoEmpleado, nombre: e.target.value})}
+                        className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Apellido *</label>
+                      <input
+                        type="text"
+                        value={nuevoEmpleado.apellido}
+                        onChange={(e) => setNuevoEmpleado({...nuevoEmpleado, apellido: e.target.value})}
+                        className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Cédula *</label>
+                      <input
+                        type="text"
+                        value={nuevoEmpleado.cedula}
+                        onChange={(e) => setNuevoEmpleado({...nuevoEmpleado, cedula: e.target.value})}
+                        className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500"
+                        placeholder="000-0000000-0"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Email *</label>
+                      <input
+                        type="email"
+                        value={nuevoEmpleado.email}
+                        onChange={(e) => setNuevoEmpleado({...nuevoEmpleado, email: e.target.value})}
+                        className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Teléfono</label>
+                      <input
+                        type="tel"
+                        value={nuevoEmpleado.telefono}
+                        onChange={(e) => setNuevoEmpleado({...nuevoEmpleado, telefono: e.target.value})}
+                        className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Fecha Nacimiento *</label>
+                      <input
+                        type="date"
+                        value={nuevoEmpleado.fechaNacimiento}
+                        onChange={(e) => setNuevoEmpleado({...nuevoEmpleado, fechaNacimiento: e.target.value})}
+                        className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Género *</label>
+                      <select
+                        value={nuevoEmpleado.genero}
+                        onChange={(e) => setNuevoEmpleado({...nuevoEmpleado, genero: e.target.value})}
+                        className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500"
+                        required
+                      >
+                        <option value="">Seleccione</option>
+                        <option value="Masculino">Masculino</option>
+                        <option value="Femenino">Femenino</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Estado Civil</label>
+                      <select
+                        value={nuevoEmpleado.estadoCivil}
+                        onChange={(e) => setNuevoEmpleado({...nuevoEmpleado, estadoCivil: e.target.value})}
+                        className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500"
+                      >
+                        <option value="">Seleccione</option>
+                        <option value="Soltero">Soltero/a</option>
+                        <option value="Casado">Casado/a</option>
+                        <option value="Divorciado">Divorciado/a</option>
+                        <option value="Viudo">Viudo/a</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <h4 className="text-md font-semibold text-gray-900 mb-3 border-b pb-2">
+                    Credenciales de Acceso
+                  </h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Nombre de Usuario *</label>
+                      <input
+                        type="text"
+                        value={nuevoEmpleado.username}
+                        onChange={(e) => setNuevoEmpleado({...nuevoEmpleado, username: e.target.value})}
+                        className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Rol *</label>
+                      <select
+                        value={nuevoEmpleado.rol}
+                        onChange={(e) => setNuevoEmpleado({...nuevoEmpleado, rol: e.target.value})}
+                        className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500"
+                        required
+                      >
+                        {rolesDisponibles.map(rol => (
+                          <option key={rol} value={rol}>
+                            {rol.charAt(0).toUpperCase() + rol.slice(1).replace('_', ' ')}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Contraseña *</label>
+                      <input
+                        type="password"
+                        value={nuevoEmpleado.password}
+                        onChange={(e) => setNuevoEmpleado({...nuevoEmpleado, password: e.target.value})}
+                        className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500"
+                        minLength="6"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Confirmar Contraseña *</label>
+                      <input
+                        type="password"
+                        value={nuevoEmpleado.confirmPassword}
+                        onChange={(e) => setNuevoEmpleado({...nuevoEmpleado, confirmPassword: e.target.value})}
+                        className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-green-500"
+                        required
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex gap-3 pt-4 sticky bottom-0 bg-white border-t">
+                  <button
+                    type="button"
+                    onClick={() => setShowCreateEmpleadoModal(false)}
+                    className="flex-1 px-4 py-2 border border-gray-300 rounded-md text-gray-700 hover:bg-gray-50 transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    className="flex-1 px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors disabled:opacity-50"
+                  >
+                    {loading ? 'Creando...' : 'Crear Empleado y Usuario'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
       </div>
     </div>
   );

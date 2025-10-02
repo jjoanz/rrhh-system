@@ -13,20 +13,22 @@ if (!fs.existsSync(uploadsDir)) {
   fs.mkdirSync(uploadsDir, { recursive: true });
 }
 
-// Configuración de almacenamiento
+// Configuración de almacenamiento en disco
 const storage = multer.diskStorage({
   destination: function (req, file, cb) {
     cb(null, uploadsDir);
   },
   filename: function (req, file, cb) {
+    // Generar nombre único para evitar conflictos
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
     const ext = path.extname(file.originalname);
     const fieldName = file.fieldname;
-    cb(null, `${fieldName}-${uniqueSuffix}${ext}`);
+    const sanitizedName = `${fieldName}-${uniqueSuffix}${ext}`;
+    cb(null, sanitizedName);
   }
 });
 
-// Filtro de archivos
+// Filtro de tipos de archivo permitidos
 const fileFilter = (req, file, cb) => {
   const allowedTypes = {
     'cv': ['.pdf', '.doc', '.docx'],
@@ -37,18 +39,22 @@ const fileFilter = (req, file, cb) => {
   const ext = path.extname(file.originalname).toLowerCase();
   const fieldName = file.fieldname;
 
+  // Verificar si el tipo de archivo es permitido
   if (allowedTypes[fieldName] && allowedTypes[fieldName].includes(ext)) {
     cb(null, true);
   } else {
-    cb(new Error(`Tipo de archivo no permitido para ${fieldName}. Permitidos: ${allowedTypes[fieldName]?.join(', ')}`));
+    const allowedExts = allowedTypes[fieldName]?.join(', ') || 'ninguno';
+    cb(new Error(`Tipo de archivo no permitido para ${fieldName}. Tipos permitidos: ${allowedExts}`));
   }
 };
 
-// Límites
+// Límites de tamaño
 const limits = {
-  fileSize: 5 * 1024 * 1024 // 5MB
+  fileSize: 5 * 1024 * 1024, // 5MB máximo por archivo
+  files: 3 // Máximo 3 archivos totales
 };
 
+// Configuración principal de Multer
 const upload = multer({
   storage: storage,
   fileFilter: fileFilter,

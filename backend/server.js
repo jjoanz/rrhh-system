@@ -19,6 +19,7 @@ import authRoutes from './routes/authRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
 import reportesRoutes from "./routes/reportesRoutes.js";
 import vacantesRoutes from './routes/vacantesRoutes.js';
+import vacacionesRoutes from './routes/vacacionesRoutes.js';
 
 // Importar middleware de autenticación
 import { authenticateToken } from './middleware/auth.js';
@@ -112,6 +113,8 @@ app.use('/api/postulaciones', authenticateToken, postulacionesRoutes);
 app.use('/api/admin', authenticateToken, adminRoutes);
 app.use("/api/reportes", authenticateToken, reportesRoutes);
 app.use('/api/vacantes', authenticateToken, vacantesRoutes);
+app.use('/api/vacaciones', authenticateToken, vacacionesRoutes);
+
 
 // --- MANEJO DE ERRORES GLOBAL ---
 app.use((err, req, res, next) => {

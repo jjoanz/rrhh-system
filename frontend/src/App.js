@@ -488,7 +488,34 @@ const Dashboard = () => {
             overflow: 'hidden'
           }}
         >
+          
+          
           <div style={{
+            padding: '2rem',
+            background: 'white',
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            minHeight: '200px'
+          }}>
+            <motion.img
+              src="/PD DTHyS Logo PFC.png"
+              alt="ProDominicana - Centro de Exportación e Inversión"
+              style={{
+                maxHeight: '160px',
+                maxWidth: '100%',
+                objectFit: 'contain',
+                filter: 'drop-shadow(0 10px 8px rgb(0 0 0 / 0.04))'
+              }}
+              initial={{ opacity: 0, scale: 0.8 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ delay: 1, duration: 0.5 }}
+              whileHover={{ scale: 1.05 }}
+            />
+          </div>
+
+        </motion.div>
+              <div style={{
             background: 'linear-gradient(90deg, rgb(249, 250, 251) 0%, rgb(243, 244, 246) 100%)',
             padding: '1.5rem',
             textAlign: 'center'
@@ -510,32 +537,6 @@ const Dashboard = () => {
               Habilitadores de Sueños y Oportunidades
             </p>
           </div>
-          
-          <div style={{
-            padding: '2rem',
-            background: 'white',
-            display: 'flex',
-            justifyContent: 'center',
-            alignItems: 'center',
-            minHeight: '200px'
-          }}>
-            <motion.img
-              src="/IMG_3119.jpg"
-              alt="ProDominicana - Centro de Exportación e Inversión"
-              style={{
-                maxHeight: '160px',
-                maxWidth: '100%',
-                objectFit: 'contain',
-                filter: 'drop-shadow(0 10px 8px rgb(0 0 0 / 0.04))'
-              }}
-              initial={{ opacity: 0, scale: 0.8 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ delay: 1, duration: 0.5 }}
-              whileHover={{ scale: 1.05 }}
-            />
-          </div>
-        </motion.div>
-
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}

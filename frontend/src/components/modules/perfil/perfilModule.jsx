@@ -1914,7 +1914,7 @@ const styles = {
     maxWidth: '400px'
   },
   header: {
-    background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+    background: 'linear-gradient(135deg, #1e40af 0%, #1e40af 100%)',
     borderRadius: '12px',
     padding: '32px',
     color: 'white',

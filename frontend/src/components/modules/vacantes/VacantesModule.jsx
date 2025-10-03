@@ -312,7 +312,7 @@ return (
   <div style={{ minHeight: '100vh', backgroundColor: '#f8fafc', padding: '1.5rem' }}>
     {/* Header Profesional */}
     <div style={{ backgroundColor: 'white', borderRadius: '0.75rem', boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)', marginBottom: '1.5rem' }}>
-      <div style={{ background: 'linear-gradient(135deg, #1e40af 0%, #3730a3 100%)', color: 'white', padding: '2rem', borderRadius: '0.75rem 0.75rem 0 0' }}>
+      <div style={{ background: 'linear-gradient(135deg, #1e40af 0%, #1e40af 100%)', color: 'white', padding: '2rem', borderRadius: '0.75rem 0.75rem 0 0' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
             <Briefcase size={44} />
@@ -483,7 +483,7 @@ const VistaDashboard = ({ permisos, setModalSolicitud, setModalVacante, estadist
           icono={CheckCircle}
           titulo="Aprobar Solicitudes"
           descripcion="Revisar y aprobar solicitudes pendientes como Gerente RRHH"
-          color="#7c3aed"
+          color="#3a55edff"
           accion={() => {}}
           textoBoton="Ver Solicitudes"
           badge={estadisticas.solicitudesPendientes || 0}
@@ -921,7 +921,7 @@ const TarjetaSolicitudProfesional = ({ solicitud, user, permisos, aprobarSolicit
               onClick={() => handleAccion('aprobar-director-rrhh', solicitud.id)} 
               disabled={solicitudEnProceso === solicitud.id}
               style={{ 
-                backgroundColor: solicitudEnProceso === solicitud.id ? '#9ca3af' : '#7c3aed', 
+                backgroundColor: solicitudEnProceso === solicitud.id ? '#9ca3af' : '#3a55edff', 
                 color: 'white', 
                 padding: '0.5rem 1rem', 
                 borderRadius: '0.5rem', 
@@ -1107,7 +1107,7 @@ const TarjetaVacanteProfesional = ({ vacante, permisos, setVacanteSeleccionada, 
                   setModalCerrarVacante(true); 
                 }}
                 style={{ 
-                  backgroundColor: '#7c3aed', 
+                  backgroundColor: '#3a55edff', 
                   color: 'white', 
                   padding: '0.5rem 1rem', 
                   borderRadius: '0.5rem', 
@@ -1195,7 +1195,7 @@ const EstadoBadge = ({ estado }) => {
     'Cerrada': { bg: '#f3f4f6', text: '#374151', border: '#9ca3af' },
     'Recibida': { bg: '#dbeafe', text: '#1e40af', border: '#60a5fa' },
     'En revisión': { bg: '#fef3c7', text: '#92400e', border: '#fbbf24' },
-    'Entrevista': { bg: '#f3e8ff', text: '#7c3aed', border: '#a78bfa' },
+    'Entrevista': { bg: '#f3e8ff', text: '#3a55edff', border: '#a78bfa' },
     'Aprobada': { bg: '#dcfce7', text: '#166534', border: '#4ade80' }
   };
   

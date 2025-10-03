@@ -146,7 +146,7 @@ const PostulacionesModule = () => {
     <div style={{ minHeight: '100vh', backgroundColor: '#f8fafc', padding: '1.5rem' }}>
       {/* Header */}
       <div style={{ backgroundColor: 'white', borderRadius: '0.75rem', boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)', marginBottom: '1.5rem' }}>
-        <div style={{ background: 'linear-gradient(135deg, #7c3aed 0%, #5b21b6 100%)', color: 'white', padding: '2rem', borderRadius: '0.75rem 0.75rem 0 0' }}>
+        <div style={{ background: 'linear-gradient(135deg, #1e40af 0%, #1e40af 100%)', color: 'white', padding: '2rem', borderRadius: '0.75rem 0.75rem 0 0' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1.5rem' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
               <Users size={44} />
@@ -238,7 +238,7 @@ const PostulacionesModule = () => {
             <button
               onClick={cargarDatos}
               style={{
-                backgroundColor: '#7c3aed',
+                backgroundColor: '#1e40af',
                 color: 'white',
                 padding: '0.75rem 1.5rem',
                 borderRadius: '0.5rem',
@@ -305,7 +305,7 @@ const PostulacionesModule = () => {
                     </td>
                     <td style={tdStyle}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                        <Briefcase size={16} style={{ color: '#7c3aed' }} />
+                        <Briefcase size={16} style={{ color: '#1e40af' }} />
                         <span style={{ fontWeight: '500', color: '#374151' }}>{postulacion.vacanteTitle}</span>
                       </div>
                     </td>
@@ -409,7 +409,7 @@ const EstadoBadge = ({ estado }) => {
   const colores = {
     'Recibida': { bg: '#dbeafe', text: '#1e40af', border: '#60a5fa' },
     'En Revisión': { bg: '#fef3c7', text: '#92400e', border: '#fbbf24' },
-    'Entrevista Programada': { bg: '#f3e8ff', text: '#7c3aed', border: '#a78bfa' },
+    'Entrevista Programada': { bg: '#f3e8ff', text: '#1e40af', border: '#a78bfa' },
     'Entrevista Realizada': { bg: '#e0e7ff', text: '#4338ca', border: '#818cf8' },
     'Aprobada': { bg: '#dcfce7', text: '#166534', border: '#4ade80' },
     'Rechazada': { bg: '#fee2e2', text: '#991b1b', border: '#f87171' },
@@ -712,7 +712,7 @@ const ModalCalificar = ({ postulacion, onClose, onConfirmar }) => {
 
 const InfoRow = ({ icon: Icon, label, value }) => (
   <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-    <Icon size={16} style={{ color: '#7c3aed' }} />
+    <Icon size={16} style={{ color: '#1e40af' }} />
     <div style={{ flex: 1 }}>
       <span style={{ fontSize: '0.75rem', color: '#64748b' }}>{label}:</span>
       <div style={{ fontSize: '0.875rem', color: '#1e293b', fontWeight: '500' }}>{value}</div>

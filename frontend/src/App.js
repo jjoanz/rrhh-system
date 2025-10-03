@@ -5,7 +5,7 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import { AppProvider, useApp } from './context/AppContext';
 import LoginPage from './components/auth/LoginPage';
 import ResetPassword from './components/auth/ResetPassword';
-import { Menu, LogOut, Building2 } from 'lucide-react';
+import { Menu, LogOut, Building2, Calendar } from 'lucide-react';
 import { getNavigationByRoleAndPermissions } from './data/navigation';
 import { motion } from "framer-motion";
 import { Users, Activity, Bell, Clock, ChevronRight } from 'lucide-react';
@@ -144,14 +144,26 @@ const Dashboard = () => {
         overflow: 'hidden',
         background: 'linear-gradient(90deg, rgb(37, 99, 235) 0%, rgb(29, 78, 216) 50%, rgb(67, 56, 202) 100%)'
       }}>
+        {/* Imagen de fondo */}
         <div style={{
           position: 'absolute',
           inset: 0,
-          backgroundImage: `url("data:image/svg+xml,%3Csvg width='40' height='40' viewBox='0 0 40 40' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23ffffff' fill-opacity='0.05'%3E%3Cpath d='M20 20c0 11.046-8.954 20-20 20v20h40V20H20z'/%3E%3C/g%3E%3C/svg%3E")`,
-          opacity: 0.2
+          backgroundImage: 'url("/images/futuristic-business-scene-with-ultra-modern-ambiance.jpg")',
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+          zIndex: 0,
+          filter: 'brightness(0.4)'
+        }}></div>
+
+        {/* Capa de degradado oscuro */}
+        <div style={{
+          position: 'absolute',
+          inset: 0,
+          background: 'linear-gradient(90deg, rgba(0,0,0,0.20) 0%, rgba(0,0,0,0.10) 50%, rgba(0,0,0,0.20) 100%)',
+          zIndex: 1
         }}></div>
         
-        <div style={{ position: 'relative', padding: '2rem 1.5rem' }}>
+        <div style={{ position: 'relative', padding: '2rem 1.5rem', zIndex: 2 }}>
           <motion.div
             initial={{ opacity: 0, y: -30 }}
             animate={{ opacity: 1, y: 0 }}
@@ -164,7 +176,8 @@ const Dashboard = () => {
                 fontWeight: 'bold',
                 color: 'white',
                 marginBottom: '0.5rem',
-                margin: 0
+                margin: 0,
+                textShadow: '2px 2px 4px rgba(0,0,0,0.5)'
               }}>
                 {getSaludoPorHora()}, {user?.name || 'Usuario'}
               </h1>
@@ -172,15 +185,17 @@ const Dashboard = () => {
                 color: 'rgb(191, 219, 254)',
                 fontSize: '1.125rem',
                 fontWeight: '500',
-                margin: 0
+                margin: 0,
+                textShadow: '1px 1px 2px rgba(0,0,0,0.5)'
               }}>
                 Sistema de Gestión de Recursos Humanos
               </p>
               <p style={{
-                color: 'rgb(196, 181, 253)',
+                color: 'rgba(249, 253, 253, 1)',
                 fontSize: '0.875rem',
                 marginTop: '0.25rem',
-                margin: '0.25rem 0 0 0'
+                margin: '0.25rem 0 0 0',
+                textShadow: '1px 1px 2px rgba(0,0,0,0.5)'
               }}>
                 ProDominicana - Centro de Exportación e Inversión
               </p>
@@ -256,13 +271,13 @@ const Dashboard = () => {
               <div style={{
                 width: '3rem',
                 height: '3rem',
-                background: 'rgb(219, 234, 254)',
+                background: 'rgba(19, 86, 231, 1)',
                 borderRadius: '0.5rem',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center'
               }}>
-                <span style={{ fontSize: '1.5rem' }}>📅</span>
+                <Calendar style={{ width: '1.5rem', height: '1.5rem', color: 'rgba(247, 248, 250, 1)' }} />
               </div>
             </div>
           </div>
@@ -296,13 +311,13 @@ const Dashboard = () => {
               <div style={{
                 width: '3rem',
                 height: '3rem',
-                background: 'rgb(220, 252, 231)',
+                background: 'rgba(8, 224, 83, 1)',
                 borderRadius: '0.5rem',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center'
               }}>
-                <Clock style={{ width: '1.5rem', height: '1.5rem', color: 'rgb(34, 197, 94)' }} />
+                <Clock style={{ width: '1.5rem', height: '1.5rem', color: 'rgba(255, 255, 255, 1)' }} />
               </div>
             </div>
           </div>
@@ -332,13 +347,13 @@ const Dashboard = () => {
               <div style={{
                 width: '3rem',
                 height: '3rem',
-                background: 'rgb(254, 243, 199)',
+                background: 'rgba(235, 189, 6, 1)',
                 borderRadius: '0.5rem',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center'
               }}>
-                <Bell style={{ width: '1.5rem', height: '1.5rem', color: 'rgb(245, 158, 11)' }} />
+                <Bell style={{ width: '1.5rem', height: '1.5rem', color: 'rgba(250, 250, 250, 1)' }} />
               </div>
             </div>
           </div>
@@ -446,14 +461,14 @@ const Dashboard = () => {
                       {item.label}
                     </h3>
                     
-                    <p style={{
-                      color: 'rgb(107, 114, 128)',
-                      fontSize: '0.875rem',
-                      lineHeight: 1.6,
-                      margin: 0
-                    }}>
-                      {item.description || "Gestiona y administra información del sistema"}
-                    </p>
+                   {/* <p style={{
+                        color: 'rgb(107, 114, 128)',
+                        fontSize: '0.875rem',
+                        lineHeight: 1.6,
+                        margin: 0
+                      }}>
+                        {item.description || "Gestiona y administra información del sistema"}
+                      </p> */}
                     
                     <div style={{
                       marginTop: '1rem',

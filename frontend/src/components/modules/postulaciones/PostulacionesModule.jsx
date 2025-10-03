@@ -523,7 +523,7 @@ const ModalDetalle = ({ postulacion, onClose }) => (
       {postulacion.notasEntrevista && (
         <div style={{ padding: '1rem', backgroundColor: '#fef3c7', borderRadius: '0.5rem' }}>
           <h3 style={{ fontSize: '1rem', fontWeight: '600', marginBottom: '0.5rem', color: '#92400e' }}>
-            Notas de Entrevista
+            Notas/Comentarios
           </h3>
           <p style={{ fontSize: '0.875rem', color: '#78350f', lineHeight: '1.6', whiteSpace: 'pre-wrap' }}>
             {postulacion.notasEntrevista}

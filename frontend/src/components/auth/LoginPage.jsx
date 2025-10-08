@@ -68,7 +68,10 @@ const LoginPage = () => {
   return (
     <div style={{
       minHeight: '100vh',
-      background: 'linear-gradient(135deg, rgb(37, 99, 235) 0%, rgb(29, 78, 216) 30%, rgba(5, 56, 151, 1) 70%, rgba(5, 53, 141, 1) 100%)',
+      backgroundImage: 'url("/images/ProD Back.jpg")',
+      backgroundSize: 'cover',
+      backgroundPosition: 'center',
+      backgroundRepeat: 'no-repeat',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
@@ -76,58 +79,13 @@ const LoginPage = () => {
       position: 'relative',
       overflow: 'hidden'
     }}>
-      {/* Background Effects */}
+      {/* Overlay oscuro para mejorar legibilidad */}
       <div style={{
         position: 'absolute',
         inset: 0,
-        backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23ffffff' fill-opacity='0.05'%3E%3Ccircle cx='30' cy='30' r='4'/%3E%3Ccircle cx='0' cy='30' r='4'/%3E%3Ccircle cx='60' cy='30' r='4'/%3E%3Ccircle cx='30' cy='0' r='4'/%3E%3Ccircle cx='30' cy='60' r='4'/%3E%3C/g%3E%3C/svg%3E")`,
-        opacity: 0.3
+        background: 'rgba(0, 0, 0, 0.3)',
+        zIndex: 1
       }}></div>
-
-      {/* Floating Shapes */}
-      <motion.div
-        animate={{
-          y: [-20, 20, -20],
-          rotate: [0, 180, 0]
-        }}
-        transition={{
-          duration: 20,
-          repeat: Infinity,
-          ease: "linear"
-        }}
-        style={{
-          position: 'absolute',
-          top: '10%',
-          left: '10%',
-          width: '80px',
-          height: '80px',
-          background: 'rgba(255, 255, 255, 0.1)',
-          borderRadius: '50%',
-          backdropFilter: 'blur(10px)'
-        }}
-      />
-      
-      <motion.div
-        animate={{
-          y: [20, -20, 20],
-          rotate: [0, -180, 0]
-        }}
-        transition={{
-          duration: 15,
-          repeat: Infinity,
-          ease: "linear"
-        }}
-        style={{
-          position: 'absolute',
-          bottom: '20%',
-          right: '15%',
-          width: '60px',
-          height: '60px',
-          background: 'rgba(255, 255, 255, 0.08)',
-          borderRadius: '30%',
-          backdropFilter: 'blur(10px)'
-        }}
-      />
 
       {/* Main Login Card */}
       <motion.div
@@ -143,10 +101,11 @@ const LoginPage = () => {
           width: '100%',
           maxWidth: '420px',
           border: '1px solid rgba(255, 255, 255, 0.2)',
-          position: 'relative'
+          position: 'relative',
+          zIndex: 2
         }}
       >
-        {/* Header Section */}
+       {/* Logo */}
         <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
           <motion.div
             initial={{ opacity: 0, y: -20 }}
@@ -159,61 +118,38 @@ const LoginPage = () => {
               marginBottom: '1.5rem'
             }}
           >
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              background: 'white',
-              padding: '1.5rem 2.5rem',
-              borderRadius: '20px',
-              boxShadow: '0 10px 30px rgba(0, 0, 0, 0.15)',
-              border: '2px solid rgba(37, 99, 235, 0.1)'
-            }}>
-              <img 
-                src="./PD-Logo-RGB-CEI.png" 
-                alt="ProDominicana Logo" 
-                style={{ height: '40px', width: 'auto' }} 
-              />
-            </div>
+            <img 
+              src="./ProDominicana Logo FC.png" 
+              alt="ProDominicana Logo" 
+              style={{ height: '60px', width: 'auto' }} 
+            />
           </motion.div>
 
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.4, duration: 0.6 }}
-          >
-            <h1 style={{
-              fontSize: '1.75rem',
-              fontWeight: 'bold',
-              color: 'rgb(17, 24, 39)',
-              marginBottom: '0.5rem',
-              margin: 0
-            }}>
-              {forgotMode ? 'Recuperar Contraseña' : 'Bienvenido'}
-            </h1>
-            <p style={{
-              color: 'rgb(107, 114, 128)',
-              fontSize: '0.95rem',
-              margin: '0.5rem 0 0 0'
-            }}>
-              {forgotMode 
-                ? 'Ingresa tu email para recibir las instrucciones'
-                : 'Sistema de Gestión de Recursos Humanos'
-              }
-            </p>
-          </motion.div>
+          <h1 style={{
+            fontSize: '1.75rem',
+            fontWeight: 'bold',
+            color: 'rgb(17, 24, 39)',
+            margin: '0 0 0.5rem 0'
+          }}>
+            {forgotMode ? 'Recuperar Contraseña' : 'Bienvenido'}
+          </h1>
+          <p style={{
+            color: 'rgb(107, 114, 128)',
+            fontSize: '0.95rem',
+            margin: 0
+          }}>
+            {forgotMode 
+              ? 'Ingresa tu email para recibir las instrucciones'
+              : 'Sistema de Gestión de Recursos Humanos'
+            }
+          </p>
         </div>
 
-        {/* Form Section */}
+
+        {/* Forms */}
         <AnimatePresence mode="wait">
           {forgotMode ? (
-            <motion.div
-              key="forgot"
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -20 }}
-              transition={{ duration: 0.3 }}
-            >
+            <motion.div key="forgot" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
               <div style={{ marginBottom: '1.5rem' }}>
                 <label style={{
                   display: 'block',
@@ -221,48 +157,35 @@ const LoginPage = () => {
                   fontWeight: '600',
                   color: 'rgb(55, 65, 81)',
                   marginBottom: '0.5rem'
-                }}>
-                  Correo Electrónico
-                </label>
+                }}>Correo Electrónico</label>
                 <div style={{ position: 'relative' }}>
-                  <Mail 
-                    size={18} 
-                    style={{
-                      position: 'absolute',
-                      left: '1rem',
-                      top: '50%',
-                      transform: 'translateY(-50%)',
-                      color: 'rgb(156, 163, 175)'
-                    }}
-                  />
+                  <Mail size={18} style={{
+                    position: 'absolute',
+                    left: '1rem',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    color: 'rgb(156, 163, 175)'
+                  }} />
                   <input
                     type="email"
                     value={email}
                     onChange={e => setEmail(e.target.value)}
-                    required
                     style={{
                       width: '100%',
                       padding: '0.875rem 1rem 0.875rem 3rem',
                       borderRadius: '12px',
                       border: '2px solid rgb(229, 231, 235)',
                       fontSize: '1rem',
-                      outline: 'none',
-                      transition: 'all 0.3s ease',
-                      background: 'white',
                       boxSizing: 'border-box'
                     }}
                     placeholder="tu.email@ejemplo.com"
-                    onFocus={(e) => e.target.style.borderColor = 'rgb(37, 99, 235)'}
-                    onBlur={(e) => e.target.style.borderColor = 'rgb(229, 231, 235)'}
                   />
                 </div>
               </div>
 
-              <motion.button
+              <button
                 onClick={handleForgot}
                 disabled={isLoading}
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
                 style={{
                   width: '100%',
                   padding: '1rem',
@@ -272,74 +195,37 @@ const LoginPage = () => {
                   color: 'white',
                   fontSize: '1rem',
                   fontWeight: '600',
-                  cursor: isLoading ? 'not-allowed' : 'pointer',
-                  transition: 'all 0.3s ease',
+                  cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  gap: '0.5rem',
-                  boxShadow: '0 4px 15px rgba(37, 99, 235, 0.3)',
-                  opacity: isLoading ? 0.7 : 1
+                  gap: '0.5rem'
                 }}
               >
-                {isLoading ? (
-                  <div style={{
-                    width: '20px',
-                    height: '20px',
-                    border: '2px solid rgba(255,255,255,0.3)',
-                    borderTop: '2px solid white',
-                    borderRadius: '50%',
-                    animation: 'spin 1s linear infinite'
-                  }}></div>
-                ) : (
-                  <>
-                    <Shield size={18} />
-                    Enviar Instrucciones
-                  </>
-                )}
-              </motion.button>
+                <Shield size={18} />
+                {isLoading ? 'Enviando...' : 'Enviar Instrucciones'}
+              </button>
 
-              <motion.button
-                onClick={() => {
-                  setForgotMode(false)
-                  setMessage('')
-                }}
-                whileHover={{ scale: 1.02 }}
+              <button
+                onClick={() => { setForgotMode(false); setMessage('') }}
                 style={{
                   width: '100%',
                   padding: '0.75rem',
+                  marginTop: '1rem',
                   borderRadius: '12px',
                   border: '2px solid rgb(229, 231, 235)',
                   background: 'white',
                   color: 'rgb(107, 114, 128)',
                   fontSize: '0.9rem',
                   fontWeight: '500',
-                  cursor: 'pointer',
-                  marginTop: '1rem',
-                  transition: 'all 0.3s ease'
-                }}
-                onMouseEnter={(e) => {
-                  e.target.style.borderColor = 'rgb(37, 99, 235)'
-                  e.target.style.color = 'rgb(37, 99, 235)'
-                }}
-                onMouseLeave={(e) => {
-                  e.target.style.borderColor = 'rgb(229, 231, 235)'
-                  e.target.style.color = 'rgb(107, 114, 128)'
+                  cursor: 'pointer'
                 }}
               >
                 Volver al Login
-              </motion.button>
+              </button>
             </motion.div>
           ) : (
-            <motion.form
-              key="login"
-              onSubmit={handleSubmit}
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: 20 }}
-              transition={{ duration: 0.3 }}
-            >
-              {/* Email Field */}
+            <motion.form key="login" onSubmit={handleSubmit} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
               <div style={{ marginBottom: '1.5rem' }}>
                 <label style={{
                   display: 'block',
@@ -347,20 +233,15 @@ const LoginPage = () => {
                   fontWeight: '600',
                   color: 'rgb(55, 65, 81)',
                   marginBottom: '0.5rem'
-                }}>
-                  Correo Electrónico
-                </label>
+                }}>Correo Electrónico</label>
                 <div style={{ position: 'relative' }}>
-                  <Mail 
-                    size={18} 
-                    style={{
-                      position: 'absolute',
-                      left: '1rem',
-                      top: '50%',
-                      transform: 'translateY(-50%)',
-                      color: 'rgb(156, 163, 175)'
-                    }}
-                  />
+                  <Mail size={18} style={{
+                    position: 'absolute',
+                    left: '1rem',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    color: 'rgb(156, 163, 175)'
+                  }} />
                   <input
                     type="email"
                     value={email}
@@ -372,19 +253,13 @@ const LoginPage = () => {
                       borderRadius: '12px',
                       border: '2px solid rgb(229, 231, 235)',
                       fontSize: '1rem',
-                      outline: 'none',
-                      transition: 'all 0.3s ease',
-                      background: 'white',
                       boxSizing: 'border-box'
                     }}
                     placeholder="tu.email@prodominicana.gob.do"
-                    onFocus={(e) => e.target.style.borderColor = 'rgb(37, 99, 235)'}
-                    onBlur={(e) => e.target.style.borderColor = 'rgb(229, 231, 235)'}
                   />
                 </div>
               </div>
 
-              {/* Password Field */}
               <div style={{ marginBottom: '1.5rem' }}>
                 <label style={{
                   display: 'block',
@@ -392,20 +267,15 @@ const LoginPage = () => {
                   fontWeight: '600',
                   color: 'rgb(55, 65, 81)',
                   marginBottom: '0.5rem'
-                }}>
-                  Contraseña
-                </label>
+                }}>Contraseña</label>
                 <div style={{ position: 'relative' }}>
-                  <Lock 
-                    size={18} 
-                    style={{
-                      position: 'absolute',
-                      left: '1rem',
-                      top: '50%',
-                      transform: 'translateY(-50%)',
-                      color: 'rgb(156, 163, 175)'
-                    }}
-                  />
+                  <Lock size={18} style={{
+                    position: 'absolute',
+                    left: '1rem',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    color: 'rgb(156, 163, 175)'
+                  }} />
                   <input
                     type={showPassword ? 'text' : 'password'}
                     value={password}
@@ -417,14 +287,9 @@ const LoginPage = () => {
                       borderRadius: '12px',
                       border: '2px solid rgb(229, 231, 235)',
                       fontSize: '1rem',
-                      outline: 'none',
-                      transition: 'all 0.3s ease',
-                      background: 'white',
                       boxSizing: 'border-box'
                     }}
                     placeholder="••••••••"
-                    onFocus={(e) => e.target.style.borderColor = 'rgb(37, 99, 235)'}
-                    onBlur={(e) => e.target.style.borderColor = 'rgb(229, 231, 235)'}
                   />
                   <button
                     type="button"
@@ -437,8 +302,7 @@ const LoginPage = () => {
                       border: 'none',
                       background: 'none',
                       cursor: 'pointer',
-                      color: 'rgb(156, 163, 175)',
-                      padding: '0.25rem'
+                      color: 'rgb(156, 163, 175)'
                     }}
                   >
                     {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
@@ -446,12 +310,9 @@ const LoginPage = () => {
                 </div>
               </div>
 
-              {/* Login Button */}
-              <motion.button
+              <button
                 type="submit"
                 disabled={isLoading}
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
                 style={{
                   width: '100%',
                   padding: '1rem',
@@ -461,66 +322,36 @@ const LoginPage = () => {
                   color: 'white',
                   fontSize: '1rem',
                   fontWeight: '600',
-                  cursor: isLoading ? 'not-allowed' : 'pointer',
-                  transition: 'all 0.3s ease',
+                  cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
                   gap: '0.5rem',
-                  boxShadow: '0 4px 15px rgba(37, 99, 235, 0.3)',
-                  opacity: isLoading ? 0.7 : 1
+                  boxShadow: '0 4px 15px rgba(37, 99, 235, 0.3)'
                 }}
               >
-                {isLoading ? (
-                  <div style={{
-                    width: '20px',
-                    height: '20px',
-                    border: '2px solid rgba(255,255,255,0.3)',
-                    borderTop: '2px solid white',
-                    borderRadius: '50%',
-                    animation: 'spin 1s linear infinite'
-                  }}></div>
-                ) : (
-                  <>
-                    Iniciar Sesión
-                    <ArrowRight size={18} />
-                  </>
-                )}
-              </motion.button>
+                {isLoading ? 'Iniciando...' : 'Iniciar Sesión'}
+                <ArrowRight size={18} />
+              </button>
 
-              {/* Forgot Password Link */}
-              <motion.button
+              <button
                 type="button"
-                onClick={() => {
-                  setForgotMode(true)
-                  setMessage('')
-                  setLoginError(null)
-                }}
-                whileHover={{ scale: 1.02 }}
+                onClick={() => { setForgotMode(true); setMessage(''); setLoginError(null) }}
                 style={{
                   width: '100%',
                   padding: '0.75rem',
+                  marginTop: '1rem',
                   borderRadius: '12px',
                   border: '2px solid rgb(229, 231, 235)',
                   background: 'white',
                   color: 'rgb(107, 114, 128)',
                   fontSize: '0.9rem',
                   fontWeight: '500',
-                  cursor: 'pointer',
-                  marginTop: '1rem',
-                  transition: 'all 0.3s ease'
-                }}
-                onMouseEnter={(e) => {
-                  e.target.style.borderColor = 'rgb(37, 99, 235)'
-                  e.target.style.color = 'rgb(37, 99, 235)'
-                }}
-                onMouseLeave={(e) => {
-                  e.target.style.borderColor = 'rgb(229, 231, 235)'
-                  e.target.style.color = 'rgb(107, 114, 128)'
+                  cursor: 'pointer'
                 }}
               >
                 ¿Olvidaste tu contraseña?
-              </motion.button>
+              </button>
             </motion.form>
           )}
         </AnimatePresence>
@@ -540,8 +371,7 @@ const LoginPage = () => {
                 border: '1px solid rgb(252, 165, 165)',
                 color: 'rgb(185, 28, 28)',
                 fontSize: '0.875rem',
-                textAlign: 'center',
-                fontWeight: '500'
+                textAlign: 'center'
               }}
             >
               {loginError}
@@ -561,8 +391,7 @@ const LoginPage = () => {
                 border: message.includes('Error') ? '1px solid rgb(252, 165, 165)' : '1px solid rgb(167, 243, 208)',
                 color: message.includes('Error') ? 'rgb(185, 28, 28)' : 'rgb(22, 101, 52)',
                 fontSize: '0.875rem',
-                textAlign: 'center',
-                fontWeight: '500'
+                textAlign: 'center'
               }}
             >
               {message}
@@ -574,7 +403,7 @@ const LoginPage = () => {
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          transition={{ delay: 0.6, duration: 0.6 }}
+          transition={{ delay: 0.6 }}
           style={{
             marginTop: '2rem',
             textAlign: 'center',
@@ -582,9 +411,7 @@ const LoginPage = () => {
             fontSize: '0.8rem'
           }}
         >
-          <p style={{ margin: 0 }}>
-            © {new Date().getFullYear()} ProDominicana
-          </p>
+          <p style={{ margin: 0 }}>© {new Date().getFullYear()} ProDominicana</p>
           <p style={{ margin: '0.25rem 0 0 0' }}>
             Centro de Exportación e Inversión de la República Dominicana
           </p>

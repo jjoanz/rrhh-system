@@ -3,17 +3,17 @@ import sql from 'mssql';
 class VacacionesController {
   // Obtener jerarquía de aprobación según rol
   static getJerarquiaAprobacion(rol) {
-    const jerarquia = {
-      'colaborador': ['gerente', 'director', 'director_rrhh'],
-      'gerente': ['director', 'director_rrhh'],
-      'director': ['director_rrhh'],
-      'rrhh': ['gerente_rrhh', 'director_rrhh'],
-      'gerente_rrhh': ['director_rrhh'],
-      'director_rrhh': [],
-      'admin': []
-    };
-    return jerarquia[rol?.toLowerCase()] || [];
-  }
+      const jerarquia = {
+        'colaborador': ['gerente', 'director', 'gerente_rrhh', 'director_rrhh'],  // ← CAMBIO
+        'gerente': ['director', 'gerente_rrhh', 'director_rrhh'],                // ← CAMBIO
+        'director': ['gerente_rrhh', 'director_rrhh'],                           // ← CAMBIO
+        'rrhh': ['gerente_rrhh', 'director_rrhh'],
+        'gerente_rrhh': ['director_rrhh'],
+        'director_rrhh': [],
+        'admin': []
+      };
+      return jerarquia[rol?.toLowerCase()] || [];
+    }
 
   // Obtener solicitudes según rol
   static async getSolicitudes(req, res) {
@@ -48,19 +48,29 @@ class VacacionesController {
     `;
 
     const rolNormalizado = rol?.toLowerCase().replace(/\s+/g, '_');
-    
+
+// Obtener empleadoId del usuario actual
+const usuarioActual = await pool.request()
+  .input('usuarioID', sql.Int, parseInt(usuarioID))
+  .query('SELECT EmpleadoID FROM Usuarios WHERE UsuarioID = @usuarioID');
+
+const empleadoIdActual = usuarioActual.recordset[0]?.EmpleadoID;
+
     if (rolNormalizado === 'colaborador') {
-      query += ` WHERE sv.EmpleadoID = (SELECT EmpleadoID FROM Usuarios WHERE UsuarioID = @usuarioID)`;
+      query += ` WHERE sv.EmpleadoID = @empleadoIdActual`;
     } else if (rolNormalizado === 'gerente') {
-      query += ` WHERE u.Rol IN ('colaborador') OR sv.EmpleadoID = (SELECT EmpleadoID FROM Usuarios WHERE UsuarioID = @usuarioID)`;
+      // Solo su departamento
+      query += ` WHERE (u.Rol = 'colaborador' AND e.DEPARTAMENTOID = (SELECT DEPARTAMENTOID FROM Empleados WHERE EmpleadoID = @empleadoIdActual)) OR sv.EmpleadoID = @empleadoIdActual`;
     } else if (rolNormalizado === 'director') {
-      query += ` WHERE u.Rol IN ('colaborador', 'gerente') OR sv.EmpleadoID = (SELECT EmpleadoID FROM Usuarios WHERE UsuarioID = @usuarioID)`;
+      // Solo su departamento
+      query += ` WHERE (u.Rol IN ('colaborador', 'gerente') AND e.DEPARTAMENTOID = (SELECT DEPARTAMENTOID FROM Empleados WHERE EmpleadoID = @empleadoIdActual)) OR sv.EmpleadoID = @empleadoIdActual`;
     }
 
     query += ` ORDER BY sv.FechaSolicitud DESC`;
 
     const result = await pool.request()
       .input('usuarioID', sql.Int, parseInt(usuarioID))
+      .input('empleadoIdActual', sql.Int, empleadoIdActual)
       .query(query);
 
     for (let solicitud of result.recordset) {
@@ -136,8 +146,9 @@ class VacacionesController {
         .query(`
           INSERT INTO SolicitudesVacaciones 
           (EmpleadoID, TipoSolicitud, FechaInicio, FechaFin, Dias, DiasHabiles, Motivo, Estado)
-          OUTPUT INSERTED.SolicitudID
-          VALUES (@empleadoId, @tipo, @fechaInicio, @fechaFin, @dias, @diasHabiles, @motivo, 'pendiente')
+          VALUES (@empleadoId, @tipo, @fechaInicio, @fechaFin, @dias, @diasHabiles, @motivo, 'pendiente');
+          
+          SELECT SCOPE_IDENTITY() AS SolicitudID;
         `);
 
       const solicitudID = result.recordset[0].SolicitudID;
@@ -376,8 +387,9 @@ static async crearSolicitudConPeriodos(req, res) {
       .query(`
         INSERT INTO SolicitudesVacaciones 
         (EmpleadoID, TipoSolicitud, FechaInicio, FechaFin, Dias, DiasHabiles, Motivo, Estado)
-        OUTPUT INSERTED.SolicitudID
-        VALUES (@empleadoId, @tipo, @fechaInicio, @fechaFin, @dias, @diasHabiles, @motivo, 'pendiente')
+        VALUES (@empleadoId, @tipo, @fechaInicio, @fechaFin, @dias, @diasHabiles, @motivo, 'pendiente');
+        
+        SELECT SCOPE_IDENTITY() AS SolicitudID;
       `);
 
     const solicitudID = result.recordset[0].SolicitudID;

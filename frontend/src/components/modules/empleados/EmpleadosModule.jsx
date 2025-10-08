@@ -417,11 +417,11 @@ const EmpleadosModule = () => {
       {/* Header */}
       <div style={styles.header}>
         <div>
-          <h1 style={styles.title}>
+          <h1 style={{ ...styles.title, color: 'white' }}>
             <Users size={32} color="#2563eb" />
             Gestión de Empleados
           </h1>
-          <p style={styles.subtitle}>
+          <p style={{ ...styles.subtitle, color: 'white' }}>
             {empleados.length} empleados registrados
           </p>
         </div>

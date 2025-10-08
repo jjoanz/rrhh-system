@@ -7,6 +7,7 @@ import { Calendar, Plus, Clock, Check, X, FileText, Users, ArrowRight, AlertTria
 const VacacionesModule = () => {
   const { user } = useAuth();
   const { showSuccessMessage, showErrorMessage } = useApp();
+  console.log('🔍 ROL DEL USUARIO:', user.role);
   const [activeTab, setActiveTab] = useState('solicitar');
   const [loading, setLoading] = useState(false);
   
@@ -40,16 +41,16 @@ const VacacionesModule = () => {
   });
 
   // Roles con aprobación manual (RRHH)
-  const ROLES_APROBACION_MANUAL = ['RRHH', 'Gerente RRHH', 'Director RRHH'];
+  const ROLES_APROBACION_MANUAL = ['rrhh', 'gerente_rrhh', 'director_rrhh'];
 
   const ROLES_LABELS = {
-    'Gerente': 'Gerente',
-    'Director': 'Director',
-    'Gerente RRHH': 'Gerente RRHH',
-    'Director RRHH': 'Director RRHH',
-    'RRHH': 'RRHH',
-    'Colaborador': 'Colaborador'
-  };
+  'gerente': 'Gerente',
+  'director': 'Director',
+  'gerente_rrhh': 'Gerente RRHH',
+  'director_rrhh': 'Director RRHH',
+  'rrhh': 'RRHH',
+  'colaborador': 'Colaborador'
+};
 
   // Cargar datos al montar
   useEffect(() => {
@@ -109,29 +110,64 @@ const VacacionesModule = () => {
 
   // Abrir modal de períodos
   const abrirModalPeriodos = () => {
-    const diasSolicitados = calcularDias();
+    console.log('🔧 Ejecutando abrirModalPeriodos');
+    console.log('Períodos recibidos:', periodos);
+    console.log('ESTRUCTURA COMPLETA:', JSON.stringify(periodos[0], null, 2));
     
-    // Inicializar selección automática (usar períodos más antiguos primero)
-    const seleccionInicial = [];
-    let diasRestantes = diasSolicitados;
-    
-    for (const periodo of periodos) {
-      if (diasRestantes <= 0) break;
+    try {
+      const diasSolicitados = calcularDias();
+      console.log('Días solicitados:', diasSolicitados);
       
-      const diasAUsar = Math.min(diasRestantes, periodo.diasDisponibles);
-      if (diasAUsar > 0) {
-        seleccionInicial.push({
-          balanceId: periodo.balanceId,
-          descripcion: periodo.descripcion,
-          diasDisponibles: periodo.diasDisponibles,
-          dias: diasAUsar
-        });
-        diasRestantes -= diasAUsar;
+      const seleccionInicial = [];
+      let diasRestantes = diasSolicitados;
+      
+      for (const periodo of periodos) {
+        console.log('📌 Procesando período:', periodo);
+        
+        // CORRECCIÓN: El backend puede devolver nombres diferentes de propiedades
+        const balanceId = periodo.balanceId || periodo.BalanceID || periodo.id;
+        const descripcion = periodo.descripcion || periodo.Descripcion || periodo.descripcion;
+        const diasDisponibles = periodo.diasDisponibles || periodo.DiasDisponibles || 
+                                (periodo.diasTotales - periodo.diasUsados - periodo.diasPendientes) ||
+                                (periodo.DiasTotales - periodo.DiasUsados - periodo.DiasPendientes);
+        
+        console.log('   - balanceId:', balanceId);
+        console.log('   - descripcion:', descripcion);
+        console.log('   - diasDisponibles:', diasDisponibles);
+        console.log('   - diasRestantes:', diasRestantes);
+        
+        if (diasRestantes <= 0) {
+          console.log('   ⚠️ diasRestantes <= 0, saliendo del loop');
+          break;
+        }
+        
+        const diasAUsar = Math.min(diasRestantes, diasDisponibles);
+        console.log('   - diasAUsar calculado:', diasAUsar);
+        
+        if (diasAUsar > 0) {
+          console.log('   ✅ Agregando período a selección');
+          seleccionInicial.push({
+            balanceId: balanceId,
+            descripcion: descripcion,
+            diasDisponibles: diasDisponibles,
+            dias: diasAUsar
+          });
+          diasRestantes -= diasAUsar;
+        } else {
+          console.log('   ❌ diasAUsar NO es mayor a 0');
+        }
       }
+      
+      console.log('Selección inicial creada:', seleccionInicial);
+      console.log('Cambiando showPeriodosModal a true');
+      
+      setPeriodosSeleccionados(seleccionInicial);
+      setShowPeriodosModal(true);
+      
+      console.log('✅ Modal debería estar visible ahora');
+    } catch (error) {
+      console.error('❌ ERROR en abrirModalPeriodos:', error);
     }
-    
-    setPeriodosSeleccionados(seleccionInicial);
-    setShowPeriodosModal(true);
   };
 
   // Actualizar días de un período seleccionado
@@ -148,42 +184,50 @@ const VacacionesModule = () => {
 
   // Crear solicitud con períodos
   const handleSubmitSolicitud = async (e) => {
-    e.preventDefault();
-    
-    if (!solicitudForm.fechaInicio || !solicitudForm.fechaFin || !solicitudForm.motivo.trim()) {
-      showErrorMessage('Por favor completa todos los campos obligatorios');
-      return;
-    }
+  e.preventDefault();
+  
+  console.log('=== DEBUG SUBMIT ===');
+  console.log('Tipo solicitud:', solicitudForm.tipo);
+  console.log('Cantidad de períodos:', periodos.length);
+  console.log('Períodos:', periodos);
+  
+  if (!solicitudForm.fechaInicio || !solicitudForm.fechaFin || !solicitudForm.motivo.trim()) {
+    showErrorMessage('Por favor completa todos los campos obligatorios');
+    return;
+  }
 
-    const inicio = new Date(solicitudForm.fechaInicio);
-    const fin = new Date(solicitudForm.fechaFin);
-    
-    if (inicio >= fin) {
-      showErrorMessage('La fecha de fin debe ser posterior a la fecha de inicio');
-      return;
-    }
+  const inicio = new Date(solicitudForm.fechaInicio);
+  const fin = new Date(solicitudForm.fechaFin);
+  
+  if (inicio >= fin) {
+    showErrorMessage('La fecha de fin debe ser posterior a la fecha de inicio');
+    return;
+  }
 
-    if (inicio <= new Date()) {
-      showErrorMessage('La fecha de inicio debe ser futura');
-      return;
-    }
+  if (inicio <= new Date()) {
+    showErrorMessage('La fecha de inicio debe ser futura');
+    return;
+  }
 
-    const diasSolicitados = calcularDias();
-    
-    if (diasSolicitados > estadisticas.diasDisponibles && solicitudForm.tipo === 'vacaciones') {
-      showErrorMessage(`No tienes suficientes días disponibles. Solicitas ${diasSolicitados} días pero solo tienes ${estadisticas.diasDisponibles} disponibles.`);
-      return;
-    }
+  const diasSolicitados = calcularDias();
+  
+  if (diasSolicitados > estadisticas.diasDisponibles && solicitudForm.tipo === 'vacaciones') {
+    showErrorMessage(`No tienes suficientes días disponibles. Solicitas ${diasSolicitados} días pero solo tienes ${estadisticas.diasDisponibles} disponibles.`);
+    return;
+  }
 
-    // Si es vacaciones y hay múltiples períodos, abrir modal
-    if (solicitudForm.tipo === 'vacaciones' && periodos.length > 1) {
-      abrirModalPeriodos();
-      return;
-    }
+  console.log('¿Abrir modal?', solicitudForm.tipo === 'vacaciones' && periodos.length > 1);
+  
+  // Si es vacaciones y hay múltiples períodos, abrir modal
+  if (solicitudForm.tipo === 'vacaciones' && periodos.length > 1) {
+    console.log('ABRIENDO MODAL');
+    abrirModalPeriodos();
+    return;
+  }
 
-    // Si es un solo período o no es vacaciones, crear directamente
-    await crearSolicitudDirecta();
-  };
+  console.log('Crear solicitud directa');
+  await crearSolicitudDirecta();
+};
 
   const crearSolicitudDirecta = async () => {
     try {
@@ -216,50 +260,59 @@ const VacacionesModule = () => {
     }
   };
 
-  const confirmarSolicitudConPeriodos = async () => {
-    const diasSolicitados = calcularDias();
-    const totalSeleccionado = calcularTotalSeleccionado();
+const confirmarSolicitudConPeriodos = async () => {
+  const diasSolicitados = calcularDias();
+  const totalSeleccionado = calcularTotalSeleccionado();
 
-    if (totalSeleccionado !== diasSolicitados) {
-      showErrorMessage(`La suma de días seleccionados (${totalSeleccionado}) debe ser igual a los días solicitados (${diasSolicitados})`);
-      return;
+  if (totalSeleccionado !== diasSolicitados) {
+    showErrorMessage(`La suma de días seleccionados (${totalSeleccionado}) debe ser igual a los días solicitados (${diasSolicitados})`);
+    return;
+  }
+
+  try {
+    setLoading(true);
+
+    await vacacionesService.crearSolicitudConPeriodos({
+      empleadoId: user.empleadoId,
+      tipo: solicitudForm.tipo,
+      fechaInicio: solicitudForm.fechaInicio,
+      fechaFin: solicitudForm.fechaFin,
+      dias: diasSolicitados,
+      diasHabiles: calcularDiasHabiles(),
+      motivo: solicitudForm.motivo,
+      periodosSeleccionados: periodosSeleccionados.map(p => ({
+        balanceId: p.balanceId,
+        dias: p.dias
+      }))
+    });
+
+    // Resetear formulario ANTES de recargar datos
+    setSolicitudForm({
+      fechaInicio: '',
+      fechaFin: '',
+      motivo: '',
+      tipo: 'vacaciones'
+    });
+    
+    setShowPeriodosModal(false);
+    setPeriodosSeleccionados([]);
+    
+    // Recargar datos al final
+    await cargarDatos();
+    
+    // Mostrar mensaje de éxito
+    if (showSuccessMessage) {
+      showSuccessMessage(`Solicitud de ${diasSolicitados} días enviada correctamente.`);
     }
-
-    try {
-      setLoading(true);
-
-      await vacacionesService.crearSolicitudConPeriodos({
-        empleadoId: user.empleadoId,
-        tipo: solicitudForm.tipo,
-        fechaInicio: solicitudForm.fechaInicio,
-        fechaFin: solicitudForm.fechaFin,
-        dias: diasSolicitados,
-        diasHabiles: calcularDiasHabiles(),
-        motivo: solicitudForm.motivo,
-        periodosSeleccionados: periodosSeleccionados.map(p => ({
-          balanceId: p.balanceId,
-          dias: p.dias
-        }))
-      });
-
-      await cargarDatos();
-      showSuccessMessage(`Solicitud de ${diasSolicitados} días enviada correctamente usando múltiples períodos.`);
-      
-      setSolicitudForm({
-        fechaInicio: '',
-        fechaFin: '',
-        motivo: '',
-        tipo: 'vacaciones'
-      });
-      
-      setShowPeriodosModal(false);
-      setPeriodosSeleccionados([]);
-    } catch (error) {
-      showErrorMessage('Error al crear solicitud: ' + (error.response?.data?.error || error.message));
-    } finally {
-      setLoading(false);
+  } catch (error) {
+    console.error('Error:', error);
+    if (showErrorMessage) {
+      showErrorMessage('Error al crear solicitud: ' + (error?.response?.data?.error || error?.message || 'Error desconocido'));
     }
-  };
+  } finally {
+    setLoading(false);
+  }
+};
 
   // Aprobar/Rechazar solicitud
   const handleAprobarSolicitud = async (solicitudId, accion, esManual = false, motivoManual = '') => {
@@ -322,10 +375,14 @@ const VacacionesModule = () => {
   };
 
   // Verificar si puede aprobar
-  const puedeAprobar = (solicitud) => {
+ const puedeAprobar = (solicitud) => {
     if (!solicitud.flujoAprobacion) return { puede: false };
     
-    if (solicitud.flujoAprobacion.actual === user.role) {
+    // Normalizar roles para comparación
+    const rolNormalizado = user.role?.toLowerCase().replace(/\s+/g, '_');
+    const rolActualNormalizado = solicitud.flujoAprobacion.actual?.toLowerCase().replace(/\s+/g, '_');
+    
+    if (rolActualNormalizado === rolNormalizado) {
       return { puede: true, motivo: 'normal' };
     }
     
@@ -464,7 +521,9 @@ const VacacionesModule = () => {
                   )}
                 </div>
                 <div style={{ marginLeft: '1.25rem', marginTop: '0.25rem' }}>
-                  Fecha: {new Date(evento.fecha).toLocaleString()}
+                  {evento.fecha && evento.aprobadoPor ? (
+                    <>Fecha: {new Date(evento.fecha).toLocaleString()}</> ) : (                     
+                    <em style={{ color: '#9ca3af' }}>Pendiente de aprobación</em> )}                    
                   {evento.motivoManual && (
                     <div style={{ marginTop: '0.25rem', fontStyle: 'italic' }}>
                       Motivo: {evento.motivoManual}
@@ -480,7 +539,7 @@ const VacacionesModule = () => {
   };
 
   return (
-    <div style={{ padding: '1.5rem' }}>
+    <div style={{ padding: '1.5rem', background: '#f1eeeeff', minHeight: '100vh' }}>
       {/* Modal de Selección de Períodos */}
       {showPeriodosModal && (
         <div style={{
@@ -595,7 +654,11 @@ const VacacionesModule = () => {
                 Cancelar
               </button>
               <button
-                onClick={confirmarSolicitudConPeriodos}
+                onClick={() => {
+                  console.log('🔴 BOTÓN CLICKEADO');
+                  console.log('Función existe?', typeof confirmarSolicitudConPeriodos);
+                  confirmarSolicitudConPeriodos();
+                }}
                 disabled={calcularTotalSeleccionado() !== calcularDias() || loading}
                 style={{
                   padding: '0.5rem 1rem',
@@ -890,7 +953,7 @@ const VacacionesModule = () => {
               Historial ({solicitudes.length})
             </button>
             
-            {['Gerente', 'Director', 'RRHH', 'Gerente RRHH', 'Director RRHH'].includes(user.role) && (
+            {['gerente', 'director', 'rrhh', 'gerente_rrhh', 'director_rrhh'].includes(user.role?.toLowerCase()) && (
               <button
                 onClick={() => setActiveTab('aprobar')}
                 style={{

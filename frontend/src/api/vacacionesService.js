@@ -23,7 +23,7 @@ const vacacionesService = {
     }
   },
 
-  // NUEVO: Crear solicitud con períodos múltiples
+  // Crear solicitud con períodos múltiples
   async crearSolicitudConPeriodos(datos) {
     try {
       const response = await api.post('/vacaciones/con-periodos', datos);
@@ -59,7 +59,7 @@ const vacacionesService = {
     }
   },
 
-  // NUEVO: Obtener estadísticas detalladas con períodos
+  // Obtener estadísticas detalladas con períodos
   async getEstadisticasDetalladas(empleadoId) {
     try {
       const response = await api.get(`/vacaciones/estadisticas-detalladas/${empleadoId}`);

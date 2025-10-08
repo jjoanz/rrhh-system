@@ -338,10 +338,10 @@ const AsistenciaModule = () => {
   return (
     <div style={{ padding: '1.5rem' }}>
       <div style={{ maxWidth: '112rem', margin: '0 auto' }}>
-        <h1 style={{ fontSize: '2rem', fontWeight: 'bold', color: '#111827', marginBottom: '0.5rem' }}>
+        <h1 style={{ fontSize: '2rem', fontWeight: 'bold', color: '#fefeffff', marginBottom: '0.5rem' }}>
           Sistema de Asistencia y Horas Extras
         </h1>
-        <p style={{ color: '#6b7280', fontSize: '1.125rem', marginBottom: '2rem' }}>
+        <p style={{ color: '#ffffffff', fontSize: '1.125rem', marginBottom: '2rem' }}>
           Control completo de asistencia con cálculo automático de horas extras parametrizables
         </p>
 

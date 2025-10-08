@@ -438,6 +438,7 @@ const ModalIncidencia = ({ empleado, onClose, onSave, empleados, configNomina })
   );
 };
   
+
   const [selectedPeriodo, setSelectedPeriodo] = useState('2024-07');
   const [user] = useState({ role: 'admin' }); // Usuario actual
   
@@ -447,10 +448,24 @@ const ModalIncidencia = ({ empleado, onClose, onSave, empleados, configNomina })
   const [modalRecibo, setModalRecibo] = useState({ open: false, nomina: null });
   const [modalPrestaciones, setModalPrestaciones] = useState({ open: false, empleado: null });
   const [modalOperacionMasiva, setModalOperacionMasiva] = useState({ open: false, tipo: null });
+  const [tablaISR, setTablaISR] = useState([
+  { desde: 0, hasta: 416220.00, porcentaje: 0, montoFijo: 0 },
+  { desde: 416220.01, hasta: 624329.01, porcentaje: 15, montoFijo: 0 },
+  { desde: 624329.02, hasta: 867123.02, porcentaje: 20, montoFijo: 31215.39 },
+  { desde: 867123.03, hasta: 999999999, porcentaje: 25, montoFijo: 79774.18 }
+]);
 
-  // Catálogo de empleados mejorado
-  
- 
+const [tssEmpleado, setTssEmpleado] = useState([
+  { codigo: 'TSS_AFP', nombre: 'TSS - AFP (Pensiones)', porcentaje: 2.87, aplicaSobre: 'salario_cotizable', limite: 'salario_minimo_10_veces' },
+  { codigo: 'TSS_SFS', nombre: 'TSS - SFS (Salud)', porcentaje: 3.04, aplicaSobre: 'salario_cotizable', limite: 'salario_minimo_10_veces' }
+]);
+
+const [aportesPatronales, setAportesPatronales] = useState([
+  { codigo: 'TSS_AFP_PATRONAL', nombre: 'TSS - AFP Patronal (Pensiones)', porcentaje: 7.10 },
+  { codigo: 'TSS_SFS_PATRONAL', nombre: 'TSS - SFS Patronal (Salud)', porcentaje: 7.09 },
+  { codigo: 'TSS_SRL', nombre: 'TSS - Riesgo Laboral', porcentaje: 1.10 },
+  { codigo: 'INFOTEP', nombre: 'INFOTEP', porcentaje: 1.0 }
+]); 
 
 
   // Configuración avanzada
@@ -496,9 +511,16 @@ const ModalIncidencia = ({ empleado, onClose, onSave, empleados, configNomina })
     // Deducciones legales RD actualizadas
     deduccionesLegales: [
       { 
-        codigo: 'TSS_EMPLEADO', 
-        nombre: 'TSS - Empleado', 
+        codigo: 'TSS_AFP', 
+        nombre: 'TSS - AFP (Pensiones)', 
         porcentaje: 2.87, 
+        aplicaSobre: 'salario_cotizable',
+        limite: 'salario_minimo_10_veces'
+      },
+      { 
+        codigo: 'TSS_SFS', 
+        nombre: 'TSS - SFS (Salud)', 
+        porcentaje: 3.04, 
         aplicaSobre: 'salario_cotizable',
         limite: 'salario_minimo_10_veces'
       },
@@ -507,17 +529,19 @@ const ModalIncidencia = ({ empleado, onClose, onSave, empleados, configNomina })
         nombre: 'Impuesto Sobre la Renta', 
         aplicaSobre: 'salario_gravable',
         escalas: [
-          { desde: 0, hasta: 416220, porcentaje: 0 },
-          { desde: 416221, hasta: 624329, porcentaje: 15 },
-          { desde: 624330, hasta: 867123, porcentaje: 20 },
-          { desde: 867124, hasta: 999999999, porcentaje: 25 }
+          { desde: 0, hasta: 416220.00, porcentaje: 0, montoFijo: 0 },
+          { desde: 416220.01, hasta: 624329.01, porcentaje: 15, montoFijo: 0 },
+          { desde: 624329.02, hasta: 867123.02, porcentaje: 20, montoFijo: 31215.39 },
+          { desde: 867123.03, hasta: 999999999, porcentaje: 25, montoFijo: 79774.18 }
         ]
       }
     ],
 
     // Aportes patronales
     aportesPatronales: [
-      { codigo: 'TSS_PATRONAL', nombre: 'TSS - Patronal', porcentaje: 7.09 },
+      { codigo: 'TSS_AFP_PATRONAL', nombre: 'TSS - AFP Patronal (Pensiones)', porcentaje: 7.10 },
+      { codigo: 'TSS_SFS_PATRONAL', nombre: 'TSS - SFS Patronal (Salud)', porcentaje: 7.09 },
+      { codigo: 'TSS_SRL', nombre: 'TSS - Riesgo Laboral', porcentaje: 1.10 },
       { codigo: 'INFOTEP', nombre: 'INFOTEP', porcentaje: 1.0 }
     ],
 
@@ -734,21 +758,38 @@ useEffect(() => {
     const totalDevengado = salarioBase - descuentoFaltas;
 
     // Calcular deducciones legales
-    const deduccionTSS = Math.min(
-      totalDevengado * 2.87 / 100,
-      (configNomina.salarioMinimo * 10) * 2.87 / 100
+    // TSS AFP (2.87%)
+const deduccionTSS_AFP = Math.min(
+  totalDevengado * 2.87 / 100,
+  (configNomina.salarioMinimo * 10) * 2.87 / 100
     );
 
+    // TSS SFS (3.04%)
+    const deduccionTSS_SFS = Math.min(
+      totalDevengado * 3.04 / 100,
+      (configNomina.salarioMinimo * 10) * 3.04 / 100
+    );
+
+    const deduccionTSS = deduccionTSS_AFP + deduccionTSS_SFS; // 5.91% total
+
     // Calcular ISR por escalas
-    let deduccionISR = 0;
-    const salarioAnual = totalDevengado * 12;
-    for (const escala of configNomina.deduccionesLegales[1].escalas) {
-      if (salarioAnual > escala.desde) {
-        const baseImponible = Math.min(salarioAnual, escala.hasta) - escala.desde;
-        deduccionISR += baseImponible * escala.porcentaje / 100;
-      }
+    // Calcular ISR por escalas (método correcto DGII)
+let deduccionISR = 0;
+  const salarioAnual = totalDevengado * 12;
+
+  if (salarioAnual > 416220.00) {
+    if (salarioAnual <= 624329.01) {
+      // Escala 2: 15% sobre excedente de 416,220
+      deduccionISR = (salarioAnual - 416220.00) * 0.15;
+    } else if (salarioAnual <= 867123.02) {
+      // Escala 3: 31,215.39 + 20% sobre excedente de 624,329.01
+      deduccionISR = 31215.39 + ((salarioAnual - 624329.01) * 0.20);
+    } else {
+      // Escala 4: 79,774.18 + 25% sobre excedente de 867,123.02
+      deduccionISR = 79774.18 + ((salarioAnual - 867123.02) * 0.25);
     }
-    deduccionISR = deduccionISR / 12; // Mensual
+  }
+  deduccionISR = deduccionISR / 12; // Mensual
 
     const totalDeducciones = deduccionTSS + deduccionISR;
     const salarioNeto = totalDevengado - totalDeducciones;
@@ -1530,15 +1571,98 @@ useEffect(() => {
     );
   };
 
-  // Renderizado de reportes mejorado
-  const renderReportes = () => (
+ // Renderizado de ajustes de nómina
+const renderAjustesNomina = () => {
+  
+
+  const guardarCambios = () => {
+    setConfigNomina(prev => ({
+      ...prev,
+      deduccionesLegales: [
+        { ...tssEmpleado[0], codigo: 'TSS_AFP' },
+        { ...tssEmpleado[1], codigo: 'TSS_SFS' },
+        {
+          codigo: 'ISR',
+          nombre: 'Impuesto Sobre la Renta',
+          aplicaSobre: 'salario_gravable',
+          escalas: tablaISR
+        }
+      ],
+      aportesPatronales: aportesPatronales
+    }));
+    showSuccessMessage('✅ Configuración actualizada correctamente');
+  };
+
+  const restablecerValores = () => {
+    if (window.confirm('¿Está seguro de restablecer los valores originales de DGII?')) {
+      setTablaISR([
+        { desde: 0, hasta: 416220.00, porcentaje: 0, montoFijo: 0 },
+        { desde: 416220.01, hasta: 624329.01, porcentaje: 15, montoFijo: 0 },
+        { desde: 624329.02, hasta: 867123.02, porcentaje: 20, montoFijo: 31215.39 },
+        { desde: 867123.03, hasta: 999999999, porcentaje: 25, montoFijo: 79774.18 }
+      ]);
+      setTssEmpleado([
+        { codigo: 'TSS_AFP', nombre: 'TSS - AFP (Pensiones)', porcentaje: 2.87, aplicaSobre: 'salario_cotizable', limite: 'salario_minimo_10_veces' },
+        { codigo: 'TSS_SFS', nombre: 'TSS - SFS (Salud)', porcentaje: 3.04, aplicaSobre: 'salario_cotizable', limite: 'salario_minimo_10_veces' }
+      ]);
+      setAportesPatronales([
+        { codigo: 'TSS_AFP_PATRONAL', nombre: 'TSS - AFP Patronal (Pensiones)', porcentaje: 7.10 },
+        { codigo: 'TSS_SFS_PATRONAL', nombre: 'TSS - SFS Patronal (Salud)', porcentaje: 7.09 },
+        { codigo: 'TSS_SRL', nombre: 'TSS - Riesgo Laboral', porcentaje: 1.10 },
+        { codigo: 'INFOTEP', nombre: 'INFOTEP', porcentaje: 1.0 }
+      ]);
+      showSuccessMessage('✅ Valores restablecidos');
+    }
+  };
+
+  return (
     <div>
-      <h2 style={{ fontSize: '1.5rem', fontWeight: '600', color: '#111827', marginBottom: '1.5rem' }}>
-        Reportes y Análisis
-      </h2>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+        <h2 style={{ fontSize: '1.5rem', fontWeight: '600', color: '#111827' }}>
+          ⚙️ Configuración de Nómina
+        </h2>
+        <div style={{ display: 'flex', gap: '0.5rem' }}>
+          <button
+            onClick={restablecerValores}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+              padding: '0.5rem 1rem',
+              background: '#6b7280',
+              color: 'white',
+              border: 'none',
+              borderRadius: '0.375rem',
+              fontWeight: '500',
+              cursor: 'pointer'
+            }}
+          >
+            <Settings style={{ width: '1rem', height: '1rem' }} />
+            Restablecer
+          </button>
+          <button
+            onClick={guardarCambios}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+              padding: '0.5rem 1rem',
+              background: '#10b981',
+              color: 'white',
+              border: 'none',
+              borderRadius: '0.375rem',
+              fontWeight: '500',
+              cursor: 'pointer'
+            }}
+          >
+            <Save style={{ width: '1rem', height: '1rem' }} />
+            Guardar Cambios
+          </button>
+        </div>
+      </div>
 
       <div style={{ display: 'grid', gap: '1.5rem' }}>
-        {/* Métricas principales */}
+        {/* TABLA ISR - DGII */}
         <div style={{
           background: 'white',
           borderRadius: '0.75rem',
@@ -1547,41 +1671,124 @@ useEffect(() => {
           padding: '1.5rem'
         }}>
           <h3 style={{ fontSize: '1.25rem', fontWeight: '600', color: '#111827', marginBottom: '1rem' }}>
-            Métricas del Período Actual
+            Tabla ISR - DGII
           </h3>
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
-            gap: '1rem'
-          }}>
-            <div style={{ textAlign: 'center', padding: '1rem', background: '#f9fafb', borderRadius: '0.5rem' }}>
-              <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#111827' }}>
-                {formatearMoneda(nominasProcesadas.reduce((total, n) => total + (n.conceptos?.totalDevengado || 0), 0))}
-              </div>
-              <div style={{ fontSize: '0.875rem', color: '#6b7280' }}>Total Devengado</div>
-            </div>
-            <div style={{ textAlign: 'center', padding: '1rem', background: '#f9fafb', borderRadius: '0.5rem' }}>
-              <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#111827' }}>
-                {formatearMoneda(nominasProcesadas.reduce((total, n) => total + (n.conceptos?.totalDeducciones || 0), 0))}
-              </div>
-              <div style={{ fontSize: '0.875rem', color: '#6b7280' }}>TSS e ISR</div>
-            </div>
-            <div style={{ textAlign: 'center', padding: '1rem', background: '#f9fafb', borderRadius: '0.5rem' }}>
-              <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#111827' }}>
-                {empleados.filter(e => e.estado === 'activo').length}
-              </div>
-              <div style={{ fontSize: '0.875rem', color: '#6b7280' }}>Empleados Activos</div>
-            </div>
-            <div style={{ textAlign: 'center', padding: '1rem', background: '#f9fafb', borderRadius: '0.5rem' }}>
-              <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#111827' }}>
-                {(empleados.reduce((sum, emp) => sum + calcularAntiguedad(emp.fechaIngreso).años, 0) / empleados.length).toFixed(1)}
-              </div>
-              <div style={{ fontSize: '0.875rem', color: '#6b7280' }}>Antigüedad Promedio</div>
-            </div>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead style={{ background: '#f9fafb' }}>
+                <tr>
+                  <th style={{ padding: '0.75rem', textAlign: 'center', fontSize: '0.875rem', fontWeight: '600', color: '#374151', border: '1px solid #e5e7eb' }}>
+                    Escalas
+                  </th>
+                  <th style={{ padding: '0.75rem', textAlign: 'center', fontSize: '0.875rem', fontWeight: '600', color: '#374151', border: '1px solid #e5e7eb' }}>
+                    Límite Inferior
+                  </th>
+                  <th style={{ padding: '0.75rem', textAlign: 'center', fontSize: '0.875rem', fontWeight: '600', color: '#374151', border: '1px solid #e5e7eb' }}>
+                    Límite Superior
+                  </th>
+                  <th style={{ padding: '0.75rem', textAlign: 'center', fontSize: '0.875rem', fontWeight: '600', color: '#374151', border: '1px solid #e5e7eb' }}>
+                    Tasa ISR
+                  </th>
+                  <th style={{ padding: '0.75rem', textAlign: 'center', fontSize: '0.875rem', fontWeight: '600', color: '#374151', border: '1px solid #e5e7eb' }}>
+                    Monto Fijo
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {tablaISR.map((escala, index) => (
+                  <tr key={index}>
+                    <td style={{ padding: '0.75rem', textAlign: 'center', border: '1px solid #e5e7eb', fontWeight: '500' }}>
+                      {index + 1}
+                    </td>
+                    <td style={{ padding: '0.5rem', border: '1px solid #e5e7eb' }}>
+                      <input
+                        type="number"
+                        value={escala.desde}
+                        onChange={(e) => {
+                          const nuevaTabla = [...tablaISR];
+                          nuevaTabla[index].desde = Number(e.target.value);
+                          setTablaISR(nuevaTabla);
+                        }}
+                        style={{
+                          width: '100%',
+                          padding: '0.5rem',
+                          border: '1px solid #d1d5db',
+                          borderRadius: '0.25rem',
+                          fontSize: '0.875rem'
+                        }}
+                      />
+                    </td>
+                    <td style={{ padding: '0.5rem', border: '1px solid #e5e7eb' }}>
+                      <input
+                        type="number"
+                        value={escala.hasta}
+                        onChange={(e) => {
+                          const nuevaTabla = [...tablaISR];
+                          nuevaTabla[index].hasta = Number(e.target.value);
+                          setTablaISR(nuevaTabla);
+                        }}
+                        style={{
+                          width: '100%',
+                          padding: '0.5rem',
+                          border: '1px solid #d1d5db',
+                          borderRadius: '0.25rem',
+                          fontSize: '0.875rem'
+                        }}
+                      />
+                    </td>
+                    <td style={{ padding: '0.5rem', border: '1px solid #e5e7eb' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                        <input
+                          type="number"
+                          value={escala.porcentaje}
+                          onChange={(e) => {
+                            const nuevaTabla = [...tablaISR];
+                            nuevaTabla[index].porcentaje = Number(e.target.value);
+                            setTablaISR(nuevaTabla);
+                          }}
+                          min="0"
+                          max="100"
+                          style={{
+                            width: '100%',
+                            padding: '0.5rem',
+                            border: '1px solid #d1d5db',
+                            borderRadius: '0.25rem',
+                            fontSize: '0.875rem'
+                          }}
+                        />
+                        <span style={{ fontSize: '0.875rem', color: '#6b7280' }}>%</span>
+                      </div>
+                    </td>
+                    <td style={{ padding: '0.5rem', border: '1px solid #e5e7eb' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                        <span style={{ fontSize: '0.875rem', color: '#6b7280' }}>$</span>
+                        <input
+                          type="number"
+                          value={escala.montoFijo}
+                          onChange={(e) => {
+                            const nuevaTabla = [...tablaISR];
+                            nuevaTabla[index].montoFijo = Number(e.target.value);
+                            setTablaISR(nuevaTabla);
+                          }}
+                          step="0.01"
+                          style={{
+                            width: '100%',
+                            padding: '0.5rem',
+                            border: '1px solid #d1d5db',
+                            borderRadius: '0.25rem',
+                            fontSize: '0.875rem'
+                          }}
+                        />
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
 
-        {/* Generadores de reportes */}
+        {/* CUOTAS TSS EMPLEADO */}
         <div style={{
           background: 'white',
           borderRadius: '0.75rem',
@@ -1590,92 +1797,165 @@ useEffect(() => {
           padding: '1.5rem'
         }}>
           <h3 style={{ fontSize: '1.25rem', fontWeight: '600', color: '#111827', marginBottom: '1rem' }}>
-            Generar Reportes
+            Cuotas TSS Empleado
           </h3>
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
-            gap: '1rem'
-          }}>
-            <ReporteCard 
-              icon={<FileBarChart style={{ width: '2rem', height: '2rem', color: '#3b82f6' }} />}
-              titulo="Nómina Completa"
-              descripcion="Reporte detallado de nómina por período"
-              color="#f0f9ff"
-              onClick={() => console.log('Generando reporte de nómina')}
-            />
-            <ReporteCard 
-              icon={<Users style={{ width: '2rem', height: '2rem', color: '#10b981' }} />}
-              titulo="Plantilla de Personal"
-              descripcion="Listado completo de empleados y datos"
-              color="#f0fdf4"
-              onClick={() => console.log('Generando reporte de empleados')}
-            />
-            <ReporteCard 
-              icon={<TrendingUp style={{ width: '2rem', height: '2rem', color: '#f59e0b' }} />}
-              titulo="Aportes Patronales"
-              descripcion="TSS, INFOTEP y contribuciones"
-              color="#fffbeb"
-              onClick={() => console.log('Generando reporte de aportes')}
-            />
-            <ReporteCard 
-              icon={<Receipt style={{ width: '2rem', height: '2rem', color: '#ef4444' }} />}
-              titulo="Deducciones Fiscales"
-              descripcion="ISR y retenciones por empleado"
-              color="#fef2f2"
-              onClick={() => console.log('Generando reporte fiscal')}
-            />
-            <ReporteCard 
-              icon={<Award style={{ width: '2rem', height: '2rem', color: '#8b5cf6' }} />}
-              titulo="Prestaciones Laborales"
-              descripcion="Vacaciones, cesantía y regalía"
-              color="#faf5ff"
-              onClick={() => console.log('Generando reporte de prestaciones')}
-            />
-            <ReporteCard 
-              icon={<Clock style={{ width: '2rem', height: '2rem', color: '#06b6d4' }} />}
-              titulo="Control de Tiempo"
-              descripcion="Horas extra, faltas y permisos"
-              color="#f0fdfa"
-              onClick={() => console.log('Generando reporte de tiempo')}
-            />
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead style={{ background: '#f9fafb' }}>
+                <tr>
+                  <th style={{ padding: '0.75rem', textAlign: 'center', fontSize: '0.875rem', fontWeight: '600', color: '#374151', border: '1px solid #e5e7eb' }}>
+                    ID
+                  </th>
+                  <th style={{ padding: '0.75rem', textAlign: 'left', fontSize: '0.875rem', fontWeight: '600', color: '#374151', border: '1px solid #e5e7eb' }}>
+                    Descripción
+                  </th>
+                  <th style={{ padding: '0.75rem', textAlign: 'center', fontSize: '0.875rem', fontWeight: '600', color: '#374151', border: '1px solid #e5e7eb' }}>
+                    Porcentaje
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {tssEmpleado.map((item, index) => (
+                  <tr key={index}>
+                    <td style={{ padding: '0.75rem', textAlign: 'center', border: '1px solid #e5e7eb', fontWeight: '500' }}>
+                      {index + 1}
+                    </td>
+                    <td style={{ padding: '0.75rem', border: '1px solid #e5e7eb' }}>
+                      {item.nombre}
+                    </td>
+                    <td style={{ padding: '0.5rem', border: '1px solid #e5e7eb' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', justifyContent: 'center' }}>
+                        <input
+                          type="number"
+                          value={item.porcentaje}
+                          onChange={(e) => {
+                            const nuevaTSS = [...tssEmpleado];
+                            nuevaTSS[index].porcentaje = Number(e.target.value);
+                            setTssEmpleado(nuevaTSS);
+                          }}
+                          min="0"
+                          max="100"
+                          step="0.01"
+                          style={{
+                            width: '80px',
+                            padding: '0.5rem',
+                            border: '1px solid #d1d5db',
+                            borderRadius: '0.25rem',
+                            fontSize: '0.875rem',
+                            textAlign: 'center'
+                          }}
+                        />
+                        <span style={{ fontSize: '0.875rem', color: '#6b7280' }}>%</span>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* APORTES PATRONALES */}
+        <div style={{
+          background: 'white',
+          borderRadius: '0.75rem',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+          border: '1px solid #e5e7eb',
+          padding: '1.5rem'
+        }}>
+          <h3 style={{ fontSize: '1.25rem', fontWeight: '600', color: '#111827', marginBottom: '1rem' }}>
+            🏢 Aportes de la Empresa (TSS)
+          </h3>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead style={{ background: '#f9fafb' }}>
+                <tr>
+                  <th style={{ padding: '0.75rem', textAlign: 'center', fontSize: '0.875rem', fontWeight: '600', color: '#374151', border: '1px solid #e5e7eb' }}>
+                    ID
+                  </th>
+                  <th style={{ padding: '0.75rem', textAlign: 'left', fontSize: '0.875rem', fontWeight: '600', color: '#374151', border: '1px solid #e5e7eb' }}>
+                    Descripción
+                  </th>
+                  <th style={{ padding: '0.75rem', textAlign: 'center', fontSize: '0.875rem', fontWeight: '600', color: '#374151', border: '1px solid #e5e7eb' }}>
+                    Porcentaje
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {aportesPatronales.map((item, index) => (
+                  <tr key={index}>
+                    <td style={{ padding: '0.75rem', textAlign: 'center', border: '1px solid #e5e7eb', fontWeight: '500' }}>
+                      {index + 1}
+                    </td>
+                    <td style={{ padding: '0.75rem', border: '1px solid #e5e7eb' }}>
+                      {item.nombre}
+                    </td>
+                    <td style={{ padding: '0.5rem', border: '1px solid #e5e7eb' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', justifyContent: 'center' }}>
+                        <input
+                          type="number"
+                          value={item.porcentaje}
+                          onChange={(e) => {
+                            const nuevosAportes = [...aportesPatronales];
+                            nuevosAportes[index].porcentaje = Number(e.target.value);
+                            setAportesPatronales(nuevosAportes);
+                          }}
+                          min="0"
+                          max="100"
+                          step="0.01"
+                          style={{
+                            width: '80px',
+                            padding: '0.5rem',
+                            border: '1px solid #d1d5db',
+                            borderRadius: '0.25rem',
+                            fontSize: '0.875rem',
+                            textAlign: 'center'
+                          }}
+                        />
+                        <span style={{ fontSize: '0.875rem', color: '#6b7280' }}>%</span>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* INFO ADICIONAL */}
+        <div style={{
+          background: '#fffbeb',
+          border: '1px solid #fde68a',
+          borderRadius: '0.5rem',
+          padding: '1rem'
+        }}>
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'start' }}>
+            <AlertCircle style={{ width: '1.25rem', height: '1.25rem', color: '#d97706', flexShrink: 0, marginTop: '0.125rem' }} />
+            <div>
+              <div style={{ fontWeight: '600', color: '#92400e', marginBottom: '0.5rem' }}>
+                ⚠️ Importante
+              </div>
+              <ul style={{ fontSize: '0.875rem', color: '#78350f', margin: 0, paddingLeft: '1.25rem' }}>
+                <li>Los cambios afectarán todos los cálculos de nómina futuros</li>
+                <li>Use "Restablecer" para volver a los valores oficiales de DGII</li>
+                <li>Verifique los montos fijos del ISR según la tabla oficial</li>
+                <li>El total TSS empleado será: AFP (2.87%) + SFS (3.04%) = 5.91%</li>
+              </ul>
+            </div>
           </div>
         </div>
       </div>
     </div>
   );
-
-  // Componente para cards de reportes
-  const ReporteCard = ({ icon, titulo, descripcion, color, onClick }) => (
-    <button
-      onClick={onClick}
-      style={{
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        gap: '0.75rem',
-        padding: '1.5rem',
-        background: color,
-        border: '1px solid #e5e7eb',
-        borderRadius: '0.5rem',
-        cursor: 'pointer',
-        textAlign: 'center',
-        transition: 'transform 0.2s',
-        ':hover': { transform: 'translateY(-2px)' }
-      }}
-    >
-      {icon}
-      <div style={{ fontWeight: '500', color: '#111827' }}>{titulo}</div>
-      <div style={{ fontSize: '0.875rem', color: '#6b7280' }}>{descripcion}</div>
-    </button>
-  );
+};
+  
 
   // Navegación por pestañas
   const tabs = [
     { id: 'empleados', label: '👥 Empleados', component: renderEmpleados },
     { id: 'incidencias', label: 'Incidencias', component: renderIncidencias },
     { id: 'nomina', label: 'Nómina', component: renderNomina },
-    { id: 'reportes', label: 'Reportes', component: renderReportes }
+    { id: 'ajustes', label: '⚙️ Ajustes Nómina', component: renderAjustesNomina }
   ];
 
   return (

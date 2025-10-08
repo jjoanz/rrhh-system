@@ -609,7 +609,7 @@ const CapacitacionModule = () => {
   };
 
   return (
-    <div style={{ padding: '1.5rem' }}>
+    <div style={{ padding: '1.5rem', background: '#ffffff', minHeight: '100vh' }}>
       <div style={{ maxWidth: '112rem', margin: '0 auto' }}>
         <h1 style={{ fontSize: '2rem', fontWeight: 'bold', color: '#111827', marginBottom: '0.5rem' }}>
            Sistema de Capacitación y Desarrollo

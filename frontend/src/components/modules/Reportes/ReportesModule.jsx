@@ -692,7 +692,7 @@ const ReportesModule = () => {
   };
 
   return (
-    <div className="p-6 max-w-7xl mx-auto">
+    <div className="p-6 max-w-7xl mx-auto" style={{ background: '#ffffff', minHeight: '100vh' }}>
       {/* Header */}
       <div className="flex justify-between items-center mb-8">
         <div>

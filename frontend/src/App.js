@@ -48,7 +48,7 @@ const Sidebar = ({ isOpen, onClose }) => {
         <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'1rem', borderBottom:'1px solid #e5e7eb' }}>
           <div style={{ display:'flex', alignItems:'center', gap:'0.75rem' }}>
             <Building2 style={{ width:'2rem', height:'2rem', color:'#3b82f6' }} />
-            <img src="PD-Logo-RGB-CEI.png" alt="Logo" style={{ height:'24px', width:'auto' }} />
+            <img src="ProDominicana Logo FC.png" alt="Logo" style={{ height:'45px', width:'auto' }} />
           </div>
           <button onClick={onClose} style={{ border:'none', background:'none', fontSize:'1.5rem', cursor:'pointer', color:'#6b7280' }}>×</button>
         </div>
@@ -103,7 +103,7 @@ const Header = () => {
             <Menu style={{ width:'1.25rem', height:'1.25rem' }} />
           </button>
           <h1 style={{ fontSize:'1.125rem', fontWeight:'bold', color:'#111827', margin:0, display:'flex', alignItems:'center', gap:'0.5rem' }}>
-            <img src="PD-Logo-RGB-CEI.png" alt="Logo" style={{ height:'24px', width:'auto' }} />
+            <img src="ProDominicana Logo FC.png" alt="Logo" style={{ height:'45px', width:'auto' }} />
             Sistema de Gestión RRHH ProDominicana
           </h1>
         </div>
@@ -134,433 +134,468 @@ const Dashboard = () => {
     return "Buenas noches";
   };
 
+  const formatearFecha = () => {
+    const dias = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'];
+    const meses = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
+    const fecha = new Date();
+    return `${dias[fecha.getDay()]}, ${fecha.getDate()} ${meses[fecha.getMonth()]} ${fecha.getFullYear()}`;
+  };
+
+  const formatearHora = () => {
+    const fecha = new Date();
+    let horas = fecha.getHours();
+    const minutos = fecha.getMinutes().toString().padStart(2, '0');
+    const ampm = horas >= 12 ? 'p. m.' : 'a. m.';
+    horas = horas % 12;
+    horas = horas ? horas : 12;
+    const horasFormat = horas.toString().padStart(2, '0');
+    return `${horasFormat}:${minutos} ${ampm}`;
+  };
+
   return (
     <div style={{
       minHeight: '100vh',
-      background: 'linear-gradient(135deg, rgb(248, 250, 252) 0%, rgb(239, 246, 255) 50%, rgb(224, 231, 255) 100%)'
+      background: '#0a2540'
     }}>
+      {/* HERO SECTION CON BANNER */}
       <div style={{
         position: 'relative',
         overflow: 'hidden',
-        background: 'linear-gradient(90deg, rgb(37, 99, 235) 0%, rgb(29, 78, 216) 50%, rgb(67, 56, 202) 100%)'
+        background: '#0a2540',
+        minHeight: '180px'
       }}>
-        {/* Imagen de fondo */}
+        {/* Imagen de fondo con overlay */}
         <div style={{
           position: 'absolute',
           inset: 0,
-          backgroundImage: 'url("/images/futuristic-business-scene-with-ultra-modern-ambiance.jpg")',
+          backgroundImage: 'url("/images/ProD Banner.jpg")',
           backgroundSize: 'cover',
           backgroundPosition: 'center',
-          zIndex: 0,
-          filter: 'brightness(0.4)'
-        }}></div>
-
-        {/* Capa de degradado oscuro */}
-        <div style={{
-          position: 'absolute',
-          inset: 0,
-          background: 'linear-gradient(90deg, rgba(0,0,0,0.20) 0%, rgba(0,0,0,0.10) 50%, rgba(0,0,0,0.20) 100%)',
-          zIndex: 1
-        }}></div>
+          zIndex: 0
+        }}>
+          {/* Overlay con gradiente */}
+          <div style={{
+            position: 'absolute',
+            inset: 0,
+            background: 'linear-gradient(90deg, rgba(10, 37, 64, 0.88) 0%, rgba(10, 37, 64, 0.45) 50%, rgba(10, 37, 64, 0.75) 100%)'
+          }}></div>
+        </div>
         
-        <div style={{ position: 'relative', padding: '2rem 1.5rem', zIndex: 2 }}>
+        {/* Contenido del Hero */}
+        <div style={{ 
+          position: 'relative', 
+          padding: '1.75rem 2rem',
+          zIndex: 2,
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '0.5rem'
+        }}>
+          {/* Saludo */}
           <motion.div
-            initial={{ opacity: 0, y: -30 }}
+            initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8, ease: "easeOut" }}
-            style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
+            transition={{ duration: 0.6, ease: "easeOut" }}
           >
-            <div>
-              <h1 style={{
-                fontSize: '2.25rem',
-                fontWeight: 'bold',
-                color: 'white',
-                marginBottom: '0.5rem',
-                margin: 0,
-                textShadow: '2px 2px 4px rgba(0,0,0,0.5)'
-              }}>
-                {getSaludoPorHora()}, {user?.name || 'Usuario'}
-              </h1>
-              <p style={{
-                color: 'rgb(191, 219, 254)',
-                fontSize: '1.125rem',
-                fontWeight: '500',
-                margin: 0,
-                textShadow: '1px 1px 2px rgba(0,0,0,0.5)'
-              }}>
-                Sistema de Gestión de Recursos Humanos
-              </p>
-              <p style={{
-                color: 'rgba(249, 253, 253, 1)',
-                fontSize: '0.875rem',
-                marginTop: '0.25rem',
-                margin: '0.25rem 0 0 0',
-                textShadow: '1px 1px 2px rgba(0,0,0,0.5)'
-              }}>
-                ProDominicana - Centro de Exportación e Inversión
-              </p>
-            </div>
-            
-            <motion.div
-              initial={{ scale: 0 }}
-              animate={{ scale: 1 }}
-              transition={{ delay: 0.5, type: "spring", stiffness: 200 }}
-              style={{
-                display: 'none',
-                alignItems: 'center',
-                gap: '0.5rem',
-                background: 'rgba(255, 255, 255, 0.1)',
-                backdropFilter: 'blur(4px)',
-                borderRadius: '9999px',
-                padding: '1rem 1.5rem'
-              }}
-            >
-              <div style={{
-                width: '0.5rem',
-                height: '0.5rem',
-                background: 'rgb(74, 222, 128)',
-                borderRadius: '50%'
-              }}></div>
-              <span style={{ color: 'white', fontSize: '0.875rem', fontWeight: '500' }}>
-                Sistema Activo
-              </span>
-            </motion.div>
+            <h2 style={{
+              fontSize: '1.875rem',
+              fontWeight: '600',
+              color: '#ffffff',
+              margin: 0,
+              letterSpacing: '-0.01em',
+              textShadow: '0 2px 4px rgba(0,0,0,0.1)'
+            }}>
+              {getSaludoPorHora()}, {user?.name || 'Usuario'}
+            </h2>
+            <p style={{
+              color: '#d1dce6',
+              fontSize: '0.9375rem',
+              fontWeight: '400',
+              margin: '0.375rem 0 0 0',
+              letterSpacing: '0.01em'
+            }}>
+              Sistema de Gestión de Recursos Humanos
+            </p>
+            <p style={{
+              color: '#a8bccf',
+              fontSize: '0.8125rem',
+              fontWeight: '400',
+              margin: '0.25rem 0 0 0',
+              letterSpacing: '0.01em'
+            }}>
+              ProDominicana - Centro de Exportación e Inversión
+            </p>
           </motion.div>
         </div>
       </div>
 
-      <div style={{ padding: '2rem 1.5rem' }}>
+      {/* CONTENIDO PRINCIPAL */}
+      <div style={{ padding: '2rem 2rem 3rem 2rem', background: '#0a2540' }}>
+        {/* Tarjetas de información */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3, duration: 0.6 }}
+          transition={{ delay: 0.2, duration: 0.5 }}
           style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
-            gap: '1rem',
-            marginBottom: '2rem'
+            gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+            gap: '1.25rem',
+            marginBottom: '2.5rem'
           }}
         >
+          {/* Fecha Actual */}
           <div style={{
-            background: 'white',
-            borderRadius: '0.75rem',
-            padding: '1.5rem',
-            boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)',
-            border: '1px solid rgb(243, 244, 246)'
+            background: 'linear-gradient(135deg, #1e5cb3 0%, #2563eb 100%)',
+            borderRadius: '1rem',
+            padding: '1.75rem',
+            boxShadow: '0 4px 12px rgba(30, 92, 179, 0.25), 0 1px 3px rgba(0, 0, 0, 0.1)',
+            position: 'relative',
+            overflow: 'hidden',
+            border: '1px solid rgba(255, 255, 255, 0.1)'
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div>
+            <div style={{
+              position: 'absolute',
+              top: '-20px',
+              right: '-20px',
+              width: '100px',
+              height: '100px',
+              background: 'rgba(255, 255, 255, 0.06)',
+              borderRadius: '50%',
+              filter: 'blur(20px)'
+            }}></div>
+            <div style={{ position: 'relative', zIndex: 1 }}>
+              <p style={{
+                color: 'rgba(255, 255, 255, 0.9)',
+                fontSize: '0.8125rem',
+                fontWeight: '600',
+                margin: '0 0 0.5rem 0',
+                textTransform: 'uppercase',
+                letterSpacing: '0.08em'
+              }}>Fecha Actual</p>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <p style={{
-                  color: 'rgb(107, 114, 128)',
-                  fontSize: '0.875rem',
-                  fontWeight: '500',
-                  margin: 0
-                }}>Fecha Actual</p>
-                <p style={{
-                  fontSize: '1.5rem',
-                  fontWeight: 'bold',
-                  color: 'rgb(17, 24, 39)',
-                  margin: 0
-                }}>{new Date().toLocaleDateString('es-DO', { 
-                  weekday: 'short', 
-                  day: 'numeric', 
-                  month: 'short',
-                  year: 'numeric'
-                })}</p>
-              </div>
-              <div style={{
-                width: '3rem',
-                height: '3rem',
-                background: 'rgba(19, 86, 231, 1)',
-                borderRadius: '0.5rem',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center'
-              }}>
-                <Calendar style={{ width: '1.5rem', height: '1.5rem', color: 'rgba(247, 248, 250, 1)' }} />
+                  fontSize: '1.375rem',
+                  fontWeight: '600',
+                  color: '#ffffff',
+                  margin: 0,
+                  letterSpacing: '-0.01em'
+                }}>{formatearFecha()}</p>
+                <div style={{
+                  width: '2.75rem',
+                  height: '2.75rem',
+                  background: 'rgba(255, 255, 255, 0.18)',
+                  borderRadius: '0.625rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)'
+                }}>
+                  <Calendar style={{ width: '1.375rem', height: '1.375rem', color: '#ffffff' }} />
+                </div>
               </div>
             </div>
           </div>
           
+          {/* Hora Actual */}
           <div style={{
-            background: 'white',
-            borderRadius: '0.75rem',
-            padding: '1.5rem',
-            boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)',
-            border: '1px solid rgb(243, 244, 246)'
+            background: 'linear-gradient(135deg, #0891b2 0%, #06b6d4 100%)',
+            borderRadius: '1rem',
+            padding: '1.75rem',
+            boxShadow: '0 4px 12px rgba(8, 145, 178, 0.25), 0 1px 3px rgba(0, 0, 0, 0.1)',
+            position: 'relative',
+            overflow: 'hidden',
+            border: '1px solid rgba(255, 255, 255, 0.1)'
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div>
+            <div style={{
+              position: 'absolute',
+              top: '-20px',
+              right: '-20px',
+              width: '100px',
+              height: '100px',
+              background: 'rgba(255, 255, 255, 0.06)',
+              borderRadius: '50%',
+              filter: 'blur(20px)'
+            }}></div>
+            <div style={{ position: 'relative', zIndex: 1 }}>
+              <p style={{
+                color: 'rgba(255, 255, 255, 0.9)',
+                fontSize: '0.8125rem',
+                fontWeight: '600',
+                margin: '0 0 0.5rem 0',
+                textTransform: 'uppercase',
+                letterSpacing: '0.08em'
+              }}>Hora Actual</p>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <p style={{
-                  color: 'rgb(107, 114, 128)',
-                  fontSize: '0.875rem',
-                  fontWeight: '500',
-                  margin: 0
-                }}>Hora Actual</p>
-                <p style={{
-                  fontSize: '1.5rem',
-                  fontWeight: 'bold',
-                  color: 'rgb(17, 24, 39)',
-                  margin: 0
-                }}>{new Date().toLocaleTimeString('es-DO', { 
-                  hour: '2-digit', 
-                  minute: '2-digit',
-                  hour12: true
-                })}</p>
-              </div>
-              <div style={{
-                width: '3rem',
-                height: '3rem',
-                background: 'rgba(8, 224, 83, 1)',
-                borderRadius: '0.5rem',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center'
-              }}>
-                <Clock style={{ width: '1.5rem', height: '1.5rem', color: 'rgba(255, 255, 255, 1)' }} />
+                  fontSize: '1.375rem',
+                  fontWeight: '600',
+                  color: '#ffffff',
+                  margin: 0,
+                  letterSpacing: '-0.01em'
+                }}>{formatearHora()}</p>
+                <div style={{
+                  width: '2.75rem',
+                  height: '2.75rem',
+                  background: 'rgba(255, 255, 255, 0.18)',
+                  borderRadius: '0.625rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)'
+                }}>
+                  <Clock style={{ width: '1.375rem', height: '1.375rem', color: '#ffffff' }} />
+                </div>
               </div>
             </div>
           </div>
           
+          {/* Notificaciones */}
           <div style={{
-            background: 'white',
-            borderRadius: '0.75rem',
-            padding: '1.5rem',
-            boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)',
-            border: '1px solid rgb(243, 244, 246)'
+            background: 'linear-gradient(135deg, #dc143c 0%, #ef4444 100%)',
+            borderRadius: '1rem',
+            padding: '1.75rem',
+            boxShadow: '0 4px 12px rgba(220, 20, 60, 0.25), 0 1px 3px rgba(0, 0, 0, 0.1)',
+            position: 'relative',
+            overflow: 'hidden',
+            border: '1px solid rgba(255, 255, 255, 0.1)'
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <div>
+            <div style={{
+              position: 'absolute',
+              top: '-20px',
+              right: '-20px',
+              width: '100px',
+              height: '100px',
+              background: 'rgba(255, 255, 255, 0.06)',
+              borderRadius: '50%',
+              filter: 'blur(20px)'
+            }}></div>
+            <div style={{ position: 'relative', zIndex: 1 }}>
+              <p style={{
+                color: 'rgba(255, 255, 255, 0.9)',
+                fontSize: '0.8125rem',
+                fontWeight: '600',
+                margin: '0 0 0.5rem 0',
+                textTransform: 'uppercase',
+                letterSpacing: '0.08em'
+              }}>Notificaciones</p>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <p style={{
-                  color: 'rgb(107, 114, 128)',
-                  fontSize: '0.875rem',
-                  fontWeight: '500',
-                  margin: 0
-                }}>Notificaciones</p>
-                <p style={{
-                  fontSize: '1.5rem',
-                  fontWeight: 'bold',
-                  color: 'rgb(17, 24, 39)',
-                  margin: 0
+                  fontSize: '1.375rem',
+                  fontWeight: '600',
+                  color: '#ffffff',
+                  margin: 0,
+                  letterSpacing: '-0.01em'
                 }}>{user?.stats?.notifications || '0'}</p>
-              </div>
-              <div style={{
-                width: '3rem',
-                height: '3rem',
-                background: 'rgba(235, 189, 6, 1)',
-                borderRadius: '0.5rem',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center'
-              }}>
-                <Bell style={{ width: '1.5rem', height: '1.5rem', color: 'rgba(250, 250, 250, 1)' }} />
+                <div style={{
+                  width: '2.75rem',
+                  height: '2.75rem',
+                  background: 'rgba(255, 255, 255, 0.18)',
+                  borderRadius: '0.625rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  boxShadow: '0 2px 8px rgba(0, 0, 0, 0.1)'
+                }}>
+                  <Bell style={{ width: '1.375rem', height: '1.375rem', color: '#ffffff' }} />
+                </div>
               </div>
             </div>
           </div>
         </motion.div>
 
+        {/* Módulos del Sistema */}
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          transition={{ delay: 0.5, duration: 0.6 }}
-          style={{ marginBottom: '2rem' }}
+          transition={{ delay: 0.4, duration: 0.5 }}
+          style={{ marginBottom: '2.5rem' }}
         >
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            marginBottom: '1.5rem'
-          }}>
-            <h2 style={{
-              fontSize: '1.5rem',
-              fontWeight: 'bold',
-              color: 'rgb(17, 24, 39)',
-              margin: 0
-            }}>Módulos del Sistema</h2>
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              fontSize: '0.875rem',
-              color: 'rgb(107, 114, 128)'
-            }}>
-              <Clock style={{ width: '1rem', height: '1rem', marginRight: '0.25rem' }} />
-              Última actualización: {new Date().toLocaleDateString('es-DO')}
-            </div>
-          </div>
+          <h2 style={{
+            fontSize: '1.5rem',
+            fontWeight: '600',
+            color: '#ffffff',
+            margin: '0 0 1.5rem 0',
+            letterSpacing: '0.005em'
+          }}>Módulos del Sistema</h2>
 
           <div style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
-            gap: '1.5rem'
+            gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+            gap: '1.5rem',
+            width: '100%'
           }}>
             {navigation.map((item, index) => {
               const Icon = item.icon;
               const colors = [
-                'linear-gradient(135deg, rgb(59, 130, 246) 0%, rgb(37, 99, 235) 100%)',
-                'linear-gradient(135deg, rgb(34, 197, 94) 0%, rgb(22, 163, 74) 100%)',
-                'linear-gradient(135deg, rgb(168, 85, 247) 0%, rgb(147, 51, 234) 100%)',
-                'linear-gradient(135deg, rgb(249, 115, 22) 0%, rgb(234, 88, 12) 100%)',
-                'linear-gradient(135deg, rgb(239, 68, 68) 0%, rgb(220, 38, 38) 100%)',
-                'linear-gradient(135deg, rgb(99, 102, 241) 0%, rgb(79, 70, 229) 100%)',
-                'linear-gradient(135deg, rgb(236, 72, 153) 0%, rgb(219, 39, 119) 100%)',
-                'linear-gradient(135deg, rgb(20, 184, 166) 0%, rgb(13, 148, 136) 100%)'
+                { bg: 'linear-gradient(135deg, #1e5cb3 0%, #2563eb 100%)', shadow: 'rgba(30, 92, 179, 0.3)' },
+                { bg: 'linear-gradient(135deg, #16a34a 0%, #22c55e 100%)', shadow: 'rgba(22, 163, 74, 0.3)' },
+                { bg: 'linear-gradient(135deg, #0891b2 0%, #06b6d4 100%)', shadow: 'rgba(8, 145, 178, 0.3)' },
+                { bg: 'linear-gradient(135deg, #ea580c 0%, #f97316 100%)', shadow: 'rgba(234, 88, 12, 0.3)' },
+                { bg: 'linear-gradient(135deg, #dc143c 0%, #ef4444 100%)', shadow: 'rgba(220, 20, 60, 0.3)' },
+                { bg: 'linear-gradient(135deg, #0284c7 0%, #0ea5e9 100%)', shadow: 'rgba(2, 132, 199, 0.3)' },
+                { bg: 'linear-gradient(135deg, #15803d 0%, #16a34a 100%)', shadow: 'rgba(21, 128, 61, 0.3)' },
+                { bg: 'linear-gradient(135deg, #1d4ed8 0%, #2563eb 100%)', shadow: 'rgba(29, 78, 216, 0.3)' }
               ];
-              const gradientColor = colors[index % colors.length];
+              const colorScheme = colors[index % colors.length];
 
               return (
                 <motion.div
                   key={item.id}
-                  onClick={() => navigateToSection(item.id)}
-                  initial={{ opacity: 0, y: 20, scale: 0.9 }}
-                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
                   transition={{ 
-                    delay: index * 0.1 + 0.2, 
-                    duration: 0.5,
-                    type: "spring",
-                    stiffness: 100
+                    delay: index * 0.05 + 0.3, 
+                    duration: 0.4
                   }}
                   whileHover={{ 
-                    scale: 1.05, 
-                    y: -5,
-                    transition: { type: "spring", stiffness: 300 }
+                    scale: 1.03,
+                    transition: { duration: 0.2 }
                   }}
-                  whileTap={{ scale: 0.95 }}
+                  whileTap={{ scale: 0.98 }}
                   style={{
-                    position: 'relative',
-                    background: 'white',
+                    background: '#ffffff',
                     borderRadius: '1rem',
                     padding: '1.5rem',
                     cursor: 'pointer',
-                    boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)',
-                    border: '1px solid rgb(243, 244, 246)',
-                    transition: 'all 0.3s ease'
+                    boxShadow: `0 2px 8px rgba(0, 0, 0, 0.08), 0 1px 3px rgba(0, 0, 0, 0.06)`,
+                    transition: 'all 0.3s ease',
+                    position: 'relative',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    textAlign: 'center',
+                    border: '1px solid rgba(0, 0, 0, 0.06)',
+                    minHeight: '200px',
+                    justifyContent: 'space-between'
                   }}
                 >
-                  <div style={{ position: 'relative' }}>
-                    <div style={{
-                      width: '4rem',
-                      height: '4rem',
-                      background: gradientColor,
-                      borderRadius: '1rem',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      marginBottom: '1rem',
-                      boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)'
-                    }}>
-                      <Icon style={{ width: '2rem', height: '2rem', color: 'white' }} />
-                    </div>
-                    
-                    <h3 style={{
-                      fontWeight: 'bold',
-                      color: 'rgb(17, 24, 39)',
-                      fontSize: '1.125rem',
-                      marginBottom: '0.5rem',
-                      margin: '0 0 0.5rem 0'
-                    }}>
-                      {item.label}
-                    </h3>
-                    
-                   {/* <p style={{
-                        color: 'rgb(107, 114, 128)',
-                        fontSize: '0.875rem',
-                        lineHeight: 1.6,
-                        margin: 0
-                      }}>
-                        {item.description || "Gestiona y administra información del sistema"}
-                      </p> */}
-                    
-                    <div style={{
-                      marginTop: '1rem',
-                      display: 'flex',
-                      alignItems: 'center',
-                      fontSize: '0.75rem',
-                      color: 'rgb(156, 163, 175)'
-                    }}>
-                      <ChevronRight style={{
-                        width: '1rem',
-                        height: '1rem',
-                        marginRight: '0.25rem'
-                      }} />
-                      <span>Acceder</span>
-                    </div>
+                  <div style={{
+                    width: '5rem',
+                    height: '5rem',
+                    background: colorScheme.bg,
+                    borderRadius: '1rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    marginBottom: '1rem',
+                    boxShadow: `0 4px 12px ${colorScheme.shadow}, 0 2px 4px rgba(0, 0, 0, 0.1)`
+                  }}>
+                    <Icon style={{ width: '2.5rem', height: '2.5rem', color: 'white' }} />
                   </div>
+                  
+                  <h3 style={{
+                    fontWeight: '600',
+                    color: '#1a202c',
+                    fontSize: '1.0625rem',
+                    margin: '0 0 1rem 0',
+                    letterSpacing: '0.005em'
+                  }}>
+                    {item.label}
+                  </h3>
+                  
+                  <button
+                    onClick={() => navigateToSection(item.id)}
+                    style={{
+                      width: '100%',
+                      padding: '0.625rem 1.25rem',
+                      background: colorScheme.bg,
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '0.5rem',
+                      fontWeight: '600',
+                      fontSize: '0.875rem',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s ease',
+                      boxShadow: `0 2px 6px ${colorScheme.shadow}`,
+                      letterSpacing: '0.02em'
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.transform = 'translateY(-1px)';
+                      e.currentTarget.style.boxShadow = `0 4px 10px ${colorScheme.shadow}`;
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.transform = 'translateY(0)';
+                      e.currentTarget.style.boxShadow = `0 2px 6px ${colorScheme.shadow}`;
+                    }}
+                  >
+                    Acceder
+                  </button>
                 </motion.div>
               );
             })}
           </div>
         </motion.div>
 
+        {/* Footer con Logo */}
         <motion.div
-          initial={{ opacity: 0, scale: 0.9 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ delay: 0.8, duration: 0.6 }}
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.6, duration: 0.5 }}
           style={{
-            background: 'white',
+            background: 'linear-gradient(135deg, #0d3a5c 0%, #0a2540 100%)',
             borderRadius: '1rem',
-            boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)',
-            border: '1px solid rgb(243, 244, 246)',
-            overflow: 'hidden'
+            overflow: 'hidden',
+            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.2), 0 2px 4px rgba(0, 0, 0, 0.1)',
+            border: '1px solid rgba(255, 255, 255, 0.08)'
           }}
         >
-          
-          
           <div style={{
-            padding: '2rem',
-            background: 'white',
+            padding: '2.25rem',
             display: 'flex',
             justifyContent: 'center',
             alignItems: 'center',
-            minHeight: '200px'
+            minHeight: '150px'
           }}>
-            <motion.img
-              src="/PD DTHyS Logo PFC.png"
-              alt="ProDominicana - Centro de Exportación e Inversión"
+            <img
+              src="/ProD Talento Hum.png"
+              alt="Dirección del Talento Humano y Servicios"
               style={{
-                maxHeight: '160px',
+                maxHeight: '120px',
                 maxWidth: '100%',
                 objectFit: 'contain',
-                filter: 'drop-shadow(0 10px 8px rgb(0 0 0 / 0.04))'
+                filter: 'brightness(1.15) contrast(1.05)'
               }}
-              initial={{ opacity: 0, scale: 0.8 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ delay: 1, duration: 0.5 }}
-              whileHover={{ scale: 1.05 }}
             />
           </div>
 
-        </motion.div>
-              <div style={{
-            background: 'linear-gradient(90deg, rgb(249, 250, 251) 0%, rgb(243, 244, 246) 100%)',
-            padding: '1.5rem',
-            textAlign: 'center'
+          <div style={{
+            background: 'rgba(0, 0, 0, 0.2)',
+            padding: '1.25rem',
+            textAlign: 'center',
+            borderTop: '1px solid rgba(255, 255, 255, 0.1)'
           }}>
             <h3 style={{
-              fontSize: '1.125rem',
+              fontSize: '1rem',
               fontWeight: '600',
-              color: 'rgb(31, 41, 55)',
-              marginBottom: '0.5rem',
-              margin: '0 0 0.5rem 0'
+              color: '#ffffff',
+              margin: '0 0 0.375rem 0',
+              letterSpacing: '0.005em'
             }}>
               Centro de Exportación e Inversión de la República Dominicana
             </h3>
             <p style={{
-              color: 'rgb(107, 114, 128)',
+              color: '#d1dce6',
               fontSize: '0.875rem',
-              margin: 0
+              fontWeight: '400',
+              margin: 0,
+              letterSpacing: '0.01em'
             }}>
               Habilitadores de Sueños y Oportunidades
             </p>
           </div>
+        </motion.div>
+
+        {/* Copyright */}
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          transition={{ delay: 1.2, duration: 0.6 }}
+          transition={{ delay: 0.8, duration: 0.5 }}
           style={{
             marginTop: '2rem',
             textAlign: 'center',
-            color: 'rgb(107, 114, 128)',
-            fontSize: '0.875rem'
+            color: '#a8bccf',
+            fontSize: '0.8125rem',
+            fontWeight: '400',
+            letterSpacing: '0.01em'
           }}
         >
           <p style={{ margin: 0 }}>© {new Date().getFullYear()} ProDominicana. Sistema de Recursos Humanos v2.0</p>
@@ -603,7 +638,7 @@ const MainLayout = () => {
   };
 
   return (
-    <div style={{ display:'flex', height:'100vh', background:'#f8fafc' }}>
+    <div style={{ display:'flex', height:'100vh', background:'#0a2540' }}>
       <Sidebar isOpen={sidebarOpen} onClose={closeSidebar} />
       <div style={{ flex:1, display:'flex', flexDirection:'column', overflow:'hidden' }}>
         <Header />
@@ -616,16 +651,15 @@ const MainLayout = () => {
 // ===================== APP ROUTER =====================
 const AppRouter = () => {
   const { user, loading } = useAuth();
-
-  if (loading) return <div style={{ display:'flex', justifyContent:'center', alignItems:'center', height:'100vh', fontSize:'1.2rem', color:'#6b7280' }}>Cargando...</div>;
-
+  if (loading) return <div style={{ display:'flex', justifyContent:'center', alignItems:'center', height:'100vh', fontSize:'1.2rem', color:'#94a3b8', background:'#0a2540' }}>Cargando...</div>;
+  
   return (
     <Routes>
       {/* Rutas públicas */}
       <Route path="/login" element={user ? <Navigate to="/dashboard" replace /> : <LoginPage />} />
       <Route path="/reset-password/:token" element={user ? <Navigate to="/dashboard" replace /> : <ResetPassword />} />
-      <Route path="/postulacion" element={<FormularioPostulacion />} /> {/* ← NUEVA RUTA PÚBLICA */}
-
+      <Route path="/postulacion" element={<FormularioPostulacion />} />
+      
       {/* Rutas protegidas */}
       <Route path="/*" element={
         <ProtectedRoute>
@@ -648,3 +682,4 @@ function App() {
 }
 
 export default App;
+     

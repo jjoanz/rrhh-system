@@ -6,12 +6,23 @@ import {
   marcarNominaPagada,
   generarReporteNomina,
   eliminarNomina,
-  getEmpleadosActivos
+  getEmpleadosActivos,
+  getConfiguracion,
+  actualizarConfiguracion
 } from '../controllers/nominaController.js';
 
 const router = express.Router();
 
-// RUTAS ESPECÍFICAS PRIMERO (antes de las rutas dinámicas con parámetros)
+// ==========================================
+// RUTAS ESPECÍFICAS PRIMERO
+// ==========================================
+
+// GET /api/nomina/configuracion - Obtener configuración de nómina (ISR, TSS, etc.)
+router.get('/configuracion', getConfiguracion);
+
+// PUT /api/nomina/configuracion - Actualizar configuración de nómina
+// Body: { configuraciones: [{ codigo: 'TSS_AFP', porcentaje: 2.87, ... }] }
+router.put('/configuracion', actualizarConfiguracion);
 
 // GET /api/nomina/list - Listar todas las nóminas con filtros opcionales
 // Query params: periodo, empleadoId, estado
@@ -29,10 +40,12 @@ router.get('/reportes/generar', generarReporteNomina);
 router.post('/procesar', procesarNomina);
 
 // PUT /api/nomina/pagar - Marcar nóminas como pagadas
-// Body: { nominaIds: [1,2,3], fechaPago: "2024-01-31", metodoPago: "transferencia", referenciaPago?: "REF123" }
+// Body: { nominaIds: [1,2,3], fechaPago: "2024-01-31" }
 router.put('/pagar', marcarNominaPagada);
 
-// RUTAS DINÁMICAS AL FINAL (con parámetros como :id)
+// ==========================================
+// RUTAS DINÁMICAS AL FINAL
+// ==========================================
 
 // GET /api/nomina/:id - Obtener detalle de una nómina específica
 router.get('/:id', getNominaById);

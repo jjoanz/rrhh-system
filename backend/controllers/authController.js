@@ -192,25 +192,28 @@ export const getUserPermissions = async (userId) => {
       return [];
     }
 
-    // ✅ CONSULTA CORREGIDA - Usar RolPermisos en lugar de Permisos
+    // ✅ CONSULTA CORREGIDA - Usar Permisos en lugar de RolPermisos
     const result = await pool.request()
       .input('userId', sql.Int, userId)
       .query(`
         SELECT 
+          p.PermisoID,
           p.ModuloID,
-          m.NombreModulo,
+          p.NombreModulo,
+          p.DescripcionModulo,
           p.EstaVisible,
           p.PuedeVer,
           p.PuedeCrear,
           p.PuedeEditar,
           p.PuedeEliminar
-        FROM RolPermisos p
+        FROM Permisos p
         INNER JOIN Roles r ON p.RolID = r.RolID
-        INNER JOIN Modulos m ON p.ModuloID = m.ModuloID
         INNER JOIN Usuarios u ON u.Rol = r.NombreRol
         WHERE u.UsuarioID = @userId
-        ORDER BY m.NombreModulo
+        ORDER BY p.ModuloID
       `);
+
+    console.log('🔑 Permisos cargados para usuario', userId, ':', result.recordset.length); // ⬅️ LOG
 
     // ✅ RETORNAR ARRAY PARA COMPATIBILIDAD CON MIDDLEWARE
     return result.recordset;
@@ -324,28 +327,29 @@ export const getPermisosByRol = async (req, res) => {
       });
     }
 
-    // ✅ CONSULTA CORREGIDA - Usar RolPermisos
+    // ✅ CONSULTA CORREGIDA - Usar Permisos
     const query = `
       SELECT 
         p.PermisoID,
         p.RolID,
         p.ModuloID,
-        m.NombreModulo,
-        m.Descripcion as DescripcionModulo,
+        p.NombreModulo,
+        p.DescripcionModulo,
         p.EstaVisible,
         p.PuedeVer,
         p.PuedeCrear,
         p.PuedeEditar,
         p.PuedeEliminar
-      FROM RolPermisos p
-      JOIN Modulos m ON p.ModuloID = m.ModuloID
+      FROM Permisos p
       WHERE p.RolID = @rolId
-      ORDER BY m.NombreModulo
+      ORDER BY p.ModuloID
     `;
 
     const result = await pool.request()
       .input('rolId', sql.Int, rolId)
       .query(query);
+
+    console.log('📊 Permisos encontrados para RolID', rolId, ':', result.recordset.length); // ⬅️ LOG
 
     res.json({ 
       success: true, 
@@ -430,7 +434,7 @@ export const updatePermisos = async (req, res) => {
 
       // ✅ CONSULTA CORREGIDA - Usar RolPermisos
       const query = `
-        UPDATE RolPermisos 
+        UPDATE Permisos 
         SET 
           EstaVisible = @estaVisible,
           PuedeVer = @puedeVer,

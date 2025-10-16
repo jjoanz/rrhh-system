@@ -23,7 +23,8 @@ const MODULOS_SISTEMA = [
   { id: 8, nombre: 'departamentos', descripcion: 'Gestión de departamentos' },
   { id: 9, nombre: 'puestos', descripción: 'Gestión de puestos' },
   { id: 10, nombre: 'reportes', descripcion: 'Reportes del sistema' },
-  { id: 11, nombre: 'admin', descripcion: 'Administración de usuarios y permisos' }
+  { id: 11, nombre: 'admin', descripcion: 'Administración de usuarios y permisos' },
+  { id: 12, nombre: 'acciones_personal', descripcion: 'Acciones de personal y documentos' }
   
   
   
@@ -683,16 +684,23 @@ const [nuevoEmpleado, setNuevoEmpleado] = useState({
     if (!selectedRol) return;
 
     try {
-      const permisosData = permisos.map(p => ({
-        moduloId: p.ModuloID,
-        nombreModulo: p.NombreModulo,
-        descripcionModulo: p.DescripcionModulo,
-        estaVisible: p.EstaVisible,
-        puedeVer: p.PuedeVer,
-        puedeCrear: p.PuedeCrear,
-        puedeEditar: p.PuedeEditar,
-        puedeEliminar: p.PuedeEliminar
-      }));
+      const permisosData = permisos.map(p => {
+        // Buscar el módulo original para obtener el nombre correcto
+        const moduloOriginal = MODULOS_SISTEMA.find(m => m.id === p.ModuloID);
+        
+        return {
+          moduloId: p.ModuloID,
+          nombreModulo: p.NombreModulo || moduloOriginal?.nombre || 'desconocido',  // ⬅️ ARREGLO
+          descripcionModulo: p.DescripcionModulo || moduloOriginal?.descripcion || '',
+          estaVisible: p.EstaVisible,
+          puedeVer: p.PuedeVer,
+          puedeCrear: p.PuedeCrear,
+          puedeEditar: p.PuedeEditar,
+          puedeEliminar: p.PuedeEliminar
+        };
+      });
+
+      console.log('📤 Enviando permisos:', permisosData); // Para debug
 
       const res = await fetch(`${ADMIN_API_URL}/permisos/${selectedRol}`, {
         method: 'PUT',

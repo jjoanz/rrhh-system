@@ -8,6 +8,7 @@ import {
   updateUserRole 
 } from '../controllers/authController.js';
 import { authenticateToken, requireRole } from '../middleware/auth.js';
+import sql from 'mssql';
 
 const router = express.Router();
 
@@ -37,11 +38,113 @@ router.get('/permisos/:rolId',
   getPermisosByRol
 );
 
-// Actualizar permisos de un rol
+// Actualizar permisos de un rol (VERSIÓN MEJORADA)
 router.put('/permisos/:rolId', 
   authenticateToken, 
   requireRole(['admin', 'director_rrhh']), 
-  updatePermisos
+  async (req, res) => {
+    const { rolId } = req.params;
+    const { permisos } = req.body;
+
+    if (!permisos || !Array.isArray(permisos)) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Se requiere un array de permisos' 
+      });
+    }
+
+    try {
+      const { getConnection } = await import('../db.js');
+      const pool = await getConnection();
+
+      if (!pool) {
+        return res.status(503).json({
+          success: false,
+          message: 'Base de datos no disponible'
+        });
+      }
+
+      // Procesar cada permiso
+      for (const permiso of permisos) {
+        const { 
+          moduloId, 
+          nombreModulo, 
+          descripcionModulo, 
+          estaVisible, 
+          puedeVer, 
+          puedeCrear, 
+          puedeEditar, 
+          puedeEliminar 
+        } = permiso;
+
+        // Verificar si el permiso ya existe
+        const checkResult = await pool.request()
+          .input('RolID', sql.Int, rolId)
+          .input('ModuloID', sql.Int, moduloId)
+          .query('SELECT PermisoID FROM Permisos WHERE RolID = @RolID AND ModuloID = @ModuloID');
+
+        if (checkResult.recordset.length > 0) {
+          // ✏️ ACTUALIZAR permiso existente
+          const permisoId = checkResult.recordset[0].PermisoID;
+          
+          await pool.request()
+            .input('PermisoID', sql.Int, permisoId)
+            .input('NombreModulo', sql.NVarChar(100), nombreModulo)
+            .input('DescripcionModulo', sql.NVarChar(255), descripcionModulo)
+            .input('EstaVisible', sql.Bit, estaVisible)
+            .input('PuedeVer', sql.Bit, puedeVer)
+            .input('PuedeCrear', sql.Bit, puedeCrear)
+            .input('PuedeEditar', sql.Bit, puedeEditar)
+            .input('PuedeEliminar', sql.Bit, puedeEliminar)
+            .query(`
+              UPDATE Permisos 
+              SET NombreModulo = @NombreModulo,
+                  DescripcionModulo = @DescripcionModulo,
+                  EstaVisible = @EstaVisible,
+                  PuedeVer = @PuedeVer,
+                  PuedeCrear = @PuedeCrear,
+                  PuedeEditar = @PuedeEditar,
+                  PuedeEliminar = @PuedeEliminar
+              WHERE PermisoID = @PermisoID
+            `);
+          
+          console.log(`✅ Actualizado: RolID=${rolId}, ModuloID=${moduloId}, Nombre=${nombreModulo}`);
+        } else {
+          // ➕ CREAR nuevo permiso
+          await pool.request()
+            .input('RolID', sql.Int, rolId)
+            .input('ModuloID', sql.Int, moduloId)
+            .input('NombreModulo', sql.NVarChar(100), nombreModulo)
+            .input('DescripcionModulo', sql.NVarChar(255), descripcionModulo)
+            .input('EstaVisible', sql.Bit, estaVisible)
+            .input('PuedeVer', sql.Bit, puedeVer)
+            .input('PuedeCrear', sql.Bit, puedeCrear)
+            .input('PuedeEditar', sql.Bit, puedeEditar)
+            .input('PuedeEliminar', sql.Bit, puedeEliminar)
+            .query(`
+              INSERT INTO Permisos (RolID, ModuloID, NombreModulo, DescripcionModulo, EstaVisible, PuedeVer, PuedeCrear, PuedeEditar, PuedeEliminar)
+              VALUES (@RolID, @ModuloID, @NombreModulo, @DescripcionModulo, @EstaVisible, @PuedeVer, @PuedeCrear, @PuedeEditar, @PuedeEliminar)
+            `);
+          
+          console.log(`✅ Creado nuevo: RolID=${rolId}, ModuloID=${moduloId}, Nombre=${nombreModulo}`);
+        }
+      }
+
+      res.json({ 
+        success: true, 
+        message: 'Permisos actualizados correctamente',
+        permisosActualizados: permisos.length
+      });
+
+    } catch (error) {
+      console.error('❌ Error actualizando permisos:', error);
+      res.status(500).json({ 
+        success: false, 
+        message: 'Error actualizando permisos',
+        error: error.message 
+      });
+    }
+  }
 );
 
 // ======================================

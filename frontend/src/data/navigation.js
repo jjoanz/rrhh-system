@@ -3,16 +3,14 @@ import {
   Briefcase, FileText, DollarSign, Calendar, GraduationCap,
   Clock, Building, BadgeCheck, BarChart3, Send, User, UserCog
 } from 'lucide-react';
-import AccionesPersonal from '../components/rrhh/AccionesPersonal/AccionesPersonal';
 
 // Navegación principal
 const NAVIGATION_ITEMS = [
-  // No. DE Orden y Posición
   // #1
   { id: 'dashboard', label: 'Inicio', icon: BarChart3, modulo: null, path: '/dashboard' },
-    // #2
+  // #2
   { id: 'perfil', label: 'Perfil', icon: User, modulo: 'perfil', path: '/perfil' },
-    // #3
+  // #3
   { id: 'vacaciones', label: 'Autoservicio', icon: UserCog, modulo: 'vacaciones', path: '/vacaciones' },
   // #4
   { id: 'empleados', label: 'Empleados', icon: Users, modulo: 'empleados', path: '/empleados' },
@@ -34,19 +32,14 @@ const NAVIGATION_ITEMS = [
   { id: 'reportes', label: 'Reportes', icon: BarChart3, modulo: 'reportes', path: '/reportes' },
   // #13
   { id: 'admin', label: 'Administración', icon: Settings, modulo: 'admin', path: '/admin' },
-
   // #14
-  { id: 'acciones-personal', label: 'Acciones de Personal', icon: FileText, roles: ['Admin', 'Director RRHH', 'Gerente RRHH'], permisos: ['acciones_personal'] },
-
-
+  { id: 'acciones-personal', label: 'Acciones de Personal', icon: FileText, modulo: 'acciones_personal', path: '/acciones-personal' }
 ];
 
-// Roles que tienen acceso directo a ciertos módulos sin necesidad de permisos explícitos
+// ⚠️ ACCESO DIRECTO SOLO PARA PERFIL
+// Todos los demás módulos usan permisos de la base de datos
 const ACCESO_DIRECTO_POR_ROL = {
-  vacantes: ['gerente', 'director', 'gerente_rrhh', 'director_rrhh', 'rrhh', 'colaborador', 'empleado'],
-  perfil: ['gerente', 'director', 'gerente_rrhh', 'director_rrhh', 'rrhh', 'colaborador', 'empleado', 'admin'],
-  postulaciones: ['gerente', 'director', 'gerente_rrhh', 'director_rrhh', 'rrhh', 'colaborador', 'empleado'],
-  AccionesPersonal: ['gerente_rrhh', 'director_rrhh', 'rrhh', 'admin']
+  perfil: ['gerente', 'director', 'gerente_rrhh', 'director_rrhh', 'rrhh', 'colaborador', 'empleado', 'admin']
 };
 
 /**
@@ -73,7 +66,7 @@ export const getNavigationByRoleAndPermissions = (user, permisos = []) => {
     return NAVIGATION_ITEMS;
   }
 
-  // Filtrar módulos según permisos y acceso directo por rol
+  // Filtrar módulos según permisos
   const navegacionFiltrada = NAVIGATION_ITEMS.filter(item => {
     // Siempre mostrar dashboard
     if (!item.modulo) {
@@ -81,7 +74,7 @@ export const getNavigationByRoleAndPermissions = (user, permisos = []) => {
       return true;
     }
 
-    // Verificar si el rol tiene acceso directo al módulo
+    // Verificar si tiene acceso directo (solo perfil)
     const tieneAccesoDirecto = ACCESO_DIRECTO_POR_ROL[item.modulo]?.includes(rolUsuario);
     
     if (tieneAccesoDirecto) {
@@ -97,16 +90,18 @@ export const getNavigationByRoleAndPermissions = (user, permisos = []) => {
     });
 
     if (permiso) {
+      const mostrar = (permiso.EstaVisible !== false && permiso.PuedeVer !== false);
+      
       console.log('🔍 Evaluando:', item.label, {
         modulo: item.modulo,
         permiso: permiso,
         EstaVisible: permiso.EstaVisible,
         PuedeVer: permiso.PuedeVer,
-        mostrar: (permiso.EstaVisible !== false && permiso.PuedeVer !== false)
+        mostrar: mostrar
       });
       
-      // Mostrar si no está explícitamente oculto y puede ver
-      return (permiso.EstaVisible !== false && permiso.PuedeVer !== false);
+      // Mostrar solo si está visible Y puede ver
+      return mostrar;
     } else {
       console.log('❌ Sin permiso para:', item.label, '(módulo:', item.modulo, ')');
       return false;

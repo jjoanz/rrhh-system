@@ -792,7 +792,7 @@ const confirmarSolicitudConPeriodos = async () => {
 
       <div style={{ maxWidth: '112rem', margin: '0 auto' }}>
         <h1 style={{ fontSize: '2rem', fontWeight: 'bold', color: '#111827', marginBottom: '0.5rem' }}>
-          Sistema de Gestión de Vacaciones
+          Sistema de Gestión de Autoservicio
         </h1>
         <p style={{ color: '#6b7280', fontSize: '1.125rem', marginBottom: '2rem' }}>
           {getEtiquetaVista()}
@@ -812,7 +812,7 @@ const confirmarSolicitudConPeriodos = async () => {
             padding: '1.5rem'
           }}>
             <h3 style={{ fontSize: '1.125rem', fontWeight: '600', color: '#111827', marginBottom: '1rem' }}>
-              Días Disponibles
+              Días Disponibles de Vacaciones
             </h3>
             <p style={{ fontSize: '2rem', fontWeight: 'bold', color: '#10b981', margin: 0 }}>
               {estadisticas.diasDisponibles}
@@ -843,7 +843,7 @@ const confirmarSolicitudConPeriodos = async () => {
             padding: '1.5rem'
           }}>
             <h3 style={{ fontSize: '1.125rem', fontWeight: '600', color: '#111827', marginBottom: '1rem' }}>
-              Días Usados
+              Días de Vacaciones Usados
             </h3>
             <p style={{ fontSize: '2rem', fontWeight: 'bold', color: '#6b7280', margin: 0 }}>
               {estadisticas.diasUsados || 0}
@@ -1093,8 +1093,9 @@ const confirmarSolicitudConPeriodos = async () => {
                       required
                     >
                       <option value="vacaciones">Vacaciones</option>
-                      <option value="permiso">Permiso Personal</option>
-                      <option value="medico">Permiso Médico</option>
+                      <option value="permiso">Permiso del año</option>
+                      <option value="cumpleaños">Permiso de cumpleaños</option>
+                      <option value="Certificacion">Certificación Laboral</option>
                     </select>
                   </div>
 

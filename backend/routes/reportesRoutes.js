@@ -1,308 +1,993 @@
-// backend/routes/reportes.js
+// backend/routes/reportesRoutes.js
 import express from 'express';
-import {
-  verificarToken,
-  getReportesGuardados,
-  guardarReporte,
-  actualizarReporte,
-  eliminarReporte,
-  getPredefinidos,
-  ejecutarQuery,
-  validarQuery,
-  getMetadata,
-  exportarReporte,
-  getEstadisticas,
-  getHistorialReportes,
-  getPlantillas,
-  limpiarCache,
-  verificarConexionDB
-} from '../controllers/reportesController.js';
+import sql from 'mssql';
+import { getConnection } from '../db.js';
+import ExcelJS from 'exceljs';  // ✅ AGREGAR ESTO
+import PDFDocument from 'pdfkit';  // ✅ AGREGAR ESTO
 
 const router = express.Router();
 
-// ===================== MIDDLEWARE GLOBAL =====================
-// Aplicar verificación de token a todas las rutas
-router.use(verificarToken);
+// ============================================
+// FUNCIONES AUXILIARES
+// ============================================
 
-// ===================== REPORTES GUARDADOS =====================
-// GET /api/reportes/guardados - Obtener todos los reportes guardados
-router.get('/guardados', getReportesGuardados);
-
-// POST /api/reportes/guardados - Crear un nuevo reporte
-router.post('/guardados', guardarReporte);
-
-// PUT /api/reportes/guardados/:id - Actualizar un reporte existente
-router.put('/guardados/:id', actualizarReporte);
-
-// DELETE /api/reportes/guardados/:id - Eliminar un reporte
-router.delete('/guardados/:id', eliminarReporte);
-
-// GET /api/reportes/guardados/:id - Obtener un reporte específico
-router.get('/guardados/:id', async (req, res) => {
+async function ejecutarQuerySegura(query, parametros = {}) {
   try {
-    const { id } = req.params;
-    
-    const query = `
-      SELECT 
-        r.ReporteID as id,
-        r.Nombre as nombre,
-        r.Origen as origen,
-        r.Descripcion as descripcion,
-        r.Configuracion as configuracion,
-        r.FechaCreacion as fechaCreacion,
-        r.FechaModificacion as fechaModificacion,
-        u.Username as modificadoPor,
-        r.EsPredeterminado as predeterminado,
-        r.EliminarDuplicados as eliminarDuplicados
-      FROM ReportesPersonalizados r
-      LEFT JOIN Usuarios u ON r.ModificadoPor = u.UsuarioID
-      WHERE r.ReporteID = ? AND r.Estado = 1
-    `;
+    const pool = await getConnection();
+    const request = pool.request();
 
-    const { executeQuery } = await import('../db.js');
-    const result = await executeQuery(query, [id]);
-    
-    if (result.recordset.length === 0) {
-      return res.status(404).json({ error: 'Reporte no encontrado' });
-    }
-
-    const reporte = result.recordset[0];
-    reporte.configuracion = reporte.configuracion ? JSON.parse(reporte.configuracion) : null;
-    reporte.fechaCreacion = reporte.fechaCreacion?.toISOString().split('T')[0];
-    reporte.fechaModificacion = reporte.fechaModificacion?.toISOString().split('T')[0];
-
-    res.json(reporte);
-
-  } catch (error) {
-    console.error('Error obteniendo reporte:', error);
-    res.status(500).json({ 
-      error: 'Error al obtener el reporte',
-      details: error.message 
+    Object.entries(parametros).forEach(([key, value]) => {
+      request.input(key, value);
     });
+
+    const result = await request.query(query);
+    return result.recordset;
+  } catch (error) {
+    console.error('Error ejecutando query:', error);
+    throw error;
   }
-});
+}
 
-// ===================== REPORTES PREDEFINIDOS =====================
-// GET /api/reportes/predefinidos/:tipo - Ejecutar reporte predefinido
-router.get('/predefinidos/:tipo', getPredefinidos);
+async function ejecutarQueryConParametros(query, parametros) {
+  try {
+    const pool = await getConnection();
+    const request = pool.request();
 
-// GET /api/reportes/predefinidos - Listar tipos de reportes predefinidos disponibles
-router.get('/predefinidos', (req, res) => {
-  const reportesDisponibles = {
-    empleados_por_departamento: {
-      nombre: 'Empleados por Departamento',
-      descripcion: 'Distribución de empleados por departamento con salario promedio',
-      parametros: []
-    },
-    vacantes_abiertas: {
-      nombre: 'Vacantes Abiertas',
-      descripcion: 'Listado de vacantes abiertas agrupadas por puesto',
-      parametros: []
-    },
-    contrataciones_mensuales: {
-      nombre: 'Contrataciones Mensuales',
-      descripcion: 'Contrataciones por mes en los últimos 12 meses',
-      parametros: []
-    }
+    Object.entries(parametros).forEach(([key, value]) => {
+      request.input(key, value);
+    });
+
+    const result = await request.query(query);
+    return result.recordset;
+  } catch (error) {
+    console.error('Error ejecutando query con parámetros:', error);
+    throw error;
+  }
+}
+
+function construirQueryEmpleados({ campos, filtros, ordenamiento, agrupacion, agregaciones, limite = 1000 }) {
+  const mapaCampos = {
+    'nombre': 'e.Nombre',
+    'apellido': 'e.Apellido',
+    'email': 'e.Email',
+    'cargo': 'e.Cargo',
+    'salario': 'e.Salario',
+    'fechaIngreso': 'e.FechaIngreso',
+    'departamento': 'd.Nombre as Departamento',
+    'estado': 'CASE WHEN e.Estado = 1 THEN \'Activo\' ELSE \'Inactivo\' END as Estado',
+    'cedula': 'e.Cedula'
   };
 
-  res.json({
-    reportes: reportesDisponibles,
-    total: Object.keys(reportesDisponibles).length
+  let selectClause = campos.map(c => mapaCampos[c]).join(', ');
+
+  if (agregaciones) {
+    Object.entries(agregaciones).forEach(([campo, funcion]) => {
+      const funcionesPermitidas = ['COUNT', 'SUM', 'AVG', 'MIN', 'MAX'];
+      if (funcionesPermitidas.includes(funcion.toUpperCase())) {
+        selectClause += `, ${funcion}(e.${campo}) as ${campo}_${funcion}`;
+      }
+    });
+  }
+
+  let query = `
+    SELECT TOP ${Math.min(limite, 10000)} ${selectClause}
+    FROM Empleados e
+    LEFT JOIN Departamentos d ON e.DepartamentoID = d.DepartamentoID
+  `;
+
+  const condiciones = [];
+  if (filtros) {
+    if (filtros.estado === 'activo') {
+      condiciones.push('e.Estado = 1');
+    } else if (filtros.estado === 'inactivo') {
+      condiciones.push('e.Estado = 0');
+    }
+    
+    if (filtros.departamentoId) {
+      condiciones.push(`e.DepartamentoID = ${parseInt(filtros.departamentoId)}`);
+    }
+    
+    if (filtros.cargo) {
+      condiciones.push(`e.Cargo LIKE '%${filtros.cargo.replace(/'/g, "''")}%'`);
+    }
+  }
+
+  if (condiciones.length > 0) {
+    query += ` WHERE ${condiciones.join(' AND ')} `;
+  }
+
+  if (agrupacion && mapaCampos[agrupacion]) {
+    query += ` GROUP BY ${mapaCampos[agrupacion]} `;
+  }
+
+  if (ordenamiento && ordenamiento.campo && mapaCampos[ordenamiento.campo]) {
+    const direccion = ordenamiento.direccion === 'DESC' ? 'DESC' : 'ASC';
+    query += ` ORDER BY ${mapaCampos[ordenamiento.campo]} ${direccion} `;
+  } else {
+    query += ` ORDER BY e.Nombre ASC `;
+  }
+
+  return query;
+}
+
+async function calcularSeverance(departamentoId, fechaReferencia) {
+  const fecha = new Date(fechaReferencia);
+  
+  let query = `
+    SELECT 
+      e.EmpleadoID,
+      e.Nombre + ' ' + e.Apellido AS Colaborador,
+      e.Cedula,
+      e.Cargo,
+      e.FechaIngreso,
+      e.Salario,
+      DATEDIFF(MONTH, e.FechaIngreso, @fecha) as MesesTrabajados,
+      DATEDIFF(YEAR, e.FechaIngreso, @fecha) as AniosTrabajados
+    FROM Empleados e
+    WHERE e.Estado = 1
+  `;
+
+  if (departamentoId) {
+    query += ` AND e.DepartamentoID = @departamentoId `;
+  }
+
+  const pool = await getConnection();
+  const request = pool.request();
+  request.input('fecha', sql.DateTime, fecha);
+  if (departamentoId) request.input('departamentoId', sql.Int, parseInt(departamentoId));
+
+  const result = await request.query(query);
+  const empleados = result.recordset;
+
+  return empleados.map(emp => {
+    const preaviso = calcularPreaviso(emp.MesesTrabajados, emp.Salario);
+    const cesantia = calcularCesantia(emp.MesesTrabajados, emp.AniosTrabajados, emp.Salario);
+    const vacaciones = (emp.Salario / 30) * 14;
+    const regalia = emp.Salario * 0.6667;
+
+    return {
+      ...emp,
+      Preaviso: Math.round(preaviso * 100) / 100,
+      Cesantia: Math.round(cesantia * 100) / 100,
+      Vacaciones: Math.round(vacaciones * 100) / 100,
+      Regalia: Math.round(regalia * 100) / 100,
+      Total: Math.round((preaviso + cesantia + vacaciones + regalia) * 100) / 100
+    };
   });
-});
+}
 
-// ===================== SQL PERSONALIZADO =====================
-// POST /api/reportes/custom - Ejecutar consulta SQL personalizada
-router.post('/custom', ejecutarQuery);
+function calcularPreaviso(meses, salario) {
+  if (meses < 3) return 0;
+  if (meses < 6) return (salario / 30) * 7;
+  if (meses < 12) return (salario / 30) * 14;
+  return (salario / 30) * 28;
+}
 
-// POST /api/reportes/validar - Validar consulta SQL sin ejecutarla
-router.post('/validar', validarQuery);
+function calcularCesantia(meses, anios, salario) {
+  if (meses < 3) return 0;
+  if (meses >= 3 && meses <= 5) return (salario / 30) * 6 * anios;
+  if (anios < 1) return (salario / 30) * 13;
+  if (anios >= 1 && anios <= 5) return (salario / 30) * 21 * anios;
+  return (salario / 30) * 23 * anios;
+}
 
-// ===================== METADATA Y ESTRUCTURA =====================
-// GET /api/reportes/metadata - Obtener estructura de la base de datos
-router.get('/metadata', getMetadata);
+async function reporteSalarios(departamentoId) {
+  let query = `
+    SELECT 
+      d.Nombre as Departamento,
+      COUNT(e.EmpleadoID) as TotalEmpleados,
+      ISNULL(MIN(CAST(e.Salario AS FLOAT)), 0) as SalarioMinimo,
+      ISNULL(MAX(CAST(e.Salario AS FLOAT)), 0) as SalarioMaximo,
+      ISNULL(AVG(CAST(e.Salario AS FLOAT)), 0) as SalarioPromedio,
+      ISNULL(SUM(CAST(e.Salario AS FLOAT)), 0) as MasaSalarial
+    FROM Empleados e
+    LEFT JOIN Departamentos d ON e.DepartamentoID = d.DepartamentoID
+    WHERE e.Estado = 1
+  `;
 
-// GET /api/reportes/tablas - Obtener solo nombres de tablas
-router.get('/tablas', async (req, res) => {
-  try {
-    const { getConnection } = await import('../db.js');
-    const connection = await getConnection();
-    
-    const result = await connection.request().query(`
-      SELECT TABLE_NAME 
-      FROM INFORMATION_SCHEMA.TABLES 
-      WHERE TABLE_SCHEMA = 'dbo' 
-        AND TABLE_TYPE = 'BASE TABLE'
-        AND TABLE_NAME NOT LIKE 'sys%'
-      ORDER BY TABLE_NAME
-    `);
-
-    const tablas = result.recordset.map(row => row.TABLE_NAME);
-    
-    res.json({
-      tablas,
-      total: tablas.length
-    });
-
-  } catch (error) {
-    console.error('Error obteniendo tablas:', error);
-    res.status(500).json({ 
-      error: 'Error al obtener las tablas',
-      details: error.message 
-    });
+  if (departamentoId) {
+    query += ` AND e.DepartamentoID = @departamentoId `;
   }
-});
 
-// GET /api/reportes/columnas/:tabla - Obtener columnas de una tabla específica
-router.get('/columnas/:tabla', async (req, res) => {
+  query += ` GROUP BY d.DepartamentoID, d.Nombre ORDER BY SalarioPromedio DESC `;
+
+  const pool = await getConnection();
+  const request = pool.request();
+  if (departamentoId) request.input('departamentoId', sql.Int, parseInt(departamentoId));
+
+  const result = await request.query(query);
+  return result.recordset;
+}
+
+async function obtenerMetricasRRHH() {
+  const pool = await getConnection();
+  const metricas = {};
+
   try {
-    const { tabla } = req.params;
-    const { getConnection } = await import('../db.js');
-    const connection = await getConnection();
-    
-    const result = await connection.request().query(`
+    const totalEmpleados = await pool.request().query(`
+      SELECT COUNT(*) as total FROM Empleados WHERE Estado = 1
+    `);
+    metricas.totalEmpleados = totalEmpleados.recordset[0].total;
+
+    const contratacionesRecientes = await pool.request().query(`
+      SELECT COUNT(*) as total 
+      FROM Empleados 
+      WHERE FechaIngreso >= DATEADD(day, -30, GETDATE())
+    `);
+    metricas.contratacionesUltimos30Dias = contratacionesRecientes.recordset[0].total;
+
+    const salarioPromedio = await pool.request().query(`
+      SELECT ISNULL(AVG(CAST(Salario AS FLOAT)), 0) as promedio 
+      FROM Empleados 
+      WHERE Estado = 1
+    `);
+    metricas.salarioPromedio = Math.round(salarioPromedio.recordset[0].promedio);
+
+    const vacantesAbiertas = await pool.request().query(`
+      SELECT COUNT(*) as total 
+      FROM Vacantes 
+      WHERE Estado = 'Abierta'
+    `);
+    metricas.vacantesAbiertas = vacantesAbiertas.recordset[0].total;
+
+    const porDepartamento = await pool.request().query(`
       SELECT 
-        COLUMN_NAME as nombre,
-        DATA_TYPE as tipo,
-        IS_NULLABLE as nullable,
-        COLUMN_DEFAULT as valorDefault
-      FROM INFORMATION_SCHEMA.COLUMNS 
-      WHERE TABLE_NAME = '${tabla}' 
-        AND TABLE_SCHEMA = 'dbo'
-      ORDER BY ORDINAL_POSITION
+        d.Nombre as departamento,
+        COUNT(e.EmpleadoID) as total
+      FROM Departamentos d
+      LEFT JOIN Empleados e ON d.DepartamentoID = e.DepartamentoID AND e.Estado = 1
+      GROUP BY d.Nombre
+      ORDER BY total DESC
     `);
+    metricas.distribucionDepartamentos = porDepartamento.recordset;
 
-    const columnas = result.recordset.map(col => ({
-      ...col,
-      nullable: col.nullable === 'YES'
-    }));
-    
-    res.json({
-      tabla,
-      columnas,
-      total: columnas.length
-    });
-
+    return metricas;
   } catch (error) {
-    console.error('Error obteniendo columnas:', error);
-    res.status(500).json({ 
-      error: 'Error al obtener las columnas',
-      details: error.message 
-    });
+    console.error('Error obteniendo métricas:', error);
+    throw error;
   }
-});
+}
 
-// ===================== EXPORTACIÓN =====================
-// POST /api/reportes/export - Exportar datos en diferentes formatos
-router.post('/export', exportarReporte);
+// ============================================
+// RUTAS DE REPORTES
+// ============================================
 
-// POST /api/reportes/export/preview - Vista previa de exportación
-router.post('/export/preview', (req, res) => {
+router.post('/empleados', async (req, res) => {
   try {
-    const { formato, data } = req.body;
+    const { 
+      campos = ['nombre', 'apellido', 'cargo', 'departamento'],
+      filtros = {},
+      ordenamiento = { campo: 'nombre', direccion: 'ASC' },
+      agrupacion,
+      agregaciones,
+      limite = 1000,
+      pagina = 1
+    } = req.body;
+
+    const camposPermitidos = [
+      'nombre', 'apellido', 'email', 'cargo', 'salario', 
+      'fechaIngreso', 'departamento', 'estado', 'cedula'
+    ];
     
-    if (!data || !Array.isArray(data) || data.length === 0) {
-      return res.status(400).json({ error: 'No hay datos para previsualizar' });
+    const camposValidos = campos.filter(c => camposPermitidos.includes(c));
+    
+    if (camposValidos.length === 0) {
+      return res.status(400).json({ 
+        error: 'No hay campos válidos seleccionados',
+        camposDisponibles: camposPermitidos
+      });
     }
 
-    const preview = {
-      formato,
-      totalRegistros: data.length,
-      columnas: Object.keys(data[0]),
-      primerasFilas: data.slice(0, 5),
-      tamanioEstimado: JSON.stringify(data).length
-    };
+    const query = construirQueryEmpleados({
+      campos: camposValidos,
+      filtros,
+      ordenamiento,
+      agrupacion,
+      agregaciones,
+      limite
+    });
 
-    res.json(preview);
+    const resultado = await ejecutarQuerySegura(query, filtros);
+    
+    res.json({
+      success: true,
+      data: resultado,
+      total: resultado.length,
+      pagina: pagina,
+      configuracion: { campos: camposValidos, filtros, ordenamiento }
+    });
 
   } catch (error) {
-    console.error('Error en preview de exportación:', error);
+    console.error('Error en reporte empleados:', error);
     res.status(500).json({ 
-      error: 'Error al generar vista previa',
+      error: 'Error generando reporte',
       details: error.message 
     });
   }
 });
 
-// ===================== ESTADÍSTICAS Y MONITOREO =====================
-// GET /api/reportes/estadisticas - Obtener estadísticas generales
-router.get('/estadisticas', getEstadisticas);
+router.post('/departamentos', async (req, res) => {
+  try {
+    const { 
+      incluirEstadisticas = true,
+      incluirEmpleados = false,
+      filtros = {}
+    } = req.body;
 
-// GET /api/reportes/historial - Obtener historial de ejecuciones
-router.get('/historial', getHistorialReportes);
+    let query = `
+      SELECT 
+        d.DepartamentoID,
+        d.Nombre as Departamento,
+        d.Descripcion
+    `;
 
-// GET /api/reportes/plantillas - Obtener plantillas predefinidas
-router.get('/plantillas', getPlantillas);
+    if (incluirEstadisticas) {
+      query += `,
+        COUNT(e.EmpleadoID) as TotalEmpleados,
+        ISNULL(AVG(CAST(e.Salario AS FLOAT)), 0) as SalarioPromedio,
+        ISNULL(SUM(CAST(e.Salario AS FLOAT)), 0) as MasaSalarial,
+        ISNULL(MIN(CAST(e.Salario AS FLOAT)), 0) as SalarioMinimo,
+        ISNULL(MAX(CAST(e.Salario AS FLOAT)), 0) as SalarioMaximo
+      `;
+    }
 
-// ===================== UTILIDADES =====================
-// POST /api/reportes/cache/limpiar - Limpiar cache del sistema
-router.post('/cache/limpiar', limpiarCache);
+    query += ` FROM Departamentos d `;
 
-// GET /api/reportes/sistema/estado - Verificar estado del sistema
-router.get('/sistema/estado', verificarConexionDB);
+    if (incluirEstadisticas || incluirEmpleados) {
+      query += ` LEFT JOIN Empleados e ON d.DepartamentoID = e.DepartamentoID AND e.Estado = 1 `;
+    }
 
-// GET /api/reportes/sistema/info - Información del sistema
-router.get('/sistema/info', (req, res) => {
-  res.json({
-    version: '2.0.0',
-    nombre: 'Sistema de Reportes RRHH',
-    caracteristicas: [
-      'Drag & Drop Visual Builder',
-      'SQL Personalizado',
-      'Exportación múltiple formato',
-      'Reportes guardados',
-      'Validación de consultas',
-      'Historial de ejecuciones'
-    ],
-    limitaciones: {
-      maxQueryLength: 5000,
-      maxResults: 10000,
-      formatosExport: ['csv', 'excel', 'pdf', 'json']
-    },
-    usuario: {
-      id: req.user.id,
-      role: req.user.role || 'user'
-    },
-    timestamp: new Date().toISOString()
-  });
+    if (incluirEstadisticas) {
+      query += ` GROUP BY d.DepartamentoID, d.Nombre, d.Descripcion `;
+    }
+
+    query += ` ORDER BY d.Nombre `;
+
+    const resultado = await ejecutarQuerySegura(query, {});
+    
+    res.json({
+      success: true,
+      data: resultado,
+      total: resultado.length
+    });
+
+  } catch (error) {
+    console.error('Error en reporte departamentos:', error);
+    res.status(500).json({ 
+      error: 'Error generando reporte',
+      details: error.message 
+    });
+  }
 });
 
-// ===================== MANEJO DE ERRORES =====================
-// Middleware para manejo de errores no capturados
-router.use((error, req, res, next) => {
-  console.error('Error no manejado en rutas de reportes:', error);
-  
-  res.status(500).json({
-    error: 'Error interno del servidor',
-    details: process.env.NODE_ENV === 'development' ? error.message : 'Contacte al administrador',
-    timestamp: new Date().toISOString(),
-    path: req.path,
-    method: req.method
-  });
+router.post('/vacantes', async (req, res) => {
+  try {
+    const { 
+      estado = 'Todas',
+      departamentoId,
+      fechaDesde,
+      fechaHasta,
+      incluirPostulaciones = false
+    } = req.body;
+
+    let query = `
+      SELECT 
+        v.VacanteID,
+        v.Titulo,
+        v.Descripcion,
+        v.Estado,
+        v.FechaPublicacion,
+        v.FechaCierre,
+        d.Nombre as Departamento
+    `;
+
+    if (incluirPostulaciones) {
+      query += `,
+        COUNT(p.PostulacionID) as TotalPostulaciones,
+        COUNT(CASE WHEN p.Estado = 'Aprobada' THEN 1 END) as Aprobadas,
+        COUNT(CASE WHEN p.Estado = 'Rechazada' THEN 1 END) as Rechazadas,
+        COUNT(CASE WHEN p.Estado = 'Pendiente' THEN 1 END) as Pendientes
+      `;
+    }
+
+    query += ` FROM Vacantes v 
+      LEFT JOIN Departamentos d ON v.DepartamentoID = d.DepartamentoID
+    `;
+
+    if (incluirPostulaciones) {
+      query += ` LEFT JOIN Postulaciones p ON v.VacanteID = p.VacanteID `;
+    }
+
+    const condiciones = [];
+    const parametros = {};
+
+    if (estado && estado !== 'Todas') {
+      condiciones.push('v.Estado = @estado');
+      parametros.estado = estado;
+    }
+
+    if (departamentoId) {
+      condiciones.push('v.DepartamentoID = @departamentoId');
+      parametros.departamentoId = parseInt(departamentoId);
+    }
+
+    if (fechaDesde) {
+      condiciones.push('v.FechaPublicacion >= @fechaDesde');
+      parametros.fechaDesde = fechaDesde;
+    }
+
+    if (fechaHasta) {
+      condiciones.push('v.FechaPublicacion <= @fechaHasta');
+      parametros.fechaHasta = fechaHasta;
+    }
+
+    if (condiciones.length > 0) {
+      query += ` WHERE ${condiciones.join(' AND ')} `;
+    }
+
+    if (incluirPostulaciones) {
+      query += ` GROUP BY v.VacanteID, v.Titulo, v.Descripcion, v.Estado, 
+                 v.FechaPublicacion, v.FechaCierre, d.Nombre `;
+    }
+
+    query += ` ORDER BY v.FechaPublicacion DESC `;
+
+    const resultado = await ejecutarQueryConParametros(query, parametros);
+    
+    res.json({
+      success: true,
+      data: resultado,
+      total: resultado.length
+    });
+
+  } catch (error) {
+    console.error('Error en reporte vacantes:', error);
+    res.status(500).json({ 
+      error: 'Error generando reporte',
+      details: error.message 
+    });
+  }
 });
 
-// Ruta catch-all para rutas no encontradas
-router.use((req, res) => {
-  res.status(404).json({
-    error: 'Ruta no encontrada',
-    path: req.originalUrl,
-    method: req.method,
-    rutasDisponibles: [
-      'GET /guardados',
-      'POST /guardados', 
-      'PUT /guardados/:id',
-      'DELETE /guardados/:id',
-      'GET /predefinidos/:tipo',
-      'POST /custom',
-      'POST /validar',
-      'GET /metadata',
-      'POST /export',
-      'GET /estadisticas',
-      'GET /historial',
-      'GET /plantillas'
-    ]
-  });
+router.post('/nomina', async (req, res) => {
+  try {
+    const { 
+      tipo = 'severance',
+      departamentoId,
+      fechaReferencia = new Date()
+    } = req.body;
+
+    let data = [];
+
+    if (tipo === 'severance') {
+      data = await calcularSeverance(departamentoId, fechaReferencia);
+    } else if (tipo === 'salarios') {
+      data = await reporteSalarios(departamentoId);
+    } else if (tipo === 'aumentos') {
+      data = [];
+    } else {
+      return res.status(400).json({ 
+        error: 'Tipo de reporte no válido',
+        tiposDisponibles: ['severance', 'salarios', 'aumentos']
+      });
+    }
+
+    res.json({
+      success: true,
+      data,
+      total: data.length,
+      fechaGeneracion: new Date().toISOString(),
+      tipo
+    });
+
+  } catch (error) {
+    console.error('Error en reporte nómina:', error);
+    res.status(500).json({ 
+      error: 'Error generando reporte',
+      details: error.message 
+    });
+  }
+});
+
+router.get('/metricas', async (req, res) => {
+  try {
+    const metricas = await obtenerMetricasRRHH();
+    
+    res.json({
+      success: true,
+      data: metricas
+    });
+
+  } catch (error) {
+    console.error('Error en métricas:', error);
+    res.status(500).json({ 
+      error: 'Error obteniendo métricas',
+      details: error.message 
+    });
+  }
+});
+
+// ============================================
+// RUTAS DE GESTIÓN DE REPORTES GUARDADOS
+// ============================================
+
+router.get('/guardados', async (req, res) => {
+  try {
+    const query = `
+      SELECT 
+        ReporteID as id,
+        Nombre as nombre,
+        Origen as origen,
+        Descripcion as descripcion,
+        Configuracion as configuracion,
+        FechaCreacion as fechaCreacion
+      FROM ReportesPersonalizados
+      WHERE Estado = 1
+      ORDER BY FechaCreacion DESC
+    `;
+
+    const pool = await getConnection();
+    const result = await pool.request().query(query);
+    
+    const reportes = result.recordset.map(r => ({
+      ...r,
+      configuracion: r.configuracion ? JSON.parse(r.configuracion) : null
+    }));
+
+    res.json(reportes);
+  } catch (error) {
+    console.error('Error obteniendo reportes guardados:', error);
+    res.status(500).json({ 
+      error: 'Error al obtener reportes guardados',
+      details: error.message 
+    });
+  }
+});
+
+router.post('/guardados', async (req, res) => {
+  try {
+    const { nombre, origen, descripcion, configuracion } = req.body;
+
+    if (!nombre || !nombre.trim()) {
+      return res.status(400).json({ 
+        error: 'El nombre del reporte es requerido' 
+      });
+    }
+
+    const query = `
+      INSERT INTO ReportesPersonalizados 
+      (Nombre, Origen, Descripcion, Configuracion, FechaCreacion, Estado)
+      OUTPUT INSERTED.ReporteID
+      VALUES (@nombre, @origen, @descripcion, @configuracion, GETDATE(), 1)
+    `;
+
+    const pool = await getConnection();
+    const request = pool.request();
+    
+    request.input('nombre', sql.NVarChar, nombre.trim());
+    request.input('origen', sql.NVarChar, origen || 'personalizado');
+    request.input('descripcion', sql.NVarChar, descripcion || '');
+    request.input('configuracion', sql.NVarChar, JSON.stringify(configuracion || {}));
+
+    const result = await request.query(query);
+
+    res.status(201).json({
+      id: result.recordset[0].ReporteID,
+      nombre: nombre.trim(),
+      origen: origen || 'personalizado',
+      descripcion: descripcion || '',
+      configuracion,
+      fechaCreacion: new Date().toISOString()
+    });
+
+  } catch (error) {
+    console.error('Error guardando reporte:', error);
+    res.status(500).json({ 
+      error: 'Error al guardar el reporte',
+      details: error.message 
+    });
+  }
+});
+
+router.delete('/guardados/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const query = `
+      UPDATE ReportesPersonalizados 
+      SET Estado = 0 
+      WHERE ReporteID = @id
+    `;
+
+    const pool = await getConnection();
+    const request = pool.request();
+    request.input('id', sql.Int, parseInt(id));
+
+    await request.query(query);
+
+    res.json({ message: 'Reporte eliminado correctamente' });
+
+  } catch (error) {
+    console.error('Error eliminando reporte:', error);
+    res.status(500).json({ 
+      error: 'Error al eliminar el reporte',
+      details: error.message 
+    });
+  }
+});
+
+router.get('/departamentos-list', async (req, res) => {
+  try {
+    const query = `
+      SELECT 
+        DepartamentoID,
+        Nombre,
+        Descripcion
+      FROM Departamentos
+      WHERE Estado = 1
+      ORDER BY Nombre
+    `;
+
+    const pool = await getConnection();
+    const result = await pool.request().query(query);
+
+    res.json(result.recordset);
+
+  } catch (error) {
+    console.error('Error obteniendo departamentos:', error);
+    res.status(500).json({ 
+      error: 'Error obteniendo departamentos',
+      details: error.message 
+    });
+  }
+});
+
+// ============================================
+// RUTA DE EXPORTACIÓN (CORREGIDA)
+// ============================================
+
+router.post('/export', async (req, res) => {
+  try {
+    const { formato, data, nombre = 'reporte' } = req.body;
+
+    if (!Array.isArray(data) || data.length === 0) {
+      return res.status(400).json({ 
+        error: 'No hay datos para exportar',
+        details: 'Se requiere un array con datos válidos'
+      });
+    }
+
+    const formatosPermitidos = ['csv', 'excel', 'pdf'];
+    if (!formatosPermitidos.includes(formato)) {
+      return res.status(400).json({ 
+        error: 'Formato no soportado',
+        formatosDisponibles: formatosPermitidos
+      });
+    }
+
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').split('T')[0];
+    const fileName = `${nombre}_${timestamp}`;
+
+    // ============================================
+    // EXPORTAR A CSV
+    // ============================================
+    if (formato === 'csv') {
+      const headers = Object.keys(data[0]);
+      let csv = headers.join(',') + '\n';
+      
+      data.forEach(row => {
+        const values = headers.map(header => {
+          let value = row[header];
+          if (value === null || value === undefined) return '';
+          if (typeof value === 'string' && (value.includes(',') || value.includes('"'))) {
+            return `"${value.replace(/"/g, '""')}"`;
+          }
+          return value;
+        });
+        csv += values.join(',') + '\n';
+      });
+
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="${fileName}.csv"`);
+      res.setHeader('Cache-Control', 'no-cache');
+      return res.send('\uFEFF' + csv);
+    }
+
+    // ============================================
+    // EXPORTAR A EXCEL
+    // ============================================
+    if (formato === 'excel') {
+      const workbook = new ExcelJS.Workbook();
+      workbook.creator = 'Sistema RRHH';
+      workbook.created = new Date();
+      
+      const sheet = workbook.addWorksheet('Reporte', {
+        properties: { tabColor: { argb: 'FF0066CC' } }
+      });
+
+      // Configurar columnas
+      const columns = Object.keys(data[0]).map(key => ({ 
+        header: key.toUpperCase().replace(/_/g, ' '), 
+        key,
+        width: Math.max(key.length + 5, 15)
+      }));
+      
+      sheet.columns = columns;
+      
+      // Agregar datos
+      data.forEach(row => {
+        sheet.addRow(row);
+      });
+
+      // Estilos del encabezado
+      sheet.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' }, size: 12 };
+      sheet.getRow(1).fill = {
+        type: 'pattern',
+        pattern: 'solid',
+        fgColor: { argb: 'FF0066CC' }
+      };
+      sheet.getRow(1).alignment = { vertical: 'middle', horizontal: 'center' };
+      sheet.getRow(1).height = 25;
+
+      // Bordes y formato para todas las celdas
+      sheet.eachRow((row, rowNumber) => {
+        row.eachCell((cell) => {
+          cell.border = {
+            top: { style: 'thin', color: { argb: 'FFD3D3D3' } },
+            left: { style: 'thin', color: { argb: 'FFD3D3D3' } },
+            bottom: { style: 'thin', color: { argb: 'FFD3D3D3' } },
+            right: { style: 'thin', color: { argb: 'FFD3D3D3' } }
+          };
+          
+          if (rowNumber > 1) {
+            // Formatear números
+            if (typeof cell.value === 'number') {
+              cell.numFmt = '#,##0.00';
+            }
+            // Formatear fechas
+            if (cell.value instanceof Date) {
+              cell.numFmt = 'dd/mm/yyyy';
+            }
+            // Alternar colores de filas
+            if (rowNumber % 2 === 0) {
+              cell.fill = {
+                type: 'pattern',
+                pattern: 'solid',
+                fgColor: { argb: 'FFF5F5F5' }
+              };
+            }
+          }
+        });
+      });
+
+      // Auto-filtro
+      sheet.autoFilter = {
+        from: { row: 1, column: 1 },
+        to: { row: 1, column: columns.length }
+      };
+
+      // Congelar primera fila
+      sheet.views = [
+        { state: 'frozen', xSplit: 0, ySplit: 1 }
+      ];
+
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename="${fileName}.xlsx"`);
+      res.setHeader('Cache-Control', 'no-cache');
+      
+      await workbook.xlsx.write(res);
+      return res.end();
+    }
+
+   // ============================================
+  // EXPORTAR A PDF (SOLUCIÓN FINAL - SIN PÁGINAS EN BLANCO)
+  // ============================================
+  if (formato === 'pdf') {
+    const doc = new PDFDocument({ 
+      margin: 30, 
+      size: 'A4',
+      layout: 'landscape',
+      bufferPages: false,
+      autoFirstPage: true  // ✅ CAMBIAR A TRUE
+    });
+    
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName}.pdf"`);
+    res.setHeader('Cache-Control', 'no-cache');
+    doc.pipe(res);
+
+    // Configuración
+    const pageWidth = 842;
+    const pageHeight = 595;
+    const margin = 30;
+    const usableWidth = pageWidth - (margin * 2);
+    
+    // Preparar datos
+    const headers = Object.keys(data[0]);
+    const numColumns = Math.min(headers.length, 8);
+    const cellWidth = usableWidth / numColumns;
+    const rowHeight = 18;
+    const headerHeight = 25;
+    
+    let currentY = 0;
+    let pageNumber = 1;
+
+    // ============================================
+    // FUNCIÓN PARA DIBUJAR ENCABEZADO Y TABLA
+    // ============================================
+    const drawPageHeader = () => {
+      currentY = margin;
+      
+      // Título
+      doc.fontSize(18)
+        .fillColor('#0066CC')
+        .font('Helvetica-Bold')
+        .text('Reporte de Datos', margin, currentY, { 
+          align: 'center', 
+          width: usableWidth 
+        });
+      
+      currentY += 25;
+      
+      // Línea decorativa
+      doc.moveTo(margin, currentY)
+        .lineTo(pageWidth - margin, currentY)
+        .lineWidth(2)
+        .strokeColor('#0066CC')
+        .stroke();
+      
+      currentY += 10;
+      
+      // Info del reporte
+      doc.fontSize(8)
+        .fillColor('#666666')
+        .font('Helvetica');
+      
+      const infoY = currentY;
+      doc.text(`Generado: ${new Date().toLocaleString('es-DO')}`, margin, infoY);
+      doc.text(`Total de registros: ${data.length}`, pageWidth - margin - 150, infoY);
+      
+      currentY += 12;
+      doc.text(`Reporte: ${nombre}`, margin, currentY);
+      
+      currentY += 25;
+      
+      // Encabezados de tabla
+      doc.fontSize(9)
+        .font('Helvetica-Bold')
+        .fillColor('#FFFFFF');
+
+      headers.slice(0, numColumns).forEach((header, index) => {
+        const xPosition = margin + (index * cellWidth);
+        
+        doc.rect(xPosition, currentY, cellWidth, headerHeight)
+          .fillAndStroke('#0066CC', '#003d82');
+        
+        const headerText = header.toUpperCase().replace(/_/g, ' ');
+        const truncated = headerText.length > 12 ? headerText.substring(0, 10) + '...' : headerText;
+        
+        doc.fillColor('#FFFFFF')
+          .font('Helvetica-Bold')
+          .text(truncated, xPosition + 3, currentY + 8, {
+            width: cellWidth - 6,
+            align: 'center'
+          });
+      });
+
+      currentY += headerHeight;
+    };
+
+    // ============================================
+    // FUNCIÓN PARA PIE DE PÁGINA
+    // ============================================
+    const drawFooter = () => {
+      const footerY = pageHeight - 25;
+      
+      doc.moveTo(margin, footerY - 5)
+        .lineTo(pageWidth - margin, footerY - 5)
+        .lineWidth(1)
+        .strokeColor('#CCCCCC')
+        .stroke();
+      
+      doc.fontSize(8)
+        .fillColor('#666666')
+        .font('Helvetica')
+        .text(
+          `Página ${pageNumber} | Sistema RRHH © ${new Date().getFullYear()}`,
+          margin,
+          footerY,
+          { align: 'center', width: usableWidth }
+        );
+    };
+
+    // ============================================
+    // INICIAR PRIMERA PÁGINA
+    // ============================================
+    drawPageHeader();
+
+    // ============================================
+    // DIBUJAR FILAS DE DATOS
+    // ============================================
+    doc.fontSize(7).font('Helvetica');
+
+    data.forEach((row, rowIndex) => {
+      // ¿Necesitamos nueva página?
+      if (currentY + rowHeight > pageHeight - 40) {
+        // Dibujar pie ANTES de cambiar de página
+        drawFooter();
+        
+        // AHORA SÍ cambiar de página
+        doc.addPage();
+        pageNumber++;
+        
+        // Dibujar encabezado de nueva página
+        drawPageHeader();
+      }
+
+      // Color alternado
+      const fillColor = rowIndex % 2 === 0 ? '#FFFFFF' : '#F8F9FA';
+
+      headers.slice(0, numColumns).forEach((header, colIndex) => {
+        const xPosition = margin + (colIndex * cellWidth);
+        
+        // Fondo de celda
+        doc.rect(xPosition, currentY, cellWidth, rowHeight)
+          .fillAndStroke(fillColor, '#E0E0E0');
+        
+        // Obtener valor
+        let value = row[header];
+        
+        if (value === null || value === undefined) {
+          value = '';
+        } else if (typeof value === 'number') {
+          value = value.toLocaleString('es-DO', { 
+            minimumFractionDigits: 0,
+            maximumFractionDigits: 2 
+          });
+        } else if (value instanceof Date) {
+          value = value.toLocaleDateString('es-DO');
+        } else {
+          value = String(value);
+        }
+        
+        // Truncar
+        const maxChars = Math.floor(cellWidth / 3.5);
+        if (value.length > maxChars) {
+          value = value.substring(0, maxChars - 3) + '...';
+        }
+        
+        // Dibujar texto - RESETEAR FUENTE SIEMPRE
+        doc.fontSize(7)
+          .font('Helvetica')
+          .fillColor('#000000')
+          .text(value, xPosition + 3, currentY + 4, {
+            width: cellWidth - 6,
+            align: typeof row[header] === 'number' ? 'right' : 'left',
+            lineBreak: false
+          });
+      });
+
+      currentY += rowHeight;
+    });
+
+    // ============================================
+    // PIE DE PÁGINA FINAL
+    // ============================================
+    drawFooter();
+
+    // ✅ FINALIZAR DOCUMENTO
+    doc.end();
+    return;
+  }
+
+  } catch (error) {
+    console.error('Error en exportación:', error);
+    res.status(500).json({ 
+      error: 'Error al exportar el reporte',
+      details: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
+  }
 });
 
 export default router;

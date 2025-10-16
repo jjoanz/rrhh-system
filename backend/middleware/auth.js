@@ -72,18 +72,36 @@ export const authenticateToken = async (req, res, next) => {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
 
+  console.log('🔍 Auth Header:', authHeader ? 'Presente' : 'Ausente');
+  console.log('🎫 Token extraído:', token ? `${token.substring(0, 20)}...` : 'No hay token');
+
   if (!token) {
-    return res.status(401).json({ message: 'Token requerido' });
+    return res.status(401).json({ 
+      success: false,
+      message: 'Token requerido' 
+    });
+  }
+
+  // Verificar que el token no esté vacío
+  if (!token.trim()) {
+    return res.status(401).json({ 
+      success: false,
+      message: 'Token inválido (vacío)' 
+    });
   }
 
   try {
     // Verificar token JWT
     const decoded = jwt.verify(token, process.env.JWT_SECRET || 'tu-secret-key');
+    console.log('✅ Token decodificado correctamente para userId:', decoded.userId);
 
     // Conectar a la base de datos
     const pool = await getConnection();
     if (!pool) {
-      return res.status(503).json({ message: 'Base de datos no disponible' });
+      return res.status(503).json({ 
+        success: false,
+        message: 'Base de datos no disponible' 
+      });
     }
 
     // Consultar usuario activo
@@ -96,17 +114,23 @@ export const authenticateToken = async (req, res, next) => {
       `);
 
     if (result.recordset.length === 0) {
-      return res.status(401).json({ message: 'Usuario no válido o inactivo' });
+      return res.status(401).json({ 
+        success: false,
+        message: 'Usuario no válido o inactivo' 
+      });
     }
 
     const user = result.recordset[0];
+    console.log('👤 Usuario autenticado:', user.Username, '| Rol:', user.Rol);
 
     // Obtener permisos del usuario
     const permisos = await getUserPermissions(user.UsuarioID);
 
     // Guardar info del usuario en req.user
+    // ✅ CAMBIO PRINCIPAL: Agregar usuarioId además de userId
     req.user = {
-      userId: user.UsuarioID,
+      usuarioId: user.UsuarioID,    // ✅ Campo que espera accionesPersonalController
+      userId: user.UsuarioID,       // ✅ Mantener para compatibilidad con otros controllers
       username: user.Username,
       email: user.Email,
       rol: user.Rol,
@@ -114,22 +138,33 @@ export const authenticateToken = async (req, res, next) => {
       permisos: permisos
     };
 
+    console.log('🔍 req.user configurado con usuarioId:', req.user.usuarioId);
+
     next();
   } catch (error) {
-    console.error('Error en authenticateToken:', error);
+    console.error('❌ Error en authenticateToken:', error.name, '|', error.message);
 
     if (error.name === 'TokenExpiredError') {
       return res.status(401).json({
+        success: false,
         message: 'Token expirado',
         expiredAt: error.expiredAt
       });
     }
 
     if (error.name === 'JsonWebTokenError') {
-      return res.status(403).json({ message: 'Token malformado' });
+      return res.status(403).json({ 
+        success: false,
+        message: 'Token malformado o inválido',
+        error: error.message
+      });
     }
 
-    res.status(500).json({ message: 'Error interno de autenticación' });
+    res.status(500).json({ 
+      success: false,
+      message: 'Error interno de autenticación',
+      error: error.message
+    });
   }
 };
 
@@ -139,7 +174,10 @@ export const authenticateToken = async (req, res, next) => {
 export const requirePermission = (moduleName, action = 'PuedeVer') => {
   return (req, res, next) => {
     if (!req.user || !req.user.permisos) {
-      return res.status(401).json({ message: 'Usuario no autenticado' });
+      return res.status(401).json({ 
+        success: false,
+        message: 'Usuario no autenticado' 
+      });
     }
 
     // Buscar permiso del módulo
@@ -152,6 +190,7 @@ export const requirePermission = (moduleName, action = 'PuedeVer') => {
         !modulePermission.EstaVisible || 
         !modulePermission[action]) {
       return res.status(403).json({ 
+        success: false,
         message: `No tienes permisos para ${action} en ${moduleName}`,
         requiredPermission: { 
           module: moduleName, 
@@ -173,12 +212,16 @@ export const requirePermission = (moduleName, action = 'PuedeVer') => {
 export const requireRole = (allowedRoles) => {
   return (req, res, next) => {
     if (!req.user) {
-      return res.status(401).json({ message: 'Usuario no autenticado' });
+      return res.status(401).json({ 
+        success: false,
+        message: 'Usuario no autenticado' 
+      });
     }
 
     const userRole = req.user.rol;
     if (!allowedRoles.includes(userRole)) {
       return res.status(403).json({ 
+        success: false,
         message: 'No tienes permisos para este recurso',
         requiredRoles: allowedRoles,
         userRole: userRole
@@ -233,6 +276,7 @@ export const requireOwnership = (req, res, next) => {
   }
 
   return res.status(403).json({ 
+    success: false,
     message: 'Solo puedes acceder a tu propia información' 
   });
 };

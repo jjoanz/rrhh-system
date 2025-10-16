@@ -2,6 +2,7 @@ import { poolPromise } from '../db.js';
 import sql from 'mssql';
 
 // Listar empleados
+// Listar empleados
 export const getEmpleados = async (req, res) => {
   try {
     const pool = await poolPromise;
@@ -10,13 +11,13 @@ export const getEmpleados = async (req, res) => {
     const result = await pool.request().query(`
       SELECT 
         e.EmpleadoID,
-        e.NOMBRE,
-        e.APELLIDO,
+        e.NOMBRE as Nombre,
+        e.APELLIDO as Apellido,
         e.CEDULA,
         e.Email,
         e.Telefono,
         e.Direccion,
-        e.CARGO,
+        e.CARGO as NombrePuesto,
         e.Salario,
         e.FECHAINGRESO,
         e.ESTADO,
@@ -26,13 +27,18 @@ export const getEmpleados = async (req, res) => {
         d.Nombre as DEPARTAMENTO_NOMBRE
       FROM Empleados e
       LEFT JOIN Departamentos d ON e.DEPARTAMENTOID = d.DepartamentoID
-      ORDER BY e.EmpleadoID
+      WHERE e.ESTADO = 1
+      ORDER BY e.NOMBRE, e.APELLIDO
     `);
 
-    res.json(result.recordset);
+    res.json({
+      success: true,
+      empleados: result.recordset
+    });
   } catch (error) {
     console.error('Error al obtener empleados:', error);
     res.status(500).json({ 
+      success: false,
       message: 'Error al obtener empleados',
       error: error.message 
     });

@@ -14,22 +14,30 @@ import asistenciaRoutes from './routes/asistenciaRoutes.js';
 import departamentosRoutes from './routes/departamentosRoutes.js';
 import puestosRoutes from './routes/puestosRoutes.js';
 import postulacionesRoutes from './routes/postulacionesRoutes.js';
-import postulacionesPublicasRoutes from './routes/postulacionesPublicasRoutes.js'; // ← NUEVA RUTA PÚBLICA
+import postulacionesPublicasRoutes from './routes/postulacionesPublicasRoutes.js';
 import authRoutes from './routes/authRoutes.js';
 import adminRoutes from './routes/adminRoutes.js';
 import reportesRoutes from "./routes/reportesRoutes.js";
 import vacantesRoutes from './routes/vacantesRoutes.js';
 import vacacionesRoutes from './routes/vacacionesRoutes.js';
 import perfilRoutes from './routes/perfilRoutes.js';
+import accionesPersonalRoutes from './routes/accionesPersonalRoutes.js';
 
 // Importar middleware de autenticación
 import { authenticateToken } from './middleware/auth.js';
 
 // --- INICIALIZAR EXPRESS ---
 const app = express();
-app.use(express.json());
-app.use(express.urlencoded({ extended: true })); // ← NECESARIO PARA FORM-DATA
-app.use(cors());
+
+// Aumentar límite para reportes grandes
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+
+// CORS configurado correctamente
+app.use(cors({
+  origin: process.env.FRONTEND_URL || '*',
+  credentials: true
+}));
 
 // --- VARIABLES DE ENTORNO ---
 const HOST = process.env.HOST || '0.0.0.0';
@@ -77,15 +85,33 @@ app.use(async (req, res, next) => {
 
 // --- RUTAS PÚBLICAS (SIN AUTENTICACIÓN) ---
 app.use('/api/auth', authRoutes);
-app.use('/api/postulaciones-publicas', postulacionesPublicasRoutes); // ← NUEVA RUTA PÚBLICA
+app.use('/api/postulaciones-publicas', postulacionesPublicasRoutes);
 
 // --- RUTA DE SALUD DEL SERVIDOR (SIN PROTECCIÓN) ---
 app.get('/api/health', (req, res) => {
   res.json({
     status: 'OK',
     timestamp: new Date().toISOString(),
-    database: process.env.DB_SERVER,
+    database: process.env.DB_SERVER || 'Not configured',
     server: `${HOST}:${PORT}`,
+    environment: process.env.NODE_ENV || 'development'
+  });
+});
+
+// Endpoint de prueba para reportes
+app.get('/api/test-reportes', authenticateToken, (req, res) => {
+  res.json({
+    message: 'Módulo de reportes cargado correctamente',
+    endpoints: [
+      '/api/reportes/empleados',
+      '/api/reportes/departamentos',
+      '/api/reportes/vacantes',
+      '/api/reportes/nomina',
+      '/api/reportes/metricas',
+      '/api/reportes/guardados',
+      '/api/reportes/custom',
+      '/api/reportes/export'
+    ]
   });
 });
 
@@ -99,6 +125,7 @@ app.get('/api/usuarios', authenticateToken, async (req, res) => {
     `);
     res.json(result.recordset);
   } catch (err) {
+    console.error('Error obteniendo usuarios:', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -116,24 +143,34 @@ app.use("/api/reportes", authenticateToken, reportesRoutes);
 app.use('/api/vacantes', authenticateToken, vacantesRoutes);
 app.use('/api/vacaciones', authenticateToken, vacacionesRoutes);
 app.use('/api/perfil', authenticateToken, perfilRoutes);
-
+app.use('/api/acciones-personal', authenticateToken, accionesPersonalRoutes);
 
 // --- MANEJO DE ERRORES GLOBAL ---
 app.use((err, req, res, next) => {
-  console.error('Error no manejado:', err);
-  res.status(500).json({
-    message: 'Error interno del servidor',
-    error:
-      process.env.NODE_ENV === 'development'
-        ? err.message
-        : 'Error interno',
+  console.error('❌ Error no manejado:', err);
+  console.error('Stack:', err.stack);
+  
+  // Si es un error de SQL
+  if (err.name === 'RequestError') {
+    return res.status(500).json({
+      message: 'Error en la base de datos',
+      error: process.env.NODE_ENV === 'development' ? err.message : 'Error en consulta',
+      code: err.code
+    });
+  }
+
+  // Error genérico
+  res.status(err.status || 500).json({
+    message: err.message || 'Error interno del servidor',
+    error: process.env.NODE_ENV === 'development' ? err.message : 'Error interno',
   });
 });
 
 // --- SERVIR REACT BUILD ---
 const frontendBuildPath = path.join(__dirname, '..', 'frontend', 'build');
 
-console.log('Ruta build usada por Express:', frontendBuildPath);
+console.log('\n🔍 Verificando frontend build:');
+console.log('Ruta build:', frontendBuildPath);
 console.log('Existe build?', fs.existsSync(frontendBuildPath));
 
 if (fs.existsSync(frontendBuildPath)) {
@@ -145,7 +182,11 @@ if (fs.existsSync(frontendBuildPath)) {
   // CATCH-ALL para React Router
   app.use((req, res) => {
     if (req.path.startsWith('/api/')) {
-      return res.status(404).json({ message: 'API endpoint not found' });
+      return res.status(404).json({ 
+        message: 'API endpoint not found',
+        path: req.path,
+        method: req.method
+      });
     }
     const indexPath = path.join(frontendBuildPath, 'index.html');
     if (fs.existsSync(indexPath)) {
@@ -159,14 +200,21 @@ if (fs.existsSync(frontendBuildPath)) {
 
   app.use((req, res) => {
     if (req.path.startsWith('/api/')) {
-      res.status(404).json({ message: 'API endpoint not found' });
+      res.status(404).json({ 
+        message: 'API endpoint not found',
+        path: req.path,
+        method: req.method
+      });
     } else {
       res.status(200).json({
         message: 'Backend API funcionando correctamente',
         status: 'OK',
+        version: '1.0.0',
         architecture: {
-          webServer: `${HOST}`,
-          databaseServer: process.env.DB_SERVER,
+          webServer: HOST,
+          webPort: PORT,
+          databaseServer: process.env.DB_SERVER || 'Not configured',
+          databaseName: process.env.DB_NAME || 'Not configured'
         },
         endpoints: {
           auth: '/api/auth',
@@ -174,12 +222,26 @@ if (fs.existsSync(frontendBuildPath)) {
           admin: '/api/admin',
           nomina: '/api/nomina',
           empleados: '/api/empleados',
+          departamentos: '/api/departamentos',
           puestos: '/api/puestos',
           postulaciones: '/api/postulaciones',
-          postulacionesPublicas: '/api/postulaciones-publicas', // ← NUEVA
+          postulacionesPublicas: '/api/postulaciones-publicas',
           reportes: '/api/reportes',
           vacantes: '/api/vacantes',
+          vacaciones: '/api/vacaciones',
+          perfil: '/api/perfil',
+          accionesPersonal: '/api/acciones-personal'
         },
+        reportesEndpoints: {
+          empleados: 'POST /api/reportes/empleados',
+          departamentos: 'POST /api/reportes/departamentos',
+          vacantes: 'POST /api/reportes/vacantes',
+          nomina: 'POST /api/reportes/nomina',
+          metricas: 'GET /api/reportes/metricas',
+          guardados: 'GET /api/reportes/guardados',
+          custom: 'POST /api/reportes/custom',
+          export: 'POST /api/reportes/export'
+        }
       });
     }
   });
@@ -187,16 +249,29 @@ if (fs.existsSync(frontendBuildPath)) {
 
 // --- INICIAR SERVIDOR ---
 const server = app.listen(PORT, HOST, () => {
-  console.log(`🚀 Servidor web corriendo en http://${HOST}:${PORT}`);
-  console.log(`🗄️  Conectando a base de datos: ${process.env.DB_SERVER}`);
-  console.log(`🔐 Endpoints de auth: http://${HOST}:${PORT}/api/auth`);
-  console.log(`🛡️  Endpoints de admin: http://${HOST}:${PORT}/api/admin`);
-  console.log(`💼 Endpoints de vacantes: http://${HOST}:${PORT}/api/vacantes`);
-  console.log(`📋 Endpoints de postulaciones (auth): http://${HOST}:${PORT}/api/postulaciones`);
-  console.log(`🌐 Endpoints públicos de postulaciones: http://${HOST}:${PORT}/api/postulaciones-publicas`);
-  console.log(`📁 Archivos uploads: http://${HOST}:${PORT}/uploads`);
-  console.log(`⚡ API Health check: http://${HOST}:${PORT}/api/health`);
-  console.log(`👤 Endpoints de perfil: http://${HOST}:${PORT}/api/perfil`);
+  console.log('\n🚀 ========================================');
+  console.log(`   Servidor iniciado correctamente`);
+  console.log('   ========================================');
+  console.log(`   URL:        http://${HOST}:${PORT}`);
+  console.log(`   Base de datos: ${process.env.DB_SERVER || 'Not configured'}`);
+  console.log(`   Ambiente:   ${process.env.NODE_ENV || 'development'}`);
+  console.log('   ========================================');
+  console.log('\n📡 Endpoints principales:');
+  console.log(`   🔐 Auth:       http://${HOST}:${PORT}/api/auth`);
+  console.log(`   🛡️  Admin:      http://${HOST}:${PORT}/api/admin`);
+  console.log(`   💼 Vacantes:   http://${HOST}:${PORT}/api/vacantes`);
+  console.log(`   📋 Reportes:   http://${HOST}:${PORT}/api/reportes`);
+  console.log(`   👤 Perfil:     http://${HOST}:${PORT}/api/perfil`);
+  console.log(`   📁 Uploads:    http://${HOST}:${PORT}/uploads`);
+  console.log(`   ⚡ Health:     http://${HOST}:${PORT}/api/health`);
+  console.log(`   📝 Acciones:   http://${HOST}:${PORT}/api/acciones-personal`);
+  console.log('\n📊 Endpoints de Reportes:');
+  console.log(`   POST http://${HOST}:${PORT}/api/reportes/empleados`);
+  console.log(`   POST http://${HOST}:${PORT}/api/reportes/departamentos`);
+  console.log(`   POST http://${HOST}:${PORT}/api/reportes/vacantes`);
+  console.log(`   POST http://${HOST}:${PORT}/api/reportes/nomina`);
+  console.log(`   GET  http://${HOST}:${PORT}/api/reportes/metricas`);
+  console.log('   ========================================\n');
 });
 
 // --- MANEJO GRACEFUL DE SHUTDOWN ---
@@ -216,7 +291,26 @@ const gracefulShutdown = async () => {
       process.exit(1);
     }
   });
+
+  // Timeout de 10 segundos
+  setTimeout(() => {
+    console.error('❌ Timeout: Forzando cierre del servidor');
+    process.exit(1);
+  }, 10000);
 };
 
 process.on('SIGINT', gracefulShutdown);
 process.on('SIGTERM', gracefulShutdown);
+
+// Manejo de errores no capturados
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('❌ Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
+// Log inicial de configuración
+console.log('\n⚙️  Configuración del servidor:');
+console.log(`   NODE_ENV: ${process.env.NODE_ENV || 'development'}`);
+console.log(`   DB_SERVER: ${process.env.DB_SERVER || 'Not configured'}`);
+console.log(`   DB_NAME: ${process.env.DB_NAME || 'Not configured'}`);
+console.log(`   JWT_SECRET: ${process.env.JWT_SECRET ? '✅ Configurado' : '❌ No configurado'}`);
+console.log('');

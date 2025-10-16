@@ -25,6 +25,8 @@ const MODULOS_SISTEMA = [
   { id: 10, nombre: 'reportes', descripcion: 'Reportes del sistema' },
   { id: 11, nombre: 'admin', descripcion: 'Administración de usuarios y permisos' }
   
+  
+  
 ];
 
 const AdminPermissions = () => {

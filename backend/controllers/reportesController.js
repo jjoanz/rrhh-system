@@ -1471,3 +1471,457 @@ export const exportarLote = async (req, res) => {
     });
   }
 };
+
+// Agregar al final de reportesController.js
+
+// ===================== REPORTES VISUALES SIN SQL =====================
+
+// Endpoint para reportes de empleados
+export const reporteEmpleados = async (req, res) => {
+  try {
+    const { 
+      campos = ['nombre', 'apellido', 'cargo', 'departamento'],
+      filtros = {},
+      ordenamiento = { campo: 'nombre', direccion: 'ASC' },
+      limite = 1000
+    } = req.body;
+
+    const usuarioId = req.user?.id || 'sistema';
+    logActivity(usuarioId, "Generando reporte de empleados");
+
+    // Mapeo seguro de campos
+    const camposPermitidos = {
+      'nombre': 'e.Nombre',
+      'apellido': 'e.Apellido', 
+      'email': 'e.Email',
+      'cargo': 'e.Cargo',
+      'salario': 'e.Salario',
+      'fechaIngreso': 'e.FechaIngreso',
+      'departamento': 'd.Nombre as Departamento',
+      'estado': 'CASE WHEN e.Estado = 1 THEN \'Activo\' ELSE \'Inactivo\' END as Estado',
+      'cedula': 'e.Cedula'
+    };
+
+    // Validar campos solicitados
+    const camposValidos = campos.filter(c => camposPermitidos[c]);
+    if (camposValidos.length === 0) {
+      return res.status(400).json({ 
+        error: 'No hay campos válidos seleccionados',
+        camposDisponibles: Object.keys(camposPermitidos)
+      });
+    }
+
+    // Construir SELECT
+    const selectClause = camposValidos.map(c => camposPermitidos[c]).join(', ');
+
+    // Construir query base
+    let query = `
+      SELECT TOP ${Math.min(limite, MAX_RESULTS)} ${selectClause}
+      FROM Empleados e
+      LEFT JOIN Departamentos d ON e.DepartamentoID = d.DepartamentoID
+    `;
+
+    // Construir WHERE con parámetros
+    const condiciones = [];
+    const pool = await getConnection();
+    const request = pool.request();
+
+    if (filtros.estado === 'activo') {
+      condiciones.push('e.Estado = 1');
+    } else if (filtros.estado === 'inactivo') {
+      condiciones.push('e.Estado = 0');
+    }
+
+    if (filtros.departamentoId) {
+      condiciones.push('e.DepartamentoID = @departamentoId');
+      request.input('departamentoId', parseInt(filtros.departamentoId));
+    }
+
+    if (filtros.cargo) {
+      condiciones.push('e.Cargo LIKE @cargo');
+      request.input('cargo', `%${filtros.cargo}%`);
+    }
+
+    if (condiciones.length > 0) {
+      query += ` WHERE ${condiciones.join(' AND ')}`;
+    }
+
+    // Ordenamiento
+    if (ordenamiento.campo && camposPermitidos[ordenamiento.campo]) {
+      const direccion = ordenamiento.direccion === 'DESC' ? 'DESC' : 'ASC';
+      query += ` ORDER BY ${camposPermitidos[ordenamiento.campo]} ${direccion}`;
+    }
+
+    const result = await request.query(query);
+
+    logActivity(usuarioId, "Reporte empleados generado", `${result.recordset.length} registros`);
+
+    res.json({
+      success: true,
+      data: result.recordset,
+      total: result.recordset.length,
+      configuracion: { campos, filtros, ordenamiento }
+    });
+
+  } catch (error) {
+    console.error('Error en reporteEmpleados:', error);
+    res.status(500).json({ 
+      error: 'Error generando reporte de empleados',
+      details: error.message 
+    });
+  }
+};
+
+// Endpoint para reportes de departamentos
+export const reporteDepartamentos = async (req, res) => {
+  try {
+    const { 
+      incluirEstadisticas = true,
+      incluirEmpleados = false 
+    } = req.body;
+
+    const usuarioId = req.user?.id || 'sistema';
+    logActivity(usuarioId, "Generando reporte de departamentos");
+
+    let query = `
+      SELECT 
+        d.DepartamentoID,
+        d.Nombre as Departamento,
+        d.Descripcion
+    `;
+
+    if (incluirEstadisticas) {
+      query += `,
+        COUNT(e.EmpleadoID) as TotalEmpleados,
+        ISNULL(AVG(CAST(e.Salario AS FLOAT)), 0) as SalarioPromedio,
+        ISNULL(SUM(CAST(e.Salario AS FLOAT)), 0) as MasaSalarial,
+        ISNULL(MIN(CAST(e.Salario AS FLOAT)), 0) as SalarioMinimo,
+        ISNULL(MAX(CAST(e.Salario AS FLOAT)), 0) as SalarioMaximo
+      `;
+    }
+
+    query += ` FROM Departamentos d `;
+
+    if (incluirEstadisticas || incluirEmpleados) {
+      query += ` LEFT JOIN Empleados e ON d.DepartamentoID = e.DepartamentoID AND e.Estado = 1 `;
+    }
+
+    if (incluirEstadisticas) {
+      query += ` GROUP BY d.DepartamentoID, d.Nombre, d.Descripcion `;
+    }
+
+    query += ` ORDER BY d.Nombre `;
+
+    const pool = await getConnection();
+    const request = pool.request();
+    const result = await request.query(query);
+
+    logActivity(usuarioId, "Reporte departamentos generado", `${result.recordset.length} registros`);
+
+    res.json({
+      success: true,
+      data: result.recordset,
+      total: result.recordset.length
+    });
+
+  } catch (error) {
+    console.error('Error en reporteDepartamentos:', error);
+    res.status(500).json({ 
+      error: 'Error generando reporte de departamentos',
+      details: error.message 
+    });
+  }
+};
+
+// Endpoint para reportes de vacantes
+export const reporteVacantes = async (req, res) => {
+  try {
+    const { 
+      estado = 'Todas',
+      departamentoId,
+      fechaDesde,
+      fechaHasta,
+      incluirPostulaciones = false
+    } = req.body;
+
+    const usuarioId = req.user?.id || 'sistema';
+    logActivity(usuarioId, "Generando reporte de vacantes");
+
+    let query = `
+      SELECT 
+        v.VacanteID,
+        v.Titulo,
+        v.Descripcion,
+        v.Estado,
+        v.FechaPublicacion,
+        v.FechaCierre,
+        d.Nombre as Departamento
+    `;
+
+    if (incluirPostulaciones) {
+      query += `,
+        COUNT(p.PostulacionID) as TotalPostulaciones,
+        COUNT(CASE WHEN p.Estado = 'Aprobada' THEN 1 END) as Aprobadas,
+        COUNT(CASE WHEN p.Estado = 'Rechazada' THEN 1 END) as Rechazadas,
+        COUNT(CASE WHEN p.Estado = 'Pendiente' THEN 1 END) as Pendientes
+      `;
+    }
+
+    query += ` 
+      FROM Vacantes v
+      LEFT JOIN Departamentos d ON v.DepartamentoID = d.DepartamentoID
+    `;
+
+    if (incluirPostulaciones) {
+      query += ` LEFT JOIN Postulaciones p ON v.VacanteID = p.VacanteID `;
+    }
+
+    // Construir WHERE
+    const condiciones = [];
+    const pool = await getConnection();
+    const request = pool.request();
+
+    if (estado && estado !== 'Todas') {
+      condiciones.push('v.Estado = @estado');
+      request.input('estado', estado);
+    }
+
+    if (departamentoId) {
+      condiciones.push('v.DepartamentoID = @departamentoId');
+      request.input('departamentoId', parseInt(departamentoId));
+    }
+
+    if (fechaDesde) {
+      condiciones.push('v.FechaPublicacion >= @fechaDesde');
+      request.input('fechaDesde', fechaDesde);
+    }
+
+    if (fechaHasta) {
+      condiciones.push('v.FechaPublicacion <= @fechaHasta');
+      request.input('fechaHasta', fechaHasta);
+    }
+
+    if (condiciones.length > 0) {
+      query += ` WHERE ${condiciones.join(' AND ')} `;
+    }
+
+    if (incluirPostulaciones) {
+      query += ` 
+        GROUP BY v.VacanteID, v.Titulo, v.Descripcion, v.Estado, 
+                 v.FechaPublicacion, v.FechaCierre, d.Nombre 
+      `;
+    }
+
+    query += ` ORDER BY v.FechaPublicacion DESC `;
+
+    const result = await request.query(query);
+
+    logActivity(usuarioId, "Reporte vacantes generado", `${result.recordset.length} registros`);
+
+    res.json({
+      success: true,
+      data: result.recordset,
+      total: result.recordset.length
+    });
+
+  } catch (error) {
+    console.error('Error en reporteVacantes:', error);
+    res.status(500).json({ 
+      error: 'Error generando reporte de vacantes',
+      details: error.message 
+    });
+  }
+};
+
+// Endpoint para reportes de nómina
+export const reporteNomina = async (req, res) => {
+  try {
+    const { 
+      tipo = 'severance',
+      departamentoId,
+      fechaReferencia = new Date()
+    } = req.body;
+
+    const usuarioId = req.user?.id || 'sistema';
+    logActivity(usuarioId, "Generando reporte de nómina", tipo);
+
+    let data = [];
+
+    if (tipo === 'severance') {
+      data = await calcularSeverance(departamentoId, fechaReferencia);
+    } else if (tipo === 'salarios') {
+      data = await reporteSalarios(departamentoId);
+    }
+
+    logActivity(usuarioId, "Reporte nómina generado", `${data.length} registros`);
+
+    res.json({
+      success: true,
+      data,
+      tipo,
+      fechaGeneracion: new Date().toISOString()
+    });
+
+  } catch (error) {
+    console.error('Error en reporteNomina:', error);
+    res.status(500).json({ 
+      error: 'Error generando reporte de nómina',
+      details: error.message 
+    });
+  }
+};
+
+// Funciones auxiliares para nómina
+async function calcularSeverance(departamentoId, fechaReferencia) {
+  const fecha = new Date(fechaReferencia);
+  
+  let query = `
+    SELECT 
+      e.EmpleadoID,
+      e.Nombre + ' ' + e.Apellido AS Colaborador,
+      e.Cedula,
+      e.Cargo,
+      e.FechaIngreso,
+      e.Salario,
+      DATEDIFF(MONTH, e.FechaIngreso, @fecha) as MesesTrabajados,
+      DATEDIFF(YEAR, e.FechaIngreso, @fecha) as AniosTrabajados
+    FROM Empleados e
+    WHERE e.Estado = 1
+  `;
+
+  if (departamentoId) {
+    query += ` AND e.DepartamentoID = @departamentoId `;
+  }
+
+  const pool = await getConnection();
+  const request = pool.request();
+  request.input('fecha', fecha);
+  if (departamentoId) request.input('departamentoId', departamentoId);
+
+  const result = await request.query(query);
+
+  // Calcular severance para cada empleado
+  return result.recordset.map(emp => {
+    const preaviso = calcularPreaviso(emp.MesesTrabajados, emp.Salario);
+    const cesantia = calcularCesantia(emp.MesesTrabajados, emp.AniosTrabajados, emp.Salario);
+    const vacaciones = (emp.Salario / 30) * 14;
+    const regalia = emp.Salario * 0.6667;
+
+    return {
+      ...emp,
+      Preaviso: Math.round(preaviso * 100) / 100,
+      Cesantia: Math.round(cesantia * 100) / 100,
+      Vacaciones: Math.round(vacaciones * 100) / 100,
+      Regalia: Math.round(regalia * 100) / 100,
+      Total: Math.round((preaviso + cesantia + vacaciones + regalia) * 100) / 100
+    };
+  });
+}
+
+function calcularPreaviso(meses, salario) {
+  if (meses < 3) return 0;
+  if (meses < 6) return (salario / 30) * 7;
+  if (meses < 12) return (salario / 30) * 14;
+  return (salario / 30) * 28;
+}
+
+function calcularCesantia(meses, anios, salario) {
+  if (meses < 3) return 0;
+  if (meses >= 3 && meses <= 5) return (salario / 30) * 6 * anios;
+  if (anios < 1) return (salario / 30) * 13;
+  if (anios >= 1 && anios <= 5) return (salario / 30) * 21 * anios;
+  return (salario / 30) * 23 * anios;
+}
+
+async function reporteSalarios(departamentoId) {
+  let query = `
+    SELECT 
+      d.Nombre as Departamento,
+      COUNT(e.EmpleadoID) as TotalEmpleados,
+      ISNULL(MIN(CAST(e.Salario AS FLOAT)), 0) as SalarioMinimo,
+      ISNULL(MAX(CAST(e.Salario AS FLOAT)), 0) as SalarioMaximo,
+      ISNULL(AVG(CAST(e.Salario AS FLOAT)), 0) as SalarioPromedio,
+      ISNULL(SUM(CAST(e.Salario AS FLOAT)), 0) as MasaSalarial
+    FROM Empleados e
+    LEFT JOIN Departamentos d ON e.DepartamentoID = d.DepartamentoID
+    WHERE e.Estado = 1
+  `;
+
+  if (departamentoId) {
+    query += ` AND e.DepartamentoID = @departamentoId `;
+  }
+
+  query += ` GROUP BY d.DepartamentoID, d.Nombre ORDER BY SalarioPromedio DESC `;
+
+  const pool = await getConnection();
+  const request = pool.request();
+  if (departamentoId) request.input('departamentoId', departamentoId);
+
+  const result = await request.query(query);
+  return result.recordset;
+}
+
+// Endpoint para métricas generales
+export const reporteMetricas = async (req, res) => {
+  try {
+    const usuarioId = req.user?.id || 'sistema';
+    logActivity(usuarioId, "Consultando métricas RRHH");
+
+    const pool = await getConnection();
+    const metricas = {};
+
+    // Total empleados activos
+    const totalEmpleados = await pool.request().query(`
+      SELECT COUNT(*) as total FROM Empleados WHERE Estado = 1
+    `);
+    metricas.totalEmpleados = totalEmpleados.recordset[0].total;
+
+    // Contrataciones últimos 30 días
+    const contrataciones = await pool.request().query(`
+      SELECT COUNT(*) as total 
+      FROM Empleados 
+      WHERE FechaIngreso >= DATEADD(day, -30, GETDATE())
+    `);
+    metricas.contratacionesUltimos30Dias = contrataciones.recordset[0].total;
+
+    // Salario promedio
+    const salario = await pool.request().query(`
+      SELECT AVG(CAST(Salario AS FLOAT)) as promedio 
+      FROM Empleados 
+      WHERE Estado = 1
+    `);
+    metricas.salarioPromedio = Math.round(salario.recordset[0].promedio || 0);
+
+    // Vacantes abiertas
+    const vacantes = await pool.request().query(`
+      SELECT COUNT(*) as total 
+      FROM Vacantes 
+      WHERE Estado = 'Abierta'
+    `);
+    metricas.vacantesAbiertas = vacantes.recordset[0].total;
+
+    // Distribución por departamento
+    const distribucion = await pool.request().query(`
+      SELECT 
+        d.Nombre as departamento,
+        COUNT(e.EmpleadoID) as total
+      FROM Departamentos d
+      LEFT JOIN Empleados e ON d.DepartamentoID = e.DepartamentoID AND e.Estado = 1
+      GROUP BY d.Nombre
+      ORDER BY total DESC
+    `);
+    metricas.distribucionDepartamentos = distribucion.recordset;
+
+    res.json({
+      success: true,
+      data: metricas
+    });
+
+  } catch (error) {
+    console.error('Error en reporteMetricas:', error);
+    res.status(500).json({ 
+      error: 'Error obteniendo métricas',
+      details: error.message 
+    });
+  }
+};

@@ -1,31 +1,52 @@
 import { 
   Users, Settings, Shield, Check, Plus, Edit, UserCheck,
   Briefcase, FileText, DollarSign, Calendar, GraduationCap,
-  Clock, Building, BadgeCheck, BarChart3, Send, User
+  Clock, Building, BadgeCheck, BarChart3, Send, User, UserCog
 } from 'lucide-react';
+import AccionesPersonal from '../components/rrhh/AccionesPersonal/AccionesPersonal';
 
 // Navegación principal
 const NAVIGATION_ITEMS = [
-  { id: 'dashboard', label: 'Dashboard', icon: BarChart3, modulo: null, path: '/dashboard' },
-  { id: 'empleados', label: 'Empleados', icon: Users, modulo: 'empleados', path: '/empleados' },
-  { id: 'vacantes', label: 'Vacantes', icon: Briefcase, modulo: 'vacantes', path: '/vacantes' },
+  // No. DE Orden y Posición
+  // #1
+  { id: 'dashboard', label: 'Inicio', icon: BarChart3, modulo: null, path: '/dashboard' },
+    // #2
   { id: 'perfil', label: 'Perfil', icon: User, modulo: 'perfil', path: '/perfil' },
+    // #3
+  { id: 'vacaciones', label: 'Autoservicio', icon: UserCog, modulo: 'vacaciones', path: '/vacaciones' },
+  // #4
+  { id: 'empleados', label: 'Empleados', icon: Users, modulo: 'empleados', path: '/empleados' },
+  // #5
+  { id: 'vacantes', label: 'Vacantes', icon: Briefcase, modulo: 'vacantes', path: '/vacantes' }, 
+  // #6
   { id: 'postulaciones', label: 'Postulaciones', icon: FileText, modulo: 'postulaciones', path: '/postulaciones' },
-  { id: 'nomina', label: 'Nómina', icon: DollarSign, modulo: 'nomina', path: '/nomina' },
-  { id: 'vacaciones', label: 'Vacaciones', icon: Calendar, modulo: 'vacaciones', path: '/vacaciones' },
+  // #7
+  { id: 'nomina', label: 'Nómina', icon: DollarSign, modulo: 'nomina', path: '/nomina' }, 
+  // #8
   { id: 'capacitaciones', label: 'Capacitaciones', icon: GraduationCap, modulo: 'capacitaciones', path: '/capacitaciones' },
+  // #9
   { id: 'asistencia', label: 'Asistencia', icon: Clock, modulo: 'asistencia', path: '/asistencia' },
+  // #10
   { id: 'departamentos', label: 'Departamentos', icon: Building, modulo: 'departamentos', path: '/departamentos' },
+  // #11
   { id: 'puestos', label: 'Puestos', icon: BadgeCheck, modulo: 'puestos', path: '/puestos' },
+  // #12
   { id: 'reportes', label: 'Reportes', icon: BarChart3, modulo: 'reportes', path: '/reportes' },
-  { id: 'admin', label: 'Administración', icon: Settings, modulo: 'admin', path: '/admin' }
+  // #13
+  { id: 'admin', label: 'Administración', icon: Settings, modulo: 'admin', path: '/admin' },
+
+  // #14
+  { id: 'acciones-personal', label: 'Acciones de Personal', icon: FileText, roles: ['Admin', 'Director RRHH', 'Gerente RRHH'], permisos: ['acciones_personal'] },
+
+
 ];
 
 // Roles que tienen acceso directo a ciertos módulos sin necesidad de permisos explícitos
 const ACCESO_DIRECTO_POR_ROL = {
   vacantes: ['gerente', 'director', 'gerente_rrhh', 'director_rrhh', 'rrhh', 'colaborador', 'empleado'],
   perfil: ['gerente', 'director', 'gerente_rrhh', 'director_rrhh', 'rrhh', 'colaborador', 'empleado', 'admin'],
-  postulaciones: ['gerente', 'director', 'gerente_rrhh', 'director_rrhh', 'rrhh', 'colaborador', 'empleado']
+  postulaciones: ['gerente', 'director', 'gerente_rrhh', 'director_rrhh', 'rrhh', 'colaborador', 'empleado'],
+  AccionesPersonal: ['gerente_rrhh', 'director_rrhh', 'rrhh', 'admin']
 };
 
 /**

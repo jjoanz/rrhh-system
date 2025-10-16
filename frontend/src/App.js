@@ -23,6 +23,7 @@ import PostulacionesModule from './components/modules/postulaciones/Postulacione
 import DepartamentosModule from './components/modules/departamentos/DepartamentosModule';
 import PuestosModule from './components/modules/puestos/PuestosModule';
 import ReportesModule from './components/modules/Reportes/ReportesModule';
+import AccionesPersonal from './components/rrhh/AccionesPersonal/AccionesPersonal';
 
 // ===================== COMPONENTES PÚBLICOS =====================
 import FormularioPostulacion from './components/public/FormularioPostulacion';
@@ -41,7 +42,7 @@ const Sidebar = ({ isOpen, onClose }) => {
       {isOpen && <div style={{ position:'fixed', top:0, left:0, right:0, bottom:0, background:'rgba(0,0,0,0.5)', zIndex:40 }} onClick={onClose} />}
       <div style={{
         position:'fixed', top:0, left:0, height:'100%', width:'16rem',
-        background:'white', boxShadow:'0 10px 15px -3px rgba(0,0,0,0.1)',
+        background:'white', boxShadow:'0 10px 15px -3px rgba(0, 0, 0, 0.1)',
         transform: isOpen ? 'translateX(0)' : 'translateX(-100%)',
         transition:'transform 0.3s ease', zIndex:50
       }}>
@@ -423,7 +424,7 @@ const Dashboard = () => {
             gap: '1.5rem',
             width: '100%'
           }}>
-            {navigation.map((item, index) => {
+            {navigation.filter(item => item.id !== 'dashboard').map((item, index) => {
               const Icon = item.icon;
               const colors = [
                 { bg: 'linear-gradient(135deg, #1e5cb3 0%, #2563eb 100%)', shadow: 'rgba(30, 92, 179, 0.3)' },
@@ -633,6 +634,7 @@ const MainLayout = () => {
       case 'departamentos': return <DepartamentosModule />;
       case 'puestos': return <PuestosModule />;
       case 'reportes': return <ReportesModule />;
+      case 'acciones-personal': return <AccionesPersonal />; // ← AGREGAR ESTA LÍNEA
       default: return <Dashboard />;
     }
   };

@@ -21,7 +21,7 @@ import EmpleadosModule from './components/modules/empleados/EmpleadosModule';
 import ConfiguracionModule from './components/modules/configuracion/ConfiguracionModule';
 import PostulacionesModule from './components/modules/postulaciones/PostulacionesModule';
 import DepartamentosModule from './components/modules/departamentos/DepartamentosModule';
-import PuestosModule from './components/modules/puestos/PuestosModule';
+import PuestosModule from './components/modules/Puestos/PuestosModule';
 import ReportesModule from './components/modules/Reportes/ReportesModule';
 import AccionesPersonal from './components/rrhh/AccionesPersonal/AccionesPersonal';
 
@@ -97,26 +97,148 @@ const Header = () => {
   const { toggleSidebar } = useApp();
 
   return (
-    <header style={{ background:'white', boxShadow:'0 1px 3px rgba(0,0,0,0.1)', borderBottom:'1px solid #e5e7eb' }}>
-      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'0.75rem 1rem' }}>
-        <div style={{ display:'flex', alignItems:'center', gap:'1rem' }}>
-          <button onClick={toggleSidebar} style={{ padding:'0.5rem', border:'none', background:'none', cursor:'pointer' }}>
-            <Menu style={{ width:'1.25rem', height:'1.25rem' }} />
+    <header style={{ 
+      background: 'white', 
+      boxShadow: '0 1px 3px rgba(0,0,0,0.1)', 
+      borderBottom: '1px solid #e5e7eb',
+      position: 'sticky',
+      top: 0,
+      zIndex: 40
+    }}>
+      <div style={{ 
+        display: 'flex', 
+        alignItems: 'center', 
+        justifyContent: 'space-between', 
+        padding: '0.75rem 1rem',
+        gap: '0.5rem'
+      }}>
+        {/* Left: Menu + Logo */}
+        <div style={{ 
+          display: 'flex', 
+          alignItems: 'center', 
+          gap: '0.75rem',
+          minWidth: 0,
+          flex: '1'
+        }}>
+          <button 
+            onClick={toggleSidebar} 
+            style={{ 
+              padding: '0.5rem', 
+              border: 'none', 
+              background: 'none', 
+              cursor: 'pointer',
+              flexShrink: 0
+            }}
+          >
+            <Menu style={{ width: '1.25rem', height: '1.25rem' }} />
           </button>
-          <h1 style={{ fontSize:'1.125rem', fontWeight:'bold', color:'#111827', margin:0, display:'flex', alignItems:'center', gap:'0.5rem' }}>
-            <img src="ProDominicana Logo FC.png" alt="Logo" style={{ height:'45px', width:'auto' }} />
-            Sistema de Gestión RRHH ProDominicana
+          
+          <h1 style={{ 
+            fontSize: 'clamp(0.875rem, 2.5vw, 1.125rem)', 
+            fontWeight: 'bold', 
+            color: '#111827', 
+            margin: 0, 
+            display: 'flex', 
+            alignItems: 'center', 
+            gap: '0.5rem',
+            overflow: 'hidden',
+            whiteSpace: 'nowrap'
+          }}>
+            <img 
+              src="ProDominicana Logo FC.png" 
+              alt="Logo" 
+              style={{ 
+                height: 'clamp(30px, 8vw, 45px)', 
+                width: 'auto',
+                flexShrink: 0
+              }} 
+            />
+            <span style={{ 
+              display: window.innerWidth < 400 ? 'none' : 'inline' 
+            }}>
+              ProIntegra
+            </span>
           </h1>
         </div>
-        <div style={{ display:'flex', alignItems:'center', gap:'1rem' }}>
-          <div style={{ textAlign:'right' }}>
-            <p style={{ fontSize:'0.875rem', fontWeight:'500', color:'#111827', margin:0 }}>{user?.name || '-'}</p>
-            <p style={{ fontSize:'0.75rem', color:'#6b7280', margin:0 }}>{user?.position || '-'}</p>
+
+        {/* Right: User Info + Logout */}
+        <div style={{ 
+          display: 'flex', 
+          alignItems: 'center', 
+          gap: '0.75rem',
+          flexShrink: 0
+        }}>
+          {/* User Info - Hidden on small screens */}
+          <div style={{ 
+            textAlign: 'right',
+            display: window.innerWidth < 640 ? 'none' : 'block'
+          }}>
+            <p style={{ 
+              fontSize: '0.875rem', 
+              fontWeight: '500', 
+              color: '#111827', 
+              margin: 0 
+            }}>
+              {user?.name || '-'}
+            </p>
+            <p style={{ 
+              fontSize: '0.75rem', 
+              color: '#6b7280', 
+              margin: 0 
+            }}>
+              {user?.position || '-'}
+            </p>
           </div>
-          <button onClick={logout} style={{ display:'flex', alignItems:'center', gap:'0.5rem', padding:'0.5rem', border:'none', background:'none', cursor:'pointer', color:'#6b7280' }}>
-            <LogOut style={{ width:'1rem', height:'1rem' }} /> Salir
+
+          {/* Logout Button */}
+          <button 
+            onClick={logout} 
+            style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: '0.5rem', 
+              padding: '0.5rem', 
+              border: 'none', 
+              background: 'none', 
+              cursor: 'pointer', 
+              color: '#6b7280',
+              flexShrink: 0
+            }}
+          >
+            <LogOut style={{ width: '1rem', height: '1rem' }} />
+            <span style={{ 
+              display: window.innerWidth < 640 ? 'none' : 'inline',
+              fontSize: '0.875rem'
+            }}>
+              Salir
+            </span>
           </button>
         </div>
+      </div>
+
+      {/* Mobile User Info Bar - Only visible on small screens */}
+      <div style={{
+        display: window.innerWidth < 640 ? 'block' : 'none',
+        borderTop: '1px solid #e5e7eb',
+        padding: '0.5rem 1rem',
+        background: '#f9fafb'
+      }}>
+        <p style={{ 
+          fontSize: '0.75rem', 
+          fontWeight: '500', 
+          color: '#111827', 
+          margin: 0,
+          marginBottom: '0.125rem'
+        }}>
+          {user?.name || '-'}
+        </p>
+        <p style={{ 
+          fontSize: '0.625rem', 
+          color: '#6b7280', 
+          margin: 0 
+        }}>
+          {user?.position || '-'}
+        </p>
       </div>
     </header>
   );

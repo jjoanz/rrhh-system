@@ -911,7 +911,7 @@ const confirmarSolicitudConPeriodos = async () => {
                 cursor: 'pointer'
               }}
             >
-              Solicitar Vacaciones
+              Realizar Solicitud
             </button>
             
             {periodos.length > 1 && (

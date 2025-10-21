@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../../context/AuthContext';
 import { useApp } from '../../../context/AppContext';
+import capacitacionService from '../../../api/capacitacionService';
 import { 
   BookOpen, 
   Award, 
@@ -29,7 +30,9 @@ import {
 
 const CapacitacionModule = () => {
   const { user } = useAuth();
-  const { showSuccessMessage, showErrorMessage } = useApp();
+  const appContext = useApp();
+  const showSuccessMessage = appContext?.showSuccessMessage || ((msg) => console.log('✅', msg));
+  const showErrorMessage = appContext?.showErrorMessage || ((msg) => console.error('❌', msg));
   const [activeTab, setActiveTab] = useState('dashboard');
   const [loading, setLoading] = useState(false);
 
@@ -39,6 +42,16 @@ const CapacitacionModule = () => {
   const [misCursos, setMisCursos] = useState([]);
   const [certificados, setCertificados] = useState([]);
   const [solicitudesPorAprobar, setSolicitudesPorAprobar] = useState([]);
+  const [estadisticasReales, setEstadisticasReales] = useState(null);
+  const [todasSolicitudes, setTodasSolicitudes] = useState([]);
+  const [miembroEquipo, setMiembroEquipo] = useState([]);
+
+  // ✅ Estados agregados para evitar los errores no definidos
+  const [empleadosDisponibles, setEmpleadosDisponibles] = useState([]);
+  const [misCapacitaciones, setMisCapacitaciones] = useState([]);
+  const [participantesModal, setParticipantesModal] = useState({ open: false, cursoId: null, participantes: [] });
+  const [loadingParticipantes, setLoadingParticipantes] = useState(false);
+  const [busquedaEmpleado, setBusquedaEmpleado] = useState('');
 
   // Estados para formularios
   const [nuevaSolicitud, setNuevaSolicitud] = useState({
@@ -65,7 +78,9 @@ const CapacitacionModule = () => {
     categoria: 'tecnica',
     costo: 0,
     fechaInicio: '',
-    cupos: 0
+    cupos: 0,
+    tipoAcceso: 'abierto',           // ← NUEVO
+    empleadosSeleccionados: []       // ← NUEVO
   });
 
   // Verificar permisos según el flujo
@@ -82,413 +97,415 @@ const CapacitacionModule = () => {
   const puedeAprobarDirector = esDirector || esRRHH || esAdmin;
   const puedeAprobarRRHH = esRRHH || esAdmin;
 
+ 
+
   // Datos iniciales con el nuevo flujo
-  useEffect(() => {
-    cargarDatos();
-  }, []);
+useEffect(() => {
+  // Cargar datos principales (solicitudes, cursos, etc.)
+  cargarDatos();
 
-  const cargarDatos = () => {
-    // Solicitudes con estados de flujo jerárquico
-    const solicitudesEjemplo = [
-      {
-        id: 1,
-        titulo: 'Certificación en React Avanzado',
-        descripcion: 'Curso avanzado de React con hooks, context y mejores prácticas',
-        justificacion: 'Necesario para proyecto de modernización del sistema',
-        solicitante: user.name,
-        solicitanteId: user.id || 1,
-        solicitanteRole: user.role,
-        fechaSolicitud: '2024-07-15',
-        estado: esColaborador ? 'pendiente_gerente' : 'pendiente_rrhh',
-        proveedor: 'Platzi',
-        modalidad: 'virtual',
-        fechaInicio: '2024-08-01',
-        fechaFin: '2024-08-30',
-        costo: 299,
-        categoria: 'tecnica',
-        prioridad: 'alta',
-        horas: 40,
-        flujoAprobacion: {
-          gerente: esColaborador ? null : { aprobado: true, fecha: '2024-07-16', nombre: 'Gerente Ejemplo' },
-          director: null,
-          rrhh: null
-        },
-        comentarios: []
-      },
-      {
-        id: 2,
-        titulo: 'Liderazgo y Gestión de Equipos',
-        descripcion: 'Desarrollo de habilidades de liderazgo y gestión efectiva',
-        justificacion: 'Promoción reciente a líder de equipo',
-        solicitante: 'María García',
-        solicitanteId: 2,
-        solicitanteRole: 'colaborador',
-        fechaSolicitud: '2024-07-10',
-        estado: 'aprobado_completo',
-        proveedor: 'INFOTEP',
-        modalidad: 'presencial',
-        fechaInicio: '2024-07-25',
-        fechaFin: '2024-07-27',
-        costo: 450,
-        categoria: 'liderazgo',
-        prioridad: 'media',
-        horas: 24,
-        flujoAprobacion: {
-          gerente: { aprobado: true, fecha: '2024-07-11', nombre: 'Juan Pérez' },
-          director: { aprobado: true, fecha: '2024-07-12', nombre: 'Ana Director' },
-          rrhh: { aprobado: true, fecha: '2024-07-13', nombre: 'RRHH Manager' }
-        },
-        comentarios: [
-          { fecha: '2024-07-11', autor: 'Juan Pérez', mensaje: 'Aprobado por desarrollo del equipo' },
-          { fecha: '2024-07-12', autor: 'Ana Director', mensaje: 'Excelente para crecimiento profesional' },
-          { fecha: '2024-07-13', autor: 'RRHH Manager', mensaje: 'Presupuesto aprobado. Proceder con inscripción' }
-        ]
+ // Cargar empleados para cursos cerrados
+const cargarEmpleados = async () => {
+  try {
+    const data = await capacitacionService.getEmpleados();
+    
+    // Normalizar datos de empleados para manejar valores null
+    const empleadosNormalizados = data.map(emp => ({
+      ...emp,
+      nombre: emp.nombre || 'Sin nombre',
+      apellido: emp.apellido || 'Sin apellido',
+      cargo: emp.cargo || 'Sin cargo',
+      departamento: emp.departamento || 'Sin departamento',
+      nombreCompleto: `${emp.nombre || 'Sin nombre'} ${emp.apellido || 'Sin apellido'}`
+    }));
+    
+    setEmpleadosDisponibles(empleadosNormalizados);
+    console.log('Empleados cargados:', empleadosNormalizados);
+  } catch (error) {
+    console.error('Error al cargar empleados:', error.response || error.message || error);
+  }
+};
+
+// Cargar mis capacitaciones (para colaboradores y gerentes)
+const cargarMisCapacitaciones = async () => {
+  try {
+    const data = await capacitacionService.getMisCapacitaciones();
+    setMisCapacitaciones(data);
+    console.log('Mis capacitaciones cargadas:', data);
+  } catch (error) {
+    console.error('Error al cargar mis capacitaciones:', error);
+  }
+};
+
+// Ver participantes de un curso (solo RRHH)
+const verParticipantes = async (cursoId) => {
+  setLoadingParticipantes(true);
+  try {
+    const data = await capacitacionService.getParticipantes(cursoId);
+    setParticipantesModal({ open: true, cursoId, participantes: data });
+  } catch (error) {
+    console.error('Error al cargar participantes:', error);
+    showErrorMessage('Error al cargar participantes');
+  } finally {
+    setLoadingParticipantes(false);
+  }
+};
+
+const cerrarModalParticipantes = () => {
+  setParticipantesModal({ open: false, cursoId: null, participantes: [] });
+};
+
+  cargarEmpleados();
+  // Cargar mis capacitaciones si NO es RRHH
+  if (!esRRHH) {
+  cargarMisCapacitaciones();
+}
+
+}, []);
+
+// Cargar mis capacitaciones (para colaboradores y gerentes)
+const cargarMisCapacitaciones = async () => {
+  try {
+    const data = await capacitacionService.getMisCapacitaciones();
+    setMisCapacitaciones(data);
+    console.log('Mis capacitaciones cargadas:', data);
+  } catch (error) {
+    console.error('Error al cargar mis capacitaciones:', error);
+  }
+};
+
+// Ver participantes de un curso (solo RRHH)
+const verParticipantes = async (cursoId) => {
+  setLoadingParticipantes(true);
+  try {
+    const data = await capacitacionService.getParticipantes(cursoId);
+    setParticipantesModal({ open: true, cursoId, participantes: data });
+  } catch (error) {
+    console.error('Error al cargar participantes:', error);
+    showErrorMessage('Error al cargar participantes');
+  } finally {
+    setLoadingParticipantes(false);
+  }
+};
+
+const cerrarModalParticipantes = () => {
+  setParticipantesModal({ open: false, cursoId: null, participantes: [] });
+};
+
+
+const cargarDatos = async () => {
+  setLoading(true);
+  try {
+    // 1. Cargar estadísticas
+    const statsRes = await capacitacionService.getEstadisticas();
+      if (statsRes.success) {
+        setEstadisticasReales(statsRes.data);
       }
-    ];
-
-    setSolicitudes(solicitudesEjemplo);
-
-    // Cursos disponibles creados por RRHH
-    setCursosDisponibles([
-      {
-        id: 1,
-        titulo: 'Introducción a Python',
-        descripcion: 'Curso básico de programación en Python para todos los empleados',
-        proveedor: 'Coursera',
-        modalidad: 'virtual',
-        duracion: 30,
-        categoria: 'tecnica',
-        costo: 0, // Gratis para empleados
-        rating: 4.8,
-        disponible: true,
-        fechaInicio: '2024-08-15',
-        cupos: 25,
-        inscritos: 12,
-        creadoPor: 'RRHH',
-        fechaCreacion: '2024-07-01'
-      },
-      {
-        id: 2,
-        titulo: 'Comunicación Efectiva',
-        descripcion: 'Mejora tus habilidades de comunicación interpersonal',
-        proveedor: 'Dale Carnegie',
-        modalidad: 'presencial',
-        duracion: 16,
-        categoria: 'soft_skills',
-        costo: 0,
-        rating: 4.9,
-        disponible: true,
-        fechaInicio: '2024-09-01',
-        cupos: 15,
-        inscritos: 8,
-        creadoPor: 'RRHH',
-        fechaCreacion: '2024-06-15'
+    
+    // 2. Cargar mis solicitudes (solo si no soy RRHH)
+    if (puedeCrearSolicitudes) {
+      const solRes = await capacitacionService.getMisSolicitudes();
+      if (solRes.success) {
+        setSolicitudes(solRes.data);
       }
-    ]);
-
-    // Mis cursos inscritos
-    setMisCursos([
-      {
-        id: 1,
-        titulo: 'Excel Avanzado',
-        progreso: 85,
-        fechaInicio: '2024-06-01',
-        fechaLimite: '2024-07-30',
-        estado: 'en_progreso',
-        certificado: false,
-        calificacion: null,
-        tipo: 'inscripcion' // inscripcion o solicitud
-      },
-      {
-        id: 2,
-        titulo: 'Gestión de Proyectos',
-        progreso: 100,
-        fechaInicio: '2024-05-01',
-        fechaLimite: '2024-06-15',
-        estado: 'completado',
-        certificado: true,
-        calificacion: 95,
-        tipo: 'solicitud'
-      }
-    ]);
-
-    setCertificados([
-      {
-        id: 1,
-        titulo: 'Gestión de Proyectos',
-        fechaObtencion: '2024-06-20',
-        proveedor: 'PMI',
-        codigo: 'PMI-2024-001234',
-        vigencia: '2027-06-20',
-        descargable: true
-      }
-    ]);
-
-    // Cargar solicitudes por aprobar según el rol
-    cargarSolicitudesPorAprobar();
-  };
-
-  const cargarSolicitudesPorAprobar = () => {
-    // Simular solicitudes que necesitan aprobación según el rol
-    let solicitudesPendientes = [];
-
-    if (esGerente) {
-      // Gerentes ven solicitudes de sus colaboradores
-      solicitudesPendientes = [
-        {
-          id: 3,
-          titulo: 'Curso de JavaScript ES6+',
-          solicitante: 'Pedro Martínez',
-          solicitanteRole: 'colaborador',
-          fechaSolicitud: '2024-07-18',
-          estado: 'pendiente_gerente',
-          costo: 199,
-          justificacion: 'Necesario para proyecto web nuevo',
-          prioridad: 'alta'
-        }
-      ];
     }
 
-    if (esDirector) {
-      // Directores ven solicitudes aprobadas por gerentes
-      solicitudesPendientes = [
-        {
-          id: 4,
-          titulo: 'Certificación PMP',
-          solicitante: 'Laura González',
-          solicitanteRole: 'gerente',
-          fechaSolicitud: '2024-07-17',
-          estado: 'pendiente_director',
-          costo: 850,
-          justificacion: 'Para dirigir proyectos complejos',
-          prioridad: 'media',
-          aprobadoPorGerente: 'Carlos Supervisor'
-        }
-      ];
+    // 3. Cargar cursos disponibles
+    const cursosRes = await capacitacionService.getCursosDisponibles();
+    if (cursosRes.success) {
+      setCursosDisponibles(cursosRes.data);
     }
 
+    // 4. Cargar mis cursos inscritos
+        const misCursosRes = await capacitacionService.getMisCursos();
+        if (misCursosRes.success) {
+          setMisCursos(misCursosRes.data);
+        }
+
+       
+    // 5. Cargar mis certificados
+    const certRes = await capacitacionService.getMisCertificados();
+    if (certRes.success) {
+      setCertificados(certRes.data);
+    }
+
+    // 7. Cargar histórico si soy gerente o RRHH
+    if (esGerente || esDirector || esRRHH) {
+      const todasRes = await capacitacionService.getTodasSolicitudes();
+      if (todasRes.success) {
+        setTodasSolicitudes(todasRes.data);
+      }
+    }
+
+    // 8. Cargar miembros del equipo si soy gerente
+    if (esGerente || esDirector) {
+      const equipoRes = await capacitacionService.getProgresoEquipo();
+      if (equipoRes.success) {
+        setMiembroEquipo(equipoRes.data);
+      }
+    }
+
+    // 6. Cargar solicitudes por aprobar
+    if (puedeAprobarGerente || puedeAprobarDirector || puedeAprobarRRHH) {
+      const pendRes = await capacitacionService.getSolicitudesPendientes();
+      if (pendRes.success) {
+        setSolicitudesPorAprobar(pendRes.data);
+      }
+    }
+    // 9. Cargar empleados si es RRHH (para asignar a cursos)
     if (esRRHH) {
-      // RRHH ve solicitudes aprobadas por directores
-      solicitudesPendientes = [
-        {
-          id: 5,
-          titulo: 'MBA Ejecutivo',
-          solicitante: 'Roberto Director',
-          solicitanteRole: 'director',
-          fechaSolicitud: '2024-07-16',
-          estado: 'pendiente_rrhh',
-          costo: 2500,
-          justificacion: 'Desarrollo estratégico',
-          prioridad: 'alta',
-          aprobadoPorGerente: 'N/A',
-          aprobadoPorDirector: 'Ana Directora General'
+      try {
+        // Aquí debes tener un endpoint para obtener empleados
+        // Por ahora lo simulo, pero deberías llamar a tu API
+        const empleadosRes = await fetch('/api/empleados', {
+          headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+        }).then(r => r.json());
+        
+        if (empleadosRes.success) {
+          setEmpleadosDisponibles(empleadosRes.data);
         }
-      ];
+      } catch (error) {
+        console.error('Error cargando empleados:', error);
+      }
     }
 
-    setSolicitudesPorAprobar(solicitudesPendientes);
-  };
+  } catch (error) {
+    console.error('Error cargando datos:', error);
+    showErrorMessage('Error al cargar los datos');
+  } finally {
+    setLoading(false);
+  }
+};
+
+  
 
   // Crear nueva solicitud con flujo correcto
-  const crearSolicitud = () => {
-    if (!nuevaSolicitud.titulo.trim()) {
-      showErrorMessage('El título es requerido');
-      return;
+  // Crear nueva solicitud con flujo correcto
+const crearSolicitud = async () => {
+  if (!nuevaSolicitud.titulo.trim() || !nuevaSolicitud.justificacion.trim()) {
+    showErrorMessage('Título y justificación son requeridos');
+    return;
+  }
+
+  setLoading(true);
+  try {
+    const response = await capacitacionService.crearSolicitud(nuevaSolicitud);
+
+    if (response.success) {
+      showSuccessMessage(response.message);
+      
+      setNuevaSolicitud({
+        titulo: '',
+        descripcion: '',
+        justificacion: '',
+        proveedor: '',
+        modalidad: 'presencial',
+        fechaInicio: '',
+        fechaFin: '',
+        costo: 0,
+        categoria: 'tecnica',
+        prioridad: 'media',
+        horas: 0
+      });
+
+      await cargarDatos();
+      setActiveTab('solicitudes');
     }
-
-    // Determinar estado inicial según el rol
-    let estadoInicial = '';
-    if (esColaborador) {
-      estadoInicial = 'pendiente_gerente';
-    } else if (esGerente || esDirector) {
-      estadoInicial = 'pendiente_rrhh';
-    }
-
-    const solicitud = {
-      ...nuevaSolicitud,
-      id: Date.now(),
-      solicitante: user.name,
-      solicitanteId: user.id || Date.now(),
-      solicitanteRole: user.role,
-      fechaSolicitud: new Date().toISOString().split('T')[0],
-      estado: estadoInicial,
-      flujoAprobacion: {
-        gerente: esColaborador ? null : { aprobado: true, fecha: new Date().toISOString().split('T')[0], nombre: user.name },
-        director: null,
-        rrhh: null
-      },
-      comentarios: []
-    };
-
-    setSolicitudes(prev => [solicitud, ...prev]);
-    
-    // Limpiar formulario
-    setNuevaSolicitud({
-      titulo: '',
-      descripcion: '',
-      justificacion: '',
-      proveedor: '',
-      modalidad: 'presencial',
-      fechaInicio: '',
-      fechaFin: '',
-      costo: 0,
-      categoria: 'tecnica',
-      prioridad: 'media',
-      horas: 0
-    });
-
-    const mensaje = esColaborador 
-      ? 'Solicitud enviada a tu gerente para aprobación'
-      : 'Solicitud enviada a RRHH para aprobación';
-    
-    showSuccessMessage(mensaje);
-    setActiveTab('solicitudes');
-  };
+  } catch (error) {
+    showErrorMessage(error.response?.data?.message || 'Error al crear la solicitud');
+  } finally {
+    setLoading(false);
+  }
+};
 
   // Crear nuevo curso (solo RRHH)
-  const crearCurso = () => {
-    if (!nuevoCurso.titulo.trim()) {
-      showErrorMessage('El título del curso es requerido');
-      return;
-    }
+    const crearCurso = async () => {
+      if (!nuevoCurso.titulo.trim() || !nuevoCurso.duracion) {
+        showErrorMessage('Título y duración son requeridos');
+        return;
+      }
 
-    const curso = {
-      ...nuevoCurso,
-      id: Date.now(),
-      rating: 0,
-      disponible: true,
-      inscritos: 0,
-      creadoPor: user.name,
-      fechaCreacion: new Date().toISOString().split('T')[0]
+      // Validar que si es cerrado, haya empleados seleccionados
+      if (nuevoCurso.tipoAcceso === 'cerrado' && nuevoCurso.empleadosSeleccionados.length === 0) {
+        showErrorMessage('Debes seleccionar al menos un empleado para cursos cerrados');
+        return;
+      }
+
+      setLoading(true);
+      try {
+        const response = await capacitacionService.crearCurso({
+          ...nuevoCurso,
+          // Enviar los campos nuevos
+          tipoAcceso: nuevoCurso.tipoAcceso,
+          empleadosSeleccionados: nuevoCurso.tipoAcceso === 'cerrado' ? nuevoCurso.empleadosSeleccionados : []
+        });
+
+        if (response.success) {
+          showSuccessMessage(response.message);
+          
+          // Resetear formulario
+          setNuevoCurso({
+            titulo: '',
+            descripcion: '',
+            proveedor: '',
+            modalidad: 'presencial',
+            duracion: 0,
+            categoria: 'tecnica',
+            costo: 0,
+            fechaInicio: '',
+            cupos: 0,
+            tipoAcceso: 'abierto',
+            empleadosSeleccionados: []
+          });
+
+          await cargarDatos();
+          setActiveTab('cursos'); // Ir a ver los cursos
+        }
+      } catch (error) {
+        showErrorMessage(error.response?.data?.message || 'Error al crear el curso');
+      } finally {
+        setLoading(false);
+      }
     };
 
-    setCursosDisponibles(prev => [curso, ...prev]);
+    // Crear curso desde solicitud aprobada
+    const crearCursoDesdeSolicitud = (solicitud) => {
+      setNuevoCurso({
+        titulo: solicitud.Titulo,
+        descripcion: solicitud.Descripcion || '',
+        proveedor: solicitud.Proveedor || '',
+        modalidad: solicitud.Modalidad || 'presencial',
+        duracion: solicitud.Horas || 0,
+        categoria: solicitud.Categoria || 'tecnica',
+        costo: solicitud.Costo || 0,
+        fechaInicio: solicitud.FechaInicio ? solicitud.FechaInicio.split('T')[0] : '',
+        cupos: 20,
+        solicitudId: solicitud.SolicitudID,
+        tipoAcceso: 'abierto',           // ← AGREGAR
+        empleadosSeleccionados:[]      // ← AGREGAR
+      });
+      
+      setActiveTab('crear-curso');
+      showSuccessMessage('Formulario pre-llenado con datos de la solicitud');
+    };
     
-    setNuevoCurso({
-      titulo: '',
-      descripcion: '',
-      proveedor: '',
-      modalidad: 'presencial',
-      duracion: 0,
-      categoria: 'tecnica',
-      costo: 0,
-      fechaInicio: '',
-      cupos: 0
-    });
-
-    showSuccessMessage('Curso creado y disponible para inscripciones');
-  };
 
   // Aprobar/Rechazar solicitud según el rol
-  const procesarSolicitud = (id, accion, comentario = '') => {
-    const solicitud = solicitudesPorAprobar.find(s => s.id === id);
-    if (!solicitud) return;
+ // Aprobar/Rechazar solicitud según el rol
+const procesarSolicitud = async (solicitudId, accion, comentario = '') => {
+  if (!solicitudId) {
+    showErrorMessage('ID de solicitud inválido');
+    return;
+  }
 
-    let nuevoEstado = '';
-    let mensajeExito = '';
-
+  setLoading(true);
+  
+  try {
+    let resultado;
+    
     if (accion === 'aprobar') {
-      if (esGerente && solicitud.estado === 'pendiente_gerente') {
-        nuevoEstado = 'pendiente_director';
-        mensajeExito = 'Solicitud aprobada y enviada al Director';
-      } else if (esDirector && solicitud.estado === 'pendiente_director') {
-        nuevoEstado = 'pendiente_rrhh';
-        mensajeExito = 'Solicitud aprobada y enviada a RRHH';
-      } else if (esRRHH && solicitud.estado === 'pendiente_rrhh') {
-        nuevoEstado = 'aprobado_completo';
-        mensajeExito = 'Solicitud aprobada completamente. Proceso de capacitación iniciado';
-      }
-    } else {
-      nuevoEstado = 'rechazado';
-      mensajeExito = 'Solicitud rechazada';
+      resultado = await capacitacionService.aprobarSolicitud(solicitudId, comentario);
+    } else if (accion === 'rechazar') {
+      resultado = await capacitacionService.rechazarSolicitud(solicitudId, comentario);
     }
 
-    // Actualizar en la lista principal
-    setSolicitudes(prev => prev.map(s => 
-      s.id === id 
-        ? {
-            ...s,
-            estado: nuevoEstado,
-            comentarios: [
-              ...s.comentarios,
-              {
-                fecha: new Date().toISOString().split('T')[0],
-                autor: user.name,
-                mensaje: comentario || `Solicitud ${accion === 'aprobar' ? 'aprobada' : 'rechazada'} por ${user.role}`
-              }
-            ]
-          }
-        : s
-    ));
+    if (resultado && resultado.success) {
+      const mensaje = resultado.message || `Solicitud ${accion === 'aprobar' ? 'aprobada' : 'rechazada'} exitosamente`;
+      if (typeof showSuccessMessage === 'function') {
+        showSuccessMessage(mensaje);
+      }
+      
+      // Esperar antes de recargar
+     // Recargar datos inmediatamente
+      await cargarDatos();
+      setLoading(false);
+      return; // Salir aquí para evitar el finally
 
-    // Remover de solicitudes por aprobar
-    setSolicitudesPorAprobar(prev => prev.filter(s => s.id !== id));
+    } else {
+      const mensajeError = resultado?.message || 'Error al procesar la solicitud';
+      if (typeof showErrorMessage === 'function') {
+  showErrorMessage(mensajeError);
+}
+    }
+  } catch (error) {
+    console.error(`Error al ${accion} solicitud:`, error);
     
-    showSuccessMessage(mensajeExito);
-  };
+    let mensajeError = `Error al ${accion} la solicitud`;
+    
+    if (error.response?.data?.message) {
+      mensajeError = error.response.data.message;
+    } else if (error.message) {
+      mensajeError = error.message;
+    }
+    
+    if (typeof showErrorMessage === 'function') {
+  showErrorMessage(mensajeError);
+}
+  }
+  
+  setLoading(false);
+};
 
   // Inscribirse a curso disponible
-  const inscribirseCurso = (cursoId) => {
-    const curso = cursosDisponibles.find(c => c.id === cursoId);
-    if (!curso) return;
+  // Inscribirse a curso disponible
+const inscribirseCurso = async (cursoId) => {
+  console.log('🎓 Intentando inscribirse al curso:', cursoId);
+  
+  if (!cursoId) {
+    showErrorMessage('ID de curso inválido');
+    return;
+  }
+  
+  setLoading(true);
+  try {
+    const response = await capacitacionService.inscribirseCurso(cursoId);
 
-    if (curso.inscritos >= curso.cupos) {
-      showErrorMessage('No hay cupos disponibles');
-      return;
+    if (response.success) {
+      showSuccessMessage(response.message || 'Inscripción exitosa');
+      await cargarDatos();
+    } else {
+      showErrorMessage(response.message || 'Error al inscribirse');
     }
-
-    const nuevoCurso = {
-      id: Date.now(),
-      titulo: curso.titulo,
-      progreso: 0,
-      fechaInicio: new Date().toISOString().split('T')[0],
-      fechaLimite: curso.fechaInicio,
-      estado: 'inscrito',
-      certificado: false,
-      calificacion: null,
-      tipo: 'inscripcion'
-    };
-
-    setMisCursos(prev => [nuevoCurso, ...prev]);
-    
-    // Actualizar contador de inscritos
-    setCursosDisponibles(prev => prev.map(c => 
-      c.id === cursoId ? { ...c, inscritos: c.inscritos + 1 } : c
-    ));
-
-    showSuccessMessage(`Te has inscrito exitosamente a: ${curso.titulo}`);
-  };
+  } catch (error) {
+    console.error('❌ Error al inscribirse:', error);
+    showErrorMessage(error.response?.data?.message || 'Error al inscribirse al curso');
+  } finally {
+    setLoading(false);
+  }
+};
 
   // Obtener estadísticas según el rol
   const getEstadisticas = () => {
-    if (esRRHH) {
-      // RRHH ve estadísticas globales
-      return {
-        totalSolicitudes: 25,
-        pendientesAprobacion: 8,
-        cursosCreados: cursosDisponibles.length,
-        empleadosCapacitados: 156,
-        presupuestoUtilizado: 12500
-      };
-    } else if (esGerente || esDirector) {
-      // Gerentes/Directores ven estadísticas de su área
-      return {
-        solicitudesEquipo: 12,
-        pendientesAprobacion: solicitudesPorAprobar.length,
-        cursosCompletados: 8,
-        horasCapacitacion: 240
-      };
-    } else {
-      // Colaboradores ven sus estadísticas personales
-      const misSolicitudes = solicitudes.filter(s => s.solicitante === user.name);
-      return {
-        totalSolicitudes: misSolicitudes.length,
-        solicitudesPendientes: misSolicitudes.filter(s => s.estado.includes('pendiente')).length,
-        cursosCompletados: misCursos.filter(c => c.estado === 'completado').length,
-        horasCapacitacion: misCursos.reduce((total, curso) => total + (curso.progreso === 100 ? 40 : 0), 0)
-      };
-    }
-  };
+  // Si tenemos datos reales de la API, usarlos
+  if (estadisticasReales) {
+    return estadisticasReales;
+  }
+  
+  // Mientras carga, mostrar valores en 0
+  if (esRRHH) {
+    return {
+      TotalSolicitudes: 0,
+      PendientesAprobacion: 0,
+      CursosCreados: cursosDisponibles.length,
+      EmpleadosCapacitados: 0,
+      PresupuestoUtilizado: 0
+    };
+  } else if (esGerente || esDirector) {
+    return {
+      SolicitudesEquipo: 0,
+      PendientesAprobacion: solicitudesPorAprobar.length,
+      CursosCompletados: 0,
+      HorasCapacitacion: 0
+    };
+  } else {
+    return {
+      TotalSolicitudes: solicitudes.length,
+      SolicitudesPendientes: solicitudes.filter(s => s.Estado && s.Estado.includes('pendiente')).length,
+      CursosCompletados: misCursos.filter(c => c.EstadoCurso === 'completado').length,
+      HorasCapacitacion: misCursos.reduce((total, curso) => total + (curso.Progreso === 100 ? (curso.Duracion || 0) : 0), 0)
+    };
+  }
+};
 
   const estadisticas = getEstadisticas();
 
@@ -586,13 +603,13 @@ const CapacitacionModule = () => {
               fontSize: '0.75rem',
               fontWeight: '500',
               background: paso.estado?.aprobado ? '#f0fdf4' : 
-                         solicitud.estado.includes(paso.key) ? '#fff7ed' : '#f3f4f6',
+                         solicitud.Estado.includes(paso.key) ? '#fff7ed' : '#f3f4f6',
               color: paso.estado?.aprobado ? '#166534' : 
-                     solicitud.estado.includes(paso.key) ? '#ea580c' : '#6b7280'
+                     solicitud.Estado.includes(paso.key) ? '#ea580c' : '#6b7280'
             }}>
               {paso.estado?.aprobado ? (
                 <CheckCircle style={{ width: '1rem', height: '1rem' }} />
-              ) : solicitud.estado.includes(paso.key) ? (
+              ) : solicitud.Estado.includes(paso.key) ? (
                 <Clock style={{ width: '1rem', height: '1rem' }} />
               ) : (
                 <AlertCircle style={{ width: '1rem', height: '1rem' }} />
@@ -629,27 +646,52 @@ const CapacitacionModule = () => {
         }}>
           {esRRHH ? (
             <>
-              <StatCard title="Total Solicitudes" value={estadisticas.totalSolicitudes} icon={FileText} color="blue" />
-              <StatCard title="Pendientes Aprobación" value={estadisticas.pendientesAprobacion} icon={Clock} color="orange" />
-              <StatCard title="Cursos Creados" value={estadisticas.cursosCreados} icon={BookOpen} color="green" />
-              <StatCard title="Empleados Capacitados" value={estadisticas.empleadosCapacitados} icon={Users} color="purple" />
-              <StatCard title="Presupuesto Utilizado" value={`$${estadisticas.presupuestoUtilizado.toLocaleString()}`} icon={DollarSign} color="green" />
+              <StatCard 
+                title="Total Solicitudes" 
+                value={estadisticas.TotalSolicitudes || 0} 
+                icon={FileText} 
+                color="blue" 
+              />
+              <StatCard 
+                title="Pendientes Aprobación" 
+                value={estadisticas.PendientesAprobacion || 0} 
+                icon={Clock} 
+                color="orange" 
+              />
+              <StatCard 
+                title="Cursos Creados" 
+                value={estadisticas.CursosCreados || 0} 
+                icon={BookOpen} 
+                color="green" 
+              />
+              <StatCard 
+                title="Empleados Capacitados" 
+                value={estadisticas.EmpleadosCapacitados || 0} 
+                icon={Users} 
+                color="purple" 
+              />
+              <StatCard 
+                title="Presupuesto Utilizado" 
+                value={`$${(estadisticas.PresupuestoUtilizado || 0).toLocaleString()}`} 
+                icon={DollarSign} 
+                color="green" 
+              />
             </>
           ) : esGerente || esDirector ? (
-            <>
-              <StatCard title="Solicitudes del Equipo" value={estadisticas.solicitudesEquipo} icon={Users} color="blue" />
-              <StatCard title="Pendientes Aprobación" value={estadisticas.pendientesAprobacion} icon={Clock} color="orange" />
-              <StatCard title="Cursos Completados" value={estadisticas.cursosCompletados} icon={Award} color="green" />
-              <StatCard title="Horas de Capacitación" value={`${estadisticas.horasCapacitacion}h`} icon={TrendingUp} color="purple" />
-            </>
+              <>
+                <StatCard title="Solicitudes del Equipo" value={estadisticas.SolicitudesEquipo || 0} icon={Users} color="blue" />
+                <StatCard title="Pendientes Aprobación" value={estadisticas.PendientesAprobacion || 0} icon={Clock} color="orange" />
+                <StatCard title="Cursos Completados" value={estadisticas.CursosCompletados || 0} icon={Award} color="green" />
+                <StatCard title="Horas de Capacitación" value={`${estadisticas.HorasCapacitacion || 0}h`} icon={TrendingUp} color="purple" />
+              </>
           ) : (
-            <>
-              <StatCard title="Mis Solicitudes" value={estadisticas.totalSolicitudes} icon={FileText} color="blue" />
-              <StatCard title="Pendientes" value={estadisticas.solicitudesPendientes} icon={Clock} color="orange" />
-              <StatCard title="Cursos Completados" value={estadisticas.cursosCompletados} icon={Award} color="green" />
-              <StatCard title="Horas Capacitación" value={`${estadisticas.horasCapacitacion}h`} icon={TrendingUp} color="purple" />
-            </>
-          )}
+              <>
+                <StatCard title="Mis Solicitudes" value={estadisticas.TotalSolicitudes || 0} icon={FileText} color="blue" />
+                <StatCard title="Pendientes" value={estadisticas.SolicitudesPendientes || 0} icon={Clock} color="orange" />
+                <StatCard title="Cursos Completados" value={estadisticas.CursosCompletados || 0} icon={Award} color="green" />
+                <StatCard title="Horas Capacitación" value={`${estadisticas.HorasCapacitacion || 0}h`} icon={TrendingUp} color="purple" />
+              </>
+            )}
         </div>
 
         {/* Tabs */}
@@ -822,10 +864,56 @@ const CapacitacionModule = () => {
                           <UserCheck style={{ width: '1rem', height: '1rem' }} />
                           Revisar Aprobaciones ({solicitudesPorAprobar.length})
                         </button>
+                        
+
                       )}
                     </div>
                   </div>
+                        {(esGerente || esDirector || esRRHH) && (
+                      <button
+                        onClick={() => setActiveTab('historico')}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.5rem',
+                          padding: '0.75rem 1.5rem',
+                          background: activeTab === 'historico' ? '#3b82f6' : 'transparent',
+                          color: activeTab === 'historico' ? 'white' : '#6b7280',
+                          border: 'none',
+                          borderBottom: activeTab === 'historico' ? '2px solid #3b82f6' : '2px solid transparent',
+                          cursor: 'pointer',
+                          fontSize: '0.875rem',
+                          fontWeight: '500',
+                          transition: 'all 0.2s'
+                        }}
+                      >
+                        <FileText style={{ width: '1.25rem', height: '1.25rem' }} />
+                        Histórico
+                      </button>
+                    )}
 
+                    {esGerente && (
+                      <button
+                        onClick={() => setActiveTab('equipo')}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '0.5rem',
+                          padding: '0.75rem 1.5rem',
+                          background: activeTab === 'equipo' ? '#3b82f6' : 'transparent',
+                          color: activeTab === 'equipo' ? 'white' : '#6b7280',
+                          border: 'none',
+                          borderBottom: activeTab === 'equipo' ? '2px solid #3b82f6' : '2px solid transparent',
+                          cursor: 'pointer',
+                          fontSize: '0.875rem',
+                          fontWeight: '500',
+                          transition: 'all 0.2s'
+                        }}
+                      >
+                        <Users style={{ width: '1.25rem', height: '1.25rem' }} />
+                        Mi Equipo
+                      </button>
+                    )}
                   <div style={{
                     background: '#fef3c7',
                     border: '1px solid #fcd34d',
@@ -851,7 +939,7 @@ const CapacitacionModule = () => {
                       {esRRHH && (
                         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                           <span>Presupuesto usado:</span>
-                          <strong>${estadisticas.presupuestoUtilizado.toLocaleString()}</strong>
+                          <strong>${(estadisticas.PresupuestoUtilizado || 0).toLocaleString()}</strong>
                         </div>
                       )}
                     </div>
@@ -859,6 +947,7 @@ const CapacitacionModule = () => {
                 </div>
               </div>
             )}
+
 
             {/* Solicitudes Tab */}
             {activeTab === 'solicitudes' && puedeCrearSolicitudes && (
@@ -889,8 +978,8 @@ const CapacitacionModule = () => {
                 </div>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                  {solicitudes.filter(s => s.solicitante === user.name).map(solicitud => (
-                    <div key={solicitud.id} style={{
+                  {solicitudes.filter(s => s.SolicitanteID === user.empleadoId).map(solicitud => (
+                    <div key={solicitud.SolicitudID} style={{
                       background: 'white',
                       border: '1px solid #e5e7eb',
                       borderRadius: '0.5rem',
@@ -899,15 +988,15 @@ const CapacitacionModule = () => {
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '1rem' }}>
                         <div style={{ flex: 1 }}>
                           <h4 style={{ fontSize: '1.125rem', fontWeight: '600', color: '#111827', margin: 0, marginBottom: '0.5rem' }}>
-                            {solicitud.titulo}
+                            {solicitud.Titulo}
                           </h4>
                           <p style={{ fontSize: '0.875rem', color: '#6b7280', margin: 0, marginBottom: '0.5rem' }}>
                             {solicitud.descripcion}
                           </p>
                           <div style={{ display: 'flex', gap: '1rem', fontSize: '0.75rem', color: '#374151', marginBottom: '1rem' }}>
-                            <span><strong>Proveedor:</strong> {solicitud.proveedor}</span>
+                            <span><strong>Proveedor:</strong> {solicitud.Proveedor}</span>
                             <span><strong>Modalidad:</strong> {solicitud.modalidad}</span>
-                            <span><strong>Costo:</strong> ${solicitud.costo}</span>
+                            <span><strong>Costo:</strong> ${solicitud.Costo}</span>
                             <span><strong>Prioridad:</strong> {solicitud.prioridad}</span>
                           </div>
                           
@@ -921,26 +1010,34 @@ const CapacitacionModule = () => {
                         </div>
                         
                         <span style={{
-                          padding: '0.5rem 1rem',
-                          borderRadius: '9999px',
-                          fontSize: '0.875rem',
-                          fontWeight: '500',
-                          background: solicitud.estado === 'aprobado_completo' ? '#f0fdf4' : 
-                                     solicitud.estado === 'rechazado' ? '#fef2f2' : '#fff7ed',
-                          color: solicitud.estado === 'aprobado_completo' ? '#166534' : 
-                                 solicitud.estado === 'rechazado' ? '#dc2626' : '#ea580c',
-                          border: solicitud.estado === 'aprobado_completo' ? '1px solid #bbf7d0' : 
-                                  solicitud.estado === 'rechazado' ? '1px solid #fecaca' : '1px solid #fed7aa'
-                        }}>
-                          {solicitud.estado === 'aprobado_completo' ? '✅ Aprobado Completo' : 
-                           solicitud.estado === 'rechazado' ? '❌ Rechazado' : 
-                           solicitud.estado === 'pendiente_gerente' ? '⏳ Pendiente Gerente' :
-                           solicitud.estado === 'pendiente_director' ? '⏳ Pendiente Director' :
-                           '⏳ Pendiente RRHH'}
-                        </span>
+                            padding: '0.5rem 1rem',
+                            borderRadius: '9999px',
+                            fontSize: '0.875rem',
+                            fontWeight: '500',
+                            background: solicitud.Estado === 'aprobado_completo' ? '#f0fdf4' :
+                                      solicitud.Estado === 'rechazado' ? '#fef2f2' :
+                                      solicitud.Estado === 'pendiente_rrhh' ? '#fff7ed' :
+                                      solicitud.Estado === 'pendiente_director' ? '#eff6ff' :
+                                      solicitud.Estado === 'pendiente_gerente' ? '#fef3c7' : '#f3f4f6',
+                            color: solicitud.Estado === 'aprobado_completo' ? '#166534' :
+                                  solicitud.Estado === 'rechazado' ? '#991b1b' :
+                                  solicitud.Estado === 'pendiente_rrhh' ? '#ea580c' :
+                                  solicitud.Estado === 'pendiente_director' ? '#1e40af' :
+                                  solicitud.Estado === 'pendiente_gerente' ? '#92400e' : '#374151',
+                            border: solicitud.Estado === 'aprobado_completo' ? '1px solid #bbf7d0' :
+                                    solicitud.Estado === 'rechazado' ? '1px solid #fecaca' :
+                                    '1px solid transparent'
+                          }}>
+                            {solicitud.Estado === 'aprobado_completo' && '✅ Aprobado Completo'}
+                            {solicitud.Estado === 'rechazado' && '❌ Rechazado'}
+                            {solicitud.Estado === 'pendiente_rrhh' && '⏳ Pendiente RRHH'}
+                            {solicitud.Estado === 'pendiente_director' && '⏳ Pendiente Director'}
+                            {solicitud.Estado === 'pendiente_gerente' && '⏳ Pendiente Gerente'}
+                            {!['aprobado_completo', 'rechazado', 'pendiente_rrhh', 'pendiente_director', 'pendiente_gerente'].includes(solicitud.Estado) && solicitud.Estado}
+                          </span>
                       </div>
 
-                      {solicitud.comentarios.length > 0 && (
+                      {Array.isArray(solicitud.comentarios) && solicitud.comentarios.length > 0 && (
                         <div style={{
                           background: '#f8fafc',
                           border: '1px solid #e2e8f0',
@@ -1281,7 +1378,7 @@ const CapacitacionModule = () => {
 
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(20rem, 1fr))', gap: '1.5rem' }}>
                   {cursosDisponibles.map(curso => (
-                    <div key={curso.id} style={{
+                    <div key={curso.CursoID} style={{
                       background: 'white',
                       border: '1px solid #e5e7eb',
                       borderRadius: '0.5rem',
@@ -1291,7 +1388,7 @@ const CapacitacionModule = () => {
                       <div style={{ marginBottom: '1rem' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '0.5rem' }}>
                           <h4 style={{ fontSize: '1.125rem', fontWeight: '600', color: '#111827', margin: 0 }}>
-                            {curso.titulo}
+                            {curso.Titulo}
                           </h4>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
                             <Star style={{ width: '1rem', height: '1rem', color: '#f59e0b', fill: '#f59e0b' }} />
@@ -1309,7 +1406,7 @@ const CapacitacionModule = () => {
                         </div>
                         <div style={{ display: 'flex', gap: '1rem', fontSize: '0.75rem', color: '#374151', marginBottom: '0.75rem' }}>
                           <span><strong>Modalidad:</strong> {curso.modalidad}</span>
-                          <span><strong>Cupos:</strong> {curso.inscritos}/{curso.cupos}</span>
+                          <span><strong>Cupos:</strong> {curso.Inscritos}/{curso.Cupos}</span>
                         </div>
                         <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>
                           <span>Creado por: <strong>{curso.creadoPor}</strong></span>
@@ -1326,22 +1423,64 @@ const CapacitacionModule = () => {
                           </p>
                         </div>
                         <button
-                          onClick={() => inscribirseCurso(curso.id)}
-                          disabled={curso.inscritos >= curso.cupos}
+                          onClick={() => {
+                            if (!curso.CursoID) {
+                              showErrorMessage('Curso no válido');
+                              return;
+                            }
+                            if (curso.Inscritos >= curso.Cupos) {
+                              showErrorMessage('No hay cupos disponibles');
+                              return;
+                            }
+                            inscribirseCurso(curso.CursoID);
+                          }}
+                          disabled={curso.Inscritos >= curso.Cupos || loading}
                           style={{
                             padding: '0.5rem 1rem',
-                            background: curso.inscritos >= curso.cupos ? '#9ca3af' : '#3b82f6',
+                            background: (curso.Inscritos >= curso.Cupos || loading) ? '#9ca3af' : '#3b82f6',
                             color: 'white',
                             border: 'none',
                             borderRadius: '0.375rem',
                             fontSize: '0.875rem',
                             fontWeight: '500',
-                            cursor: curso.inscritos >= curso.cupos ? 'not-allowed' : 'pointer'
+                            cursor: (curso.Inscritos >= curso.Cupos || loading) ? 'not-allowed' : 'pointer'
                           }}
                         >
-                          {curso.inscritos >= curso.cupos ? 'Sin Cupos' : 'Inscribirme'}
+                          {loading ? 'Procesando...' : (curso.Inscritos >= curso.Cupos ? 'Sin Cupos' : 'Inscribirme')}
                         </button>
                       </div>
+                      {/* Botón Ver Participantes - Solo para RRHH */}
+                      {esRRHH && (
+                        <button
+                          onClick={() => {
+                              console.log('CursoID a enviar:', curso.CursoID, typeof curso.CursoID);
+                              if (!curso.CursoID) {
+                                showErrorMessage('ID de curso no válido');
+                                return;
+                              }
+                              verParticipantes(parseInt(curso.CursoID));
+                            }}
+                          style={{
+                            padding: '0.5rem 1rem',
+                            background: '#6366f1',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '0.375rem',
+                            fontSize: '0.875rem',
+                            fontWeight: '500',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: '0.5rem',
+                            width: '100%',
+                            marginTop: '0.5rem'
+                          }}
+                        >
+                          <Users style={{ width: '1rem', height: '1rem' }} />
+                          Ver Participantes ({curso.Inscritos || 0})
+                        </button>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -1372,53 +1511,118 @@ const CapacitacionModule = () => {
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                   {solicitudesPorAprobar.map(solicitud => (
-                    <div key={solicitud.id} style={{
+                    <div key={solicitud.SolicitudID} style={{
                       background: '#fff7ed',
                       border: '1px solid #fed7aa',
                       borderRadius: '0.5rem',
                       padding: '1.5rem'
                     }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '1rem' }}>
-                        <div style={{ flex: 1 }}>
-                          <h4 style={{ fontSize: '1.125rem', fontWeight: '600', color: '#111827', margin: 0, marginBottom: '0.5rem' }}>
-                            {solicitud.titulo}
-                          </h4>
-                          <div style={{ display: 'flex', gap: '1rem', fontSize: '0.875rem', color: '#6b7280', marginBottom: '0.75rem' }}>
-                            <span><strong>Solicitado por:</strong> {solicitud.solicitante} ({solicitud.solicitanteRole})</span>
-                            <span><strong>Fecha:</strong> {new Date(solicitud.fechaSolicitud).toLocaleDateString('es-DO')}</span>
-                          </div>
-                          <p style={{ fontSize: '0.875rem', color: '#6b7280', margin: 0, marginBottom: '0.75rem' }}>
-                            <strong>Justificación:</strong> {solicitud.justificacion}
-                          </p>
-                          <div style={{ display: 'flex', gap: '1rem', fontSize: '0.75rem', color: '#374151', marginBottom: '0.75rem' }}>
-                            <span><strong>Costo:</strong> ${solicitud.costo}</span>
-                            <span><strong>Prioridad:</strong> {solicitud.prioridad}</span>
-                          </div>
-                          
-                          {/* Mostrar aprobaciones previas */}
-                          {(solicitud.aprobadoPorGerente || solicitud.aprobadoPorDirector) && (
-                            <div style={{
-                              background: '#f0fdf4',
-                              border: '1px solid #bbf7d0',
-                              borderRadius: '0.375rem',
-                              padding: '0.75rem',
-                              fontSize: '0.75rem',
-                              color: '#166534'
-                            }}>
-                              {solicitud.aprobadoPorGerente && (
-                                <p style={{ margin: 0 }}>✅ Aprobado por Gerente: {solicitud.aprobadoPorGerente}</p>
-                              )}
-                              {solicitud.aprobadoPorDirector && (
-                                <p style={{ margin: 0 }}>✅ Aprobado por Director: {solicitud.aprobadoPorDirector}</p>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(20rem, 1fr))', gap: '1.5rem' }}>
+                        {cursosDisponibles.map(curso => (
+                          <div key={curso.CursoID} style={{
+                            background: 'white',
+                            border: '1px solid #e5e7eb',
+                            borderRadius: '0.5rem',
+                            padding: '1.5rem',
+                            boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
+                          }}>
+                            <div style={{ marginBottom: '1rem' }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '0.5rem' }}>
+                                <h4 style={{ fontSize: '1.125rem', fontWeight: '600', color: '#111827', margin: 0 }}>
+                                  {curso.Titulo}
+                                </h4>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                                  <Star style={{ width: '1rem', height: '1rem', color: '#f59e0b', fill: '#f59e0b' }} />
+                                  <span style={{ fontSize: '0.875rem', fontWeight: '500', color: '#111827' }}>
+                                    {curso.rating || 'Nuevo'}
+                                  </span>
+                                </div>
+                              </div>
+                              <p style={{ fontSize: '0.875rem', color: '#6b7280', margin: 0, marginBottom: '0.75rem' }}>
+                                {curso.descripcion}
+                              </p>
+                              <div style={{ display: 'flex', gap: '1rem', fontSize: '0.75rem', color: '#374151', marginBottom: '0.75rem' }}>
+                                <span><strong>Proveedor:</strong> {curso.proveedor}</span>
+                                <span><strong>Duración:</strong> {curso.duracion}h</span>
+                              </div>
+                              <div style={{ display: 'flex', gap: '1rem', fontSize: '0.75rem', color: '#374151', marginBottom: '0.75rem' }}>
+                                <span><strong>Modalidad:</strong> {curso.modalidad}</span>
+                                <span><strong>Cupos:</strong> {curso.Inscritos}/{curso.Cupos}</span>
+                              </div>
+                              <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>
+                                <span>Creado por: <strong>{curso.creadoPor}</strong></span>
+                              </div>
+                            </div>
+
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <div>
+                                  <span style={{ fontSize: '1.25rem', fontWeight: 'bold', color: '#10b981' }}>
+                                    {curso.costo === 0 ? 'Gratis' : `$${curso.costo}`}
+                                  </span>
+                                  <p style={{ fontSize: '0.75rem', color: '#6b7280', margin: 0 }}>
+                                    Inicio: {new Date(curso.fechaInicio).toLocaleDateString('es-DO')}
+                                  </p>
+                                </div>
+                                <button
+                                  onClick={() => {
+                                    if (!curso.CursoID) {
+                                      showErrorMessage('Curso no válido');
+                                      return;
+                                    }
+                                    if (curso.Inscritos >= curso.Cupos) {
+                                      showErrorMessage('No hay cupos disponibles');
+                                      return;
+                                    }
+                                    inscribirseCurso(curso.CursoID);
+                                  }}
+                                  disabled={curso.Inscritos >= curso.Cupos || loading}
+                                  style={{
+                                    padding: '0.5rem 1rem',
+                                    background: (curso.Inscritos >= curso.Cupos || loading) ? '#9ca3af' : '#3b82f6',
+                                    color: 'white',
+                                    border: 'none',
+                                    borderRadius: '0.375rem',
+                                    fontSize: '0.875rem',
+                                    fontWeight: '500',
+                                    cursor: (curso.Inscritos >= curso.Cupos || loading) ? 'not-allowed' : 'pointer'
+                                  }}
+                                >
+                                  {loading ? 'Procesando...' : (curso.Inscritos >= curso.Cupos ? 'Sin Cupos' : 'Inscribirme')}
+                                </button>
+                              </div>
+
+                              {/* Botón Ver Participantes - Solo para RRHH */}
+                              {esRRHH && (
+                                <button
+                                  onClick={() => verParticipantes(curso.id)}
+                                  style={{
+                                    padding: '0.5rem 1rem',
+                                    background: '#6366f1',
+                                    color: 'white',
+                                    border: 'none',
+                                    borderRadius: '0.375rem',
+                                    fontSize: '0.875rem',
+                                    fontWeight: '500',
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    gap: '0.5rem',
+                                    width: '100%'
+                                  }}
+                                >
+                                  👥 Ver Participantes ({curso.inscritos || 0})
+                                </button>
                               )}
                             </div>
-                          )}
-                        </div>
+                          </div>
+                        ))}
                       </div>
 
                       <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end' }}>
                         <button
-                          onClick={() => procesarSolicitud(solicitud.id, 'rechazar', `Rechazado por ${user.role} - Revisar justificación`)}
+                          onClick={() => procesarSolicitud(solicitud.SolicitudID, 'rechazar', `Rechazado por ${user.role} - Revisar justificación`)}
                           style={{
                             display: 'flex',
                             alignItems: 'center',
@@ -1437,7 +1641,7 @@ const CapacitacionModule = () => {
                           Rechazar
                         </button>
                         <button
-                          onClick={() => procesarSolicitud(solicitud.id, 'aprobar', `Aprobado por ${user.role} - Continúa proceso`)}
+                          onClick={() => procesarSolicitud(solicitud.SolicitudID, 'aprobar', `Aprobado por ${user.role} - Continúa proceso`)}
                           style={{
                             display: 'flex',
                             alignItems: 'center',
@@ -1475,7 +1679,7 @@ const CapacitacionModule = () => {
             )}
 
             {/* Tab Crear Cursos (solo RRHH) */}
-            {activeTab === 'admin' && puedeCrearCursos && (
+           {activeTab === 'admin' && puedeCrearCursos && (
               <div>
                 <h3 style={{ fontSize: '1.25rem', fontWeight: '600', color: '#111827', marginBottom: '1.5rem' }}>
                   Crear Nuevo Curso
@@ -1644,6 +1848,130 @@ const CapacitacionModule = () => {
                     </div>
                   </div>
 
+                  {/* NUEVO: Tipo de Acceso */}
+                  <div style={{ marginBottom: '1.5rem' }}>
+                    <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: '500', color: '#374151', marginBottom: '0.5rem' }}>
+                      Tipo de Acceso al Curso
+                    </label>
+                    <div style={{ display: 'flex', gap: '2rem', marginTop: '0.75rem' }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+                        <input
+                          type="radio"
+                          name="tipoAcceso"
+                          value="abierto"
+                          checked={nuevoCurso.tipoAcceso === 'abierto'}
+                          onChange={(e) => setNuevoCurso(prev => ({ 
+                            ...prev, 
+                            tipoAcceso: e.target.value,
+                            empleadosSeleccionados: []
+                          }))}
+                          style={{ width: '1rem', height: '1rem' }}
+                        />
+                        <span style={{ fontSize: '0.875rem', color: '#374151' }}>
+                          <strong>Abierto</strong> - Todos pueden inscribirse
+                        </span>
+                      </label>
+                      
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+                        <input
+                          type="radio"
+                          name="tipoAcceso"
+                          value="cerrado"
+                          checked={nuevoCurso.tipoAcceso === 'cerrado'}
+                          onChange={(e) => setNuevoCurso(prev => ({ ...prev, tipoAcceso: e.target.value }))}
+                          style={{ width: '1rem', height: '1rem' }}
+                        />
+                        <span style={{ fontSize: '0.875rem', color: '#374151' }}>
+                          <strong>Cerrado</strong> - Solo empleados seleccionados
+                        </span>
+                      </label>
+                    </div>
+                  </div>
+
+                  {/* NUEVO: Selector de Empleados (solo si es cerrado) */}
+                  {nuevoCurso.tipoAcceso === 'cerrado' && (
+                    <div style={{ marginBottom: '1.5rem' }}>
+                      <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: '500', color: '#374151', marginBottom: '0.5rem' }}>
+                        Seleccionar Empleados para el Curso
+                      </label>
+                      
+                      <input
+                        type="text"
+                        value={busquedaEmpleado}
+                        onChange={(e) => setBusquedaEmpleado(e.target.value)}
+                        placeholder="Buscar empleado por nombre..."
+                        style={{
+                          width: '100%',
+                          padding: '0.75rem',
+                          border: '1px solid #d1d5db',
+                          borderRadius: '0.375rem',
+                          fontSize: '0.875rem',
+                          marginBottom: '1rem'
+                        }}
+                      />
+                      
+                      <div style={{
+                        maxHeight: '15rem',
+                        overflowY: 'auto',
+                        border: '1px solid #e5e7eb',
+                        borderRadius: '0.375rem',
+                        padding: '0.5rem'
+                      }}>
+                        {empleadosDisponibles
+                        .filter(emp => {
+                          const searchTerm = busquedaEmpleado.toLowerCase();
+                          const nombre = (emp.nombreCompleto || '').toLowerCase();
+                          const cargo = (emp.cargo || '').toLowerCase();
+                          const departamento = (emp.departamento || '').toLowerCase();
+                          
+                          return nombre.includes(searchTerm) || 
+                                cargo.includes(searchTerm) || 
+                                departamento.includes(searchTerm);
+                        })
+                        .map(empleado => (
+                          <label
+                            key={empleado.id}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '0.5rem',
+                              padding: '0.5rem',
+                              cursor: 'pointer',
+                              borderRadius: '0.25rem',
+                              background: nuevoCurso.empleadosSeleccionados.includes(empleado.id) ? '#eff6ff' : 'transparent'
+                            }}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={nuevoCurso.empleadosSeleccionados.includes(empleado.id)}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setNuevoCurso(prev => ({
+                                    ...prev,
+                                    empleadosSeleccionados: [...prev.empleadosSeleccionados, empleado.id]
+                                  }));
+                                } else {
+                                  setNuevoCurso(prev => ({
+                                    ...prev,
+                                    empleadosSeleccionados: prev.empleadosSeleccionados.filter(id => id !== empleado.id)
+                                  }));
+                                }
+                              }}
+                              style={{ width: '1rem', height: '1rem' }}
+                            />
+                            <span style={{ fontSize: '0.875rem', color: '#374151' }}>
+                              {empleado.nombre} {empleado.apellido} - {empleado.cargo || 'Sin cargo'}
+                            </span>
+                          </label>
+                        ))}
+                                            </div>
+                      
+                      <p style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '0.5rem', margin: 0 }}>
+                        {nuevoCurso.empleadosSeleccionados.length} empleado(s) seleccionado(s)
+                      </p>
+                    </div>
+                  )}
+
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '2rem' }}>
                     <div>
                       <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: '500', color: '#374151', marginBottom: '0.5rem' }}>
@@ -1695,7 +2023,9 @@ const CapacitacionModule = () => {
                         categoria: 'tecnica',
                         costo: 0,
                         fechaInicio: '',
-                        cupos: 0
+                        cupos: 0,
+                        tipoAcceso: 'abierto',
+                        empleadosSeleccionados: []
                       })}
                       style={{
                         padding: '0.75rem 1.5rem',
@@ -1744,7 +2074,7 @@ const CapacitacionModule = () => {
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
                   {misCursos.map(curso => (
-                    <div key={curso.id} style={{
+                    <div key={curso.CursoID} style={{
                       background: 'white',
                       border: '1px solid #e5e7eb',
                       borderRadius: '0.5rem',
@@ -1753,7 +2083,7 @@ const CapacitacionModule = () => {
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '1rem' }}>
                         <div style={{ flex: 1 }}>
                           <h4 style={{ fontSize: '1.125rem', fontWeight: '600', color: '#111827', margin: 0, marginBottom: '0.5rem' }}>
-                            {curso.titulo}
+                            {curso.Titulo}
                           </h4>
                           <div style={{ display: 'flex', gap: '1rem', fontSize: '0.875rem', color: '#6b7280', marginBottom: '0.75rem' }}>
                             <span>Inicio: {new Date(curso.fechaInicio).toLocaleDateString('es-DO')}</span>
@@ -1861,7 +2191,7 @@ const CapacitacionModule = () => {
 
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(20rem, 1fr))', gap: '1.5rem' }}>
                   {certificados.map(certificado => (
-                    <div key={certificado.id} style={{
+                    <div key={certificado.CertificadoID} style={{
                       background: 'white',
                       border: '1px solid #e5e7eb',
                       borderRadius: '0.5rem',
@@ -1871,7 +2201,7 @@ const CapacitacionModule = () => {
                       <div style={{ textAlign: 'center', marginBottom: '1rem' }}>
                         <Award style={{ width: '3rem', height: '3rem', color: '#f59e0b', margin: '0 auto 0.5rem' }} />
                         <h4 style={{ fontSize: '1.125rem', fontWeight: '600', color: '#111827', margin: 0, marginBottom: '0.5rem' }}>
-                          {certificado.titulo}
+                          {certificado.Titulo}
                         </h4>
                         <p style={{ fontSize: '0.875rem', color: '#6b7280', margin: 0 }}>
                           {certificado.proveedor}
@@ -1881,7 +2211,7 @@ const CapacitacionModule = () => {
                       <div style={{ fontSize: '0.875rem', color: '#374151', marginBottom: '1rem' }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
                           <span><strong>Código:</strong></span>
-                          <span>{certificado.codigo}</span>
+                          <span>{certificado.Codigo}</span>
                         </div>
                         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
                           <span><strong>Fecha:</strong></span>
@@ -1921,11 +2251,478 @@ const CapacitacionModule = () => {
                 </div>
               </div>
             )}
+
+            {/* Tab Histórico */}
+              {activeTab === 'historico' && (esGerente || esDirector || esRRHH) && (
+                <div>
+                  <h3 style={{ fontSize: '1.25rem', fontWeight: '600', color: '#111827', marginBottom: '1.5rem' }}>
+                    {esRRHH ? 'Todas las Solicitudes' : 'Solicitudes de Mi Equipo'}
+                  </h3>
+
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                    {todasSolicitudes.map(solicitud => (
+                      <div key={solicitud.SolicitudID} style={{
+                        background: 'white',
+                        border: '1px solid #e5e7eb',
+                        borderRadius: '0.5rem',
+                        padding: '1.5rem'
+                      }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '1rem' }}>
+                          <div style={{ flex: 1 }}>
+                            <h4 style={{ fontSize: '1.125rem', fontWeight: '600', color: '#111827', margin: 0, marginBottom: '0.5rem' }}>
+                              {solicitud.Titulo}
+                            </h4>
+                            <div style={{ fontSize: '0.875rem', color: '#6b7280', marginBottom: '0.5rem' }}>
+                              <strong>Solicitante:</strong> {solicitud.solicitante} • {new Date(solicitud.FechaSolicitud).toLocaleDateString('es-DO')}
+                            </div>
+                            <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>
+                              <strong>Costo:</strong> ${solicitud.Costo?.toLocaleString()} • <strong>Prioridad:</strong> {solicitud.Prioridad}
+                            </div>
+                          </div>
+                          <span style={{
+                            padding: '0.5rem 1rem',
+                            borderRadius: '9999px',
+                            fontSize: '0.875rem',
+                            fontWeight: '500',
+                            background: solicitud.Estado === 'aprobado_completo' ? '#f0fdf4' :
+                                      solicitud.Estado === 'rechazado' ? '#fef2f2' : '#fff7ed',
+                            color: solicitud.Estado === 'aprobado_completo' ? '#166534' :
+                                  solicitud.Estado === 'rechazado' ? '#dc2626' : '#ea580c'
+                          }}>
+                            {solicitud.Estado === 'aprobado_completo' ? '✅ Aprobado' :
+                            solicitud.Estado === 'rechazado' ? '❌ Rechazado' :
+                            solicitud.Estado?.replace('pendiente_', '⏳ Pendiente ').toUpperCase()}
+                          </span>
+                        </div>
+
+                        <div style={{ display: 'flex', gap: '1rem', fontSize: '0.75rem', marginTop: '0.75rem' }}>
+                          {solicitud.aprobadoPorGerente && (
+                            <span style={{ color: '#10b981' }}>✅ Gerente: {solicitud.aprobadoPorGerente}</span>
+                          )}
+                          {solicitud.aprobadoPorDirector && (
+                            <span style={{ color: '#10b981' }}>✅ Director: {solicitud.aprobadoPorDirector}</span>
+                          )}
+                          {solicitud.aprobadoPorRRHH && (
+                            <span style={{ color: '#10b981' }}>✅ RRHH: {solicitud.aprobadoPorRRHH}</span>
+                          )}                          
+                        </div>
+                        
+                        {/* Botón para crear curso (solo RRHH y solicitudes aprobadas completas) */}
+                        {esRRHH && solicitud.Estado === 'aprobado_completo' && !solicitud.CursoCreado && (
+                          <div style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid #e5e7eb' }}>
+                            <button
+                              onClick={() => crearCursoDesdeSolicitud(solicitud)}
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '0.5rem',
+                                padding: '0.75rem 1.5rem',
+                                background: '#10b981',
+                                color: 'white',
+                                border: 'none',
+                                borderRadius: '0.375rem',
+                                fontSize: '0.875rem',
+                                fontWeight: '500',
+                                cursor: 'pointer'
+                              }}
+                            >
+                              <Plus style={{ width: '1rem', height: '1rem' }} />
+                              Crear Curso de esta Solicitud
+                            </button>
+                          </div>
+                        )}
+                        
+                      </div>
+                      
+                    ))}
+                    
+
+                    {todasSolicitudes.length === 0 && (
+                      <div style={{ textAlign: 'center', padding: '3rem', color: '#6b7280' }}>
+                        <FileText style={{ width: '3rem', height: '3rem', margin: '0 auto 1rem', opacity: 0.5 }} />
+                        <p>No hay solicitudes para mostrar</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Tab Mi Equipo */}
+              {activeTab === 'equipo' && esGerente && (
+                <div>
+                  <h3 style={{ fontSize: '1.25rem', fontWeight: '600', color: '#111827', marginBottom: '1.5rem' }}>
+                    Progreso de Capacitación del Equipo
+                  </h3>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(20rem, 1fr))', gap: '1.5rem' }}>
+                    {miembroEquipo.map(miembro => (
+                      <div key={miembro.EmpleadoID} style={{
+                        background: 'white',
+                        border: '1px solid #e5e7eb',
+                        borderRadius: '0.5rem',
+                        padding: '1.5rem'
+                      }}>
+                        <div style={{ marginBottom: '1rem' }}>
+                          <h4 style={{ fontSize: '1.125rem', fontWeight: '600', color: '#111827', margin: 0 }}>
+                            {miembro.NombreEmpleado}
+                          </h4>
+                        </div>
+
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', fontSize: '0.875rem', color: '#6b7280' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                            <span>Cursos totales:</span>
+                            <strong style={{ color: '#111827' }}>{miembro.TotalCursos || 0}</strong>
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                            <span>Completados:</span>
+                            <strong style={{ color: '#10b981' }}>{miembro.CursosCompletados || 0}</strong>
+                          </div>
+                          {/* Modal de Participantes */}
+                            {participantesModal.open && (
+                              <div style={{
+                                position: 'fixed',
+                                top: 0,
+                                left: 0,
+                                right: 0,
+                                bottom: 0,
+                                background: 'rgba(0, 0, 0, 0.5)',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                zIndex: 1000
+                              }}>
+                                <div style={{
+                                  background: 'white',
+                                  borderRadius: '0.5rem',
+                                  padding: '2rem',
+                                  maxWidth: '50rem',
+                                  width: '90%',
+                                  maxHeight: '80vh',
+                                  overflow: 'auto',
+                                  boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)'
+                                }}>
+                                  {/* Header del Modal */}
+                                  <div style={{ 
+                                    display: 'flex', 
+                                    justifyContent: 'space-between', 
+                                    alignItems: 'center', 
+                                    marginBottom: '1.5rem',
+                                    paddingBottom: '1rem',
+                                    borderBottom: '2px solid #e5e7eb'
+                                  }}>
+                                    <h3 style={{ 
+                                      fontSize: '1.5rem', 
+                                      fontWeight: '600', 
+                                      color: '#111827', 
+                                      margin: 0,
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '0.5rem'
+                                    }}>
+                                      <Users style={{ width: '1.5rem', height: '1.5rem', color: '#6366f1' }} />
+                                      Participantes Inscritos
+                                    </h3>
+                                    <button
+                                      onClick={cerrarModalParticipantes}
+                                      style={{
+                                        background: 'transparent',
+                                        border: 'none',
+                                        fontSize: '1.5rem',
+                                        cursor: 'pointer',
+                                        color: '#6b7280',
+                                        padding: '0.25rem',
+                                        display: 'flex',
+                                        alignItems: 'center'
+                                      }}
+                                    >
+                                      ✕
+                                    </button>
+                                  </div>
+
+                                  {/* Contenido del Modal */}
+                                  {loadingParticipantes ? (
+                                    <div style={{ textAlign: 'center', padding: '3rem', color: '#6b7280' }}>
+                                      <div style={{ fontSize: '2rem', marginBottom: '1rem' }}>⏳</div>
+                                      <p>Cargando participantes...</p>
+                                    </div>
+                                  ) : participantesModal.participantes.length === 0 ? (
+                                    <div style={{ textAlign: 'center', padding: '3rem', color: '#6b7280' }}>
+                                      <Users style={{ width: '3rem', height: '3rem', margin: '0 auto 1rem', opacity: 0.5 }} />
+                                      <p>No hay participantes inscritos en este curso</p>
+                                    </div>
+                                  ) : (
+                                    <>
+                                      {/* Contador de participantes */}
+                                      <div style={{
+                                        background: '#f0f9ff',
+                                        border: '1px solid #bae6fd',
+                                        borderRadius: '0.375rem',
+                                        padding: '1rem',
+                                        marginBottom: '1.5rem',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '0.5rem'
+                                      }}>
+                                        <UserCheck style={{ width: '1.25rem', height: '1.25rem', color: '#0369a1' }} />
+                                        <span style={{ fontSize: '0.875rem', color: '#0369a1', fontWeight: '500' }}>
+                                          Total de inscritos: <strong>{participantesModal.participantes.length}</strong>
+                                        </span>
+                                      </div>
+
+                                      {/* Lista de Participantes */}
+                                      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                                        {participantesModal.participantes.map((participante, index) => (
+                                          <div 
+                                            key={participante.EmpleadoID || index} 
+                                            style={{
+                                              background: '#f9fafb',
+                                              border: '1px solid #e5e7eb',
+                                              borderRadius: '0.375rem',
+                                              padding: '1rem',
+                                              display: 'flex',
+                                              justifyContent: 'space-between',
+                                              alignItems: 'center'
+                                            }}
+                                          >
+                                            <div style={{ flex: 1 }}>
+                                              <h4 style={{ 
+                                                fontSize: '1rem', 
+                                                fontWeight: '600', 
+                                                color: '#111827', 
+                                                margin: 0,
+                                                marginBottom: '0.25rem'
+                                              }}>
+                                                {participante.NombreCompleto || `${participante.Nombre} ${participante.Apellido}`}
+                                              </h4>
+                                              <div style={{ 
+                                                display: 'flex', 
+                                                gap: '1rem', 
+                                                fontSize: '0.75rem', 
+                                                color: '#6b7280',
+                                                flexWrap: 'wrap'
+                                              }}>
+                                                {participante.Cargo && (
+                                                  <span style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                                                    <Building style={{ width: '0.875rem', height: '0.875rem' }} />
+                                                    {participante.Cargo}
+                                                  </span>
+                                                )}
+                                                {participante.Departamento && (
+                                                  <span>• Dpto: {participante.Departamento}</span>
+                                                )}
+                                                {participante.FechaInscripcion && (
+                                                  <span>• Inscrito: {new Date(participante.FechaInscripcion).toLocaleDateString('es-DO')}</span>
+                                                )}
+                                              </div>
+                                            </div>
+                                            
+                                            {/* Badge de estado si existe */}
+                                            {participante.Estado && (
+                                              <span style={{
+                                                padding: '0.25rem 0.75rem',
+                                                borderRadius: '9999px',
+                                                fontSize: '0.75rem',
+                                                fontWeight: '500',
+                                                background: participante.Estado === 'completado' ? '#f0fdf4' : 
+                                                          participante.Estado === 'en_progreso' ? '#fff7ed' : '#eff6ff',
+                                                color: participante.Estado === 'completado' ? '#166534' : 
+                                                      participante.Estado === 'en_progreso' ? '#ea580c' : '#2563eb'
+                                              }}>
+                                                {participante.Estado === 'completado' ? '✅ Completado' : 
+                                                participante.Estado === 'en_progreso' ? '🔄 En Progreso' : '📝 Inscrito'}
+                                              </span>
+                                            )}
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </>
+                                  )}
+
+                                  {/* Botón Cerrar al final */}
+                                  <div style={{ 
+                                    marginTop: '1.5rem', 
+                                    paddingTop: '1rem', 
+                                    borderTop: '1px solid #e5e7eb',
+                                    display: 'flex',
+                                    justifyContent: 'flex-end'
+                                  }}>
+                                    <button
+                                      onClick={cerrarModalParticipantes}
+                                      style={{
+                                        padding: '0.75rem 1.5rem',
+                                        background: '#6b7280',
+                                        color: 'white',
+                                        border: 'none',
+                                        borderRadius: '0.375rem',
+                                        fontSize: '0.875rem',
+                                        fontWeight: '500',
+                                        cursor: 'pointer'
+                                      }}
+                                    >
+                                      Cerrar
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+                          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                            <span>Progreso promedio:</span>
+                            <strong style={{ color: '#3b82f6' }}>{Math.round(miembro.ProgresoPromedio || 0)}%</strong>
+                          </div>
+                          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                            <span>Horas capacitadas:</span>
+                            <strong style={{ color: '#111827' }}>{miembro.HorasTotales || 0}h</strong>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+
+                    {miembroEquipo.length === 0 && (
+                      <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '3rem', color: '#6b7280' }}>
+                        <Users style={{ width: '3rem', height: '3rem', margin: '0 auto 1rem', opacity: 0.5 }} />
+                        <p>No hay miembros en tu equipo</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+
+              {/* Modal de Participantes */}
+          {participantesModal.open && (
+            <div style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              background: 'rgba(0, 0, 0, 0.5)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 1000
+            }}>
+              <div style={{
+                background: 'white',
+                borderRadius: '0.5rem',
+                padding: '2rem',
+                maxWidth: '50rem',
+                width: '90%',
+                maxHeight: '80vh',
+                overflow: 'auto',
+                boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.1)'
+              }}>
+                <div style={{ 
+                  display: 'flex', 
+                  justifyContent: 'space-between', 
+                  alignItems: 'center', 
+                  marginBottom: '1.5rem',
+                  paddingBottom: '1rem',
+                  borderBottom: '2px solid #e5e7eb'
+                }}>
+                  <h3 style={{ 
+                    fontSize: '1.5rem', 
+                    fontWeight: '600', 
+                    color: '#111827', 
+                    margin: 0
+                  }}>
+                    👥 Participantes Inscritos
+                  </h3>
+                  <button
+                    onClick={cerrarModalParticipantes}
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      fontSize: '1.5rem',
+                      cursor: 'pointer',
+                      color: '#6b7280'
+                    }}
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                {loadingParticipantes ? (
+                  <div style={{ textAlign: 'center', padding: '3rem', color: '#6b7280' }}>
+                    <div style={{ fontSize: '2rem', marginBottom: '1rem' }}>⏳</div>
+                    <p>Cargando participantes...</p>
+                  </div>
+                ) : participantesModal.participantes.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '3rem', color: '#6b7280' }}>
+                    <Users style={{ width: '3rem', height: '3rem', margin: '0 auto 1rem', opacity: 0.5 }} />
+                    <p>No hay participantes inscritos en este curso</p>
+                  </div>
+                ) : (
+                  <>
+                    <div style={{
+                      background: '#f0f9ff',
+                      border: '1px solid #bae6fd',
+                      borderRadius: '0.375rem',
+                      padding: '1rem',
+                      marginBottom: '1.5rem'
+                    }}>
+                      <span style={{ fontSize: '0.875rem', color: '#0369a1', fontWeight: '500' }}>
+                        Total de inscritos: <strong>{participantesModal.participantes.length}</strong>
+                      </span>
+                    </div>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                      {participantesModal.participantes.map((participante, index) => (
+                        <div 
+                          key={participante.EmpleadoID || index} 
+                          style={{
+                            background: '#f9fafb',
+                            border: '1px solid #e5e7eb',
+                            borderRadius: '0.375rem',
+                            padding: '1rem'
+                          }}
+                        >
+                          <h4 style={{ 
+                            fontSize: '1rem', 
+                            fontWeight: '600', 
+                            color: '#111827', 
+                            margin: 0,
+                            marginBottom: '0.5rem'
+                          }}>
+                            {participante.NombreCompleto || `${participante.Nombre} ${participante.Apellido}`}
+                          </h4>
+                          <div style={{ fontSize: '0.875rem', color: '#6b7280' }}>
+                            {participante.Cargo && <div>📋 {participante.Cargo}</div>}
+                            {participante.Departamento && <div>🏢 {participante.Departamento}</div>}
+                            {participante.FechaInscripcion && (
+                              <div>📅 Inscrito: {new Date(participante.FechaInscripcion).toLocaleDateString('es-DO')}</div>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+
+                <div style={{ marginTop: '1.5rem', textAlign: 'right' }}>
+                  <button
+                    onClick={cerrarModalParticipantes}
+                    style={{
+                      padding: '0.75rem 1.5rem',
+                      background: '#6b7280',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '0.375rem',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Cerrar
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
           </div>
         </div>
       </div>
     </div>
   );
 };
+
 
 export default CapacitacionModule;

@@ -4,7 +4,10 @@ import {
   getEmpleados,
   createEmpleado,
   updateEmpleado,
-  deleteEmpleado
+  deleteEmpleado,
+  getExpedienteByEmpleado,
+  getDocumentosExpediente,
+  getCategorias
 } from '../controllers/empleadosController.js';
 
 const router = express.Router();
@@ -57,5 +60,18 @@ router.put('/update/:EmpleadoID', updateEmpleado);
 
 // Eliminar empleado
 router.delete('/delete/:EmpleadoID', deleteEmpleado);
+
+// ============================================
+// RUTAS DE EXPEDIENTES
+// ============================================
+
+// Obtener expediente por empleado
+router.get('/:empleadoId/expediente', getExpedienteByEmpleado);
+
+// Obtener documentos del expediente
+router.get('/expediente/:expedienteId/documentos', getDocumentosExpediente);
+
+// Obtener categorías de documentos
+router.get('/categorias/documentos', getCategorias);
 
 export default router;

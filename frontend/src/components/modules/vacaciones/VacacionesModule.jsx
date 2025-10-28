@@ -20,6 +20,11 @@ const VacacionesModule = () => {
   });
   const [periodos, setPeriodos] = useState([]);
 
+  const diasDisponibles = estadisticas?.diasDisponibles || 0;
+  const diasUsados = estadisticas?.diasUsados || 0;
+  const diasTotales = estadisticas?.diasTotales || 0;
+  const diasPendientes = estadisticas?.diasPendientes || 0;
+
   // Modal de aprobación manual
   const [showManualModal, setShowManualModal] = useState(false);
   const [manualApprovalData, setManualApprovalData] = useState({
@@ -66,14 +71,36 @@ const VacacionesModule = () => {
     const solicitudesData = await vacacionesService.getSolicitudes(user.id, user.role);
     setSolicitudes(solicitudesData);
     
-    // CAMBIO: Siempre cargar detalladas
+    // Cargar estadísticas detalladas
     const statsData = await vacacionesService.getEstadisticasDetalladas(user.empleadoId);
-    console.log('Estadísticas:', statsData); // DEBUG: agrega esto para ver qué devuelve
-    setEstadisticas(statsData.totales);
-    setPeriodos(statsData.periodos || []); // AGREGAR: default a array vacío
+    console.log('Estadísticas recibidas:', statsData);
+    
+    // Validar que exista el objeto totales
+    if (statsData.totales) {
+      setEstadisticas(statsData.totales);
+    } else {
+      // Fallback si no existe
+      setEstadisticas({
+        diasTotales: 0,
+        diasUsados: 0,
+        diasDisponibles: 0,
+        diasPendientes: 0
+      });
+    }
+    
+    setPeriodos(statsData.periodos || []);
   } catch (error) {
     showErrorMessage('Error al cargar datos de vacaciones');
     console.error('Error:', error);
+    
+    // Establecer valores por defecto en caso de error
+    setEstadisticas({
+      diasTotales: 0,
+      diasUsados: 0,
+      diasDisponibles: 0,
+      diasPendientes: 0
+    });
+    setPeriodos([]);
   } finally {
     setLoading(false);
   }
@@ -109,66 +136,66 @@ const VacacionesModule = () => {
   };
 
   // Abrir modal de períodos
-  const abrirModalPeriodos = () => {
-    console.log('🔧 Ejecutando abrirModalPeriodos');
-    console.log('Períodos recibidos:', periodos);
-    console.log('ESTRUCTURA COMPLETA:', JSON.stringify(periodos[0], null, 2));
+  // Abrir modal de períodos
+const abrirModalPeriodos = () => {
+  console.log('🔧 Ejecutando abrirModalPeriodos');
+  console.log('Períodos recibidos:', periodos);
+  console.log('ESTRUCTURA COMPLETA:', JSON.stringify(periodos[0], null, 2));
+  
+  try {
+    const diasSolicitados = calcularDias();
+    console.log('Días solicitados:', diasSolicitados);
     
-    try {
-      const diasSolicitados = calcularDias();
-      console.log('Días solicitados:', diasSolicitados);
+    const seleccionInicial = [];
+    let diasRestantes = diasSolicitados;
+    
+    for (const periodo of periodos) {
+      console.log('📌 Procesando período:', periodo);
       
-      const seleccionInicial = [];
-      let diasRestantes = diasSolicitados;
+      const balanceId = periodo.balanceId || periodo.BalanceID || periodo.id;
+      const descripcion = periodo.descripcion || periodo.Descripcion;
+      const diasDisponiblesPeriodo = periodo.diasDisponibles || periodo.DiasDisponibles || 
+                              (periodo.diasTotales - periodo.diasUsados - periodo.diasPendientes) ||
+                              (periodo.DiasTotales - periodo.DiasUsados - periodo.DiasPendientes);
       
-      for (const periodo of periodos) {
-        console.log('📌 Procesando período:', periodo);
-        
-        // CORRECCIÓN: El backend puede devolver nombres diferentes de propiedades
-        const balanceId = periodo.balanceId || periodo.BalanceID || periodo.id;
-        const descripcion = periodo.descripcion || periodo.Descripcion || periodo.descripcion;
-        const diasDisponibles = periodo.diasDisponibles || periodo.DiasDisponibles || 
-                                (periodo.diasTotales - periodo.diasUsados - periodo.diasPendientes) ||
-                                (periodo.DiasTotales - periodo.DiasUsados - periodo.DiasPendientes);
-        
-        console.log('   - balanceId:', balanceId);
-        console.log('   - descripcion:', descripcion);
-        console.log('   - diasDisponibles:', diasDisponibles);
-        console.log('   - diasRestantes:', diasRestantes);
-        
-        if (diasRestantes <= 0) {
-          console.log('   ⚠️ diasRestantes <= 0, saliendo del loop');
-          break;
-        }
-        
-        const diasAUsar = Math.min(diasRestantes, diasDisponibles);
-        console.log('   - diasAUsar calculado:', diasAUsar);
-        
-        if (diasAUsar > 0) {
-          console.log('   ✅ Agregando período a selección');
-          seleccionInicial.push({
-            balanceId: balanceId,
-            descripcion: descripcion,
-            diasDisponibles: diasDisponibles,
-            dias: diasAUsar
-          });
-          diasRestantes -= diasAUsar;
-        } else {
-          console.log('   ❌ diasAUsar NO es mayor a 0');
-        }
+      console.log('   - balanceId:', balanceId);
+      console.log('   - descripcion:', descripcion);
+      console.log('   - diasDisponibles:', diasDisponiblesPeriodo);
+      console.log('   - diasRestantes:', diasRestantes);
+      
+      if (diasRestantes <= 0) {
+        console.log('   ⚠️ diasRestantes <= 0, saliendo del loop');
+        break;
       }
       
-      console.log('Selección inicial creada:', seleccionInicial);
-      console.log('Cambiando showPeriodosModal a true');
+      const diasAUsar = Math.min(diasRestantes, diasDisponiblesPeriodo);
+      console.log('   - diasAUsar calculado:', diasAUsar);
       
-      setPeriodosSeleccionados(seleccionInicial);
-      setShowPeriodosModal(true);
-      
-      console.log('✅ Modal debería estar visible ahora');
-    } catch (error) {
-      console.error('❌ ERROR en abrirModalPeriodos:', error);
+      if (diasAUsar > 0) {
+        console.log('   ✅ Agregando período a selección');
+        seleccionInicial.push({
+          balanceId: balanceId,
+          descripcion: descripcion,
+          diasDisponibles: diasDisponiblesPeriodo,
+          dias: diasAUsar
+        });
+        diasRestantes -= diasAUsar;
+      } else {
+        console.log('   ❌ diasAUsar NO es mayor a 0');
+      }
     }
-  };
+    
+    console.log('Selección inicial creada:', seleccionInicial);
+    console.log('Cambiando showPeriodosModal a true');
+    
+    setPeriodosSeleccionados(seleccionInicial);
+    setShowPeriodosModal(true);
+    
+    console.log('✅ Modal debería estar visible ahora');
+  } catch (error) {
+    console.error('❌ ERROR en abrirModalPeriodos:', error);
+  }
+};
 
   // Actualizar días de un período seleccionado
   const actualizarDiasPeriodo = (balanceId, nuevosDias) => {
@@ -183,7 +210,8 @@ const VacacionesModule = () => {
   };
 
   // Crear solicitud con períodos
-  const handleSubmitSolicitud = async (e) => {
+ // Crear solicitud con períodos
+const handleSubmitSolicitud = async (e) => {
   e.preventDefault();
   
   console.log('=== DEBUG SUBMIT ===');
@@ -211,14 +239,13 @@ const VacacionesModule = () => {
 
   const diasSolicitados = calcularDias();
   
-  if (diasSolicitados > estadisticas.diasDisponibles && solicitudForm.tipo === 'vacaciones') {
-    showErrorMessage(`No tienes suficientes días disponibles. Solicitas ${diasSolicitados} días pero solo tienes ${estadisticas.diasDisponibles} disponibles.`);
+  if (diasSolicitados > diasDisponibles && solicitudForm.tipo === 'vacaciones') {
+    showErrorMessage(`No tienes suficientes días disponibles. Solicitas ${diasSolicitados} días pero solo tienes ${diasDisponibles} disponibles.`);
     return;
   }
 
   console.log('¿Abrir modal?', solicitudForm.tipo === 'vacaciones' && periodos.length > 1);
   
-  // Si es vacaciones y hay múltiples períodos, abrir modal
   if (solicitudForm.tipo === 'vacaciones' && periodos.length > 1) {
     console.log('ABRIENDO MODAL');
     abrirModalPeriodos();
@@ -815,7 +842,7 @@ const confirmarSolicitudConPeriodos = async () => {
               Días Disponibles de Vacaciones
             </h3>
             <p style={{ fontSize: '2rem', fontWeight: 'bold', color: '#10b981', margin: 0 }}>
-              {estadisticas.diasDisponibles}
+              {periodos.reduce((sum, p) => sum + p.diasDisponibles, 0)}
             </p>
             {periodos.length > 1 && (
               <button
@@ -911,7 +938,7 @@ const confirmarSolicitudConPeriodos = async () => {
                 cursor: 'pointer'
               }}
             >
-              Realizar Solicitud
+              Realizar
             </button>
             
             {periodos.length > 1 && (
@@ -993,81 +1020,97 @@ const confirmarSolicitudConPeriodos = async () => {
           </div>
 
           <div style={{ padding: '2rem' }}>
-            {activeTab === 'periodos' && (
-              <div>
-                <h3 style={{ fontSize: '1.25rem', fontWeight: '600', color: '#111827', marginBottom: '1rem' }}>
-                  Detalle de Períodos
-                </h3>
-                
-                <div style={{ display: 'grid', gap: '1rem' }}>
-                  {periodos.map((periodo) => (
-                    <div key={periodo.balanceId} style={{
-                      border: '1px solid #e5e7eb',
-                      borderRadius: '0.5rem',
-                      padding: '1.5rem',
-                      background: '#f9fafb'
-                    }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start', marginBottom: '1rem' }}>
-                        <div>
-                          <h4 style={{ fontSize: '1.125rem', fontWeight: '600', color: '#111827', margin: 0 }}>
-                            {periodo.descripcion}
-                          </h4>
-                          <p style={{ fontSize: '0.875rem', color: '#6b7280', margin: 0 }}>
-                            Año {periodo.anio}
-                          </p>
-                        </div>
-                        <span style={{
-                          padding: '0.25rem 0.75rem',
-                          borderRadius: '9999px',
-                          fontSize: '0.875rem',
-                          fontWeight: '600',
-                          background: periodo.diasDisponibles > 0 ? '#dcfce7' : '#f3f4f6',
-                          color: periodo.diasDisponibles > 0 ? '#166534' : '#6b7280'
-                        }}>
-                          {periodo.diasDisponibles} días disponibles
-                        </span>
-                      </div>
-
-                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(8rem, 1fr))', gap: '1rem' }}>
-                        <div>
-                          <p style={{ fontSize: '0.75rem', color: '#6b7280', margin: 0 }}>DÍAS TOTALES</p>
-                          <p style={{ fontSize: '1.25rem', fontWeight: '600', color: '#111827', margin: 0 }}>
-                            {periodo.diasTotales}
-                          </p>
-                        </div>
-                        <div>
-                          <p style={{ fontSize: '0.75rem', color: '#6b7280', margin: 0 }}>DÍAS USADOS</p>
-                          <p style={{ fontSize: '1.25rem', fontWeight: '600', color: '#dc2626', margin: 0 }}>
-                            {periodo.diasUsados}
-                          </p>
-                        </div>
-                        <div>
-                          <p style={{ fontSize: '0.75rem', color: '#6b7280', margin: 0 }}>DÍAS PENDIENTES</p>
-                          <p style={{ fontSize: '1.25rem', fontWeight: '600', color: '#f59e0b', margin: 0 }}>
-                            {periodo.diasPendientes}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  ))}
+           {activeTab === 'periodos' && (
+                <div>
+                  <h3 style={{ fontSize: '1.25rem', fontWeight: '600', color: '#111827', marginBottom: '1.5rem' }}>
+                    Períodos de Vacaciones
+                  </h3>
+                  
+                  {/* Tabla de Períodos */}
+                  <div style={{
+                    border: '1px solid #e5e7eb',
+                    borderRadius: '0.5rem',
+                    overflow: 'hidden'
+                  }}>
+                    <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                      <thead>
+                        <tr style={{ background: '#f9fafb' }}>
+                          <th style={{
+                            padding: '1rem',
+                            textAlign: 'left',
+                            fontSize: '0.875rem',
+                            fontWeight: '600',
+                            color: '#374151',
+                            borderBottom: '1px solid #e5e7eb'
+                          }}>
+                            Período
+                          </th>
+                          <th style={{
+                            padding: '1rem',
+                            textAlign: 'right',
+                            fontSize: '0.875rem',
+                            fontWeight: '600',
+                            color: '#374151',
+                            borderBottom: '1px solid #e5e7eb'
+                          }}>
+                            Total Acumulado
+                          </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {periodos.map((periodo, index) => (
+                          <tr key={periodo.balanceId} style={{
+                            background: index % 2 === 0 ? 'white' : '#f9fafb'
+                          }}>
+                            <td style={{
+                              padding: '1rem',
+                              fontSize: '0.875rem',
+                              color: '#111827',
+                              borderBottom: '1px solid #e5e7eb'
+                            }}>
+                              {periodo.anioInicio && periodo.anioFin 
+                                ? `${periodo.anioInicio}-${periodo.anioFin}` 
+                                : periodo.descripcion}
+                            </td>
+                            <td style={{
+                              padding: '1rem',
+                              textAlign: 'right',
+                              fontSize: '0.875rem',
+                              fontWeight: '500',
+                              color: '#111827',
+                              borderBottom: '1px solid #e5e7eb'
+                            }}>
+                              {periodo.diasDisponibles}
+                            </td>
+                          </tr>
+                        ))}
+                        {/* Fila de Total */}
+                        <tr style={{ background: '#f0f9ff' }}>
+                          <td style={{
+                            padding: '1rem',
+                            fontSize: '0.875rem',
+                            fontWeight: '700',
+                            color: '#0369a1'
+                          }}>
+                            Total Acumulado
+                          </td>
+                          <td style={{
+                            padding: '1rem',
+                            textAlign: 'right',
+                            fontSize: '1rem',
+                            fontWeight: '700',
+                            color: '#0369a1'
+                          }}>
+                            {periodos.reduce((sum, p) => sum + p.diasDisponibles, 0)}
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
+                        )}
 
-                <div style={{
-                  marginTop: '1.5rem',
-                  padding: '1rem',
-                  background: '#f0f9ff',
-                  border: '1px solid #bae6fd',
-                  borderRadius: '0.5rem'
-                }}>
-                  <h4 style={{ fontSize: '0.875rem', fontWeight: '600', color: '#0369a1', margin: 0, marginBottom: '0.5rem' }}>
-                    📊 Resumen Total
-                  </h4>
-                  <p style={{ fontSize: '0.875rem', color: '#0369a1', margin: 0 }}>
-                    <strong>Total disponible:</strong> {estadisticas.diasDisponibles} días ({periodos.length} período{periodos.length > 1 ? 's' : ''})
-                  </p>
-                </div>
-              </div>
-            )}
+              
 
             {activeTab === 'solicitar' && (
               <div>

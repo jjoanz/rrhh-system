@@ -2,12 +2,10 @@ import { poolPromise } from '../db.js';
 import sql from 'mssql';
 
 // Listar empleados
-// Listar empleados
 export const getEmpleados = async (req, res) => {
   try {
     const pool = await poolPromise;
     
-    // Consulta con JOIN para obtener nombre del departamento
     const result = await pool.request().query(`
       SELECT 
         e.EmpleadoID,
@@ -64,7 +62,6 @@ export const createEmpleado = async (req, res) => {
       departamentoID
     } = req.body;
 
-    // Validación de campos obligatorios
     if (!nombre || !apellido) {
       return res.status(400).json({ 
         error: 'Los campos nombre y apellido son obligatorios' 
@@ -101,9 +98,9 @@ export const createEmpleado = async (req, res) => {
 
     res.status(201).json({ 
       message: "Empleado creado exitosamente", 
-      empleadoId: result.recordset[0].EmpleadoID,  // ← minúscula para coincidir con frontend
-      id: result.recordset[0].EmpleadoID,          // ← alternativa
-      EmpleadoID: result.recordset[0].EmpleadoID   // ← formato SQL Server
+      empleadoId: result.recordset[0].EmpleadoID,
+      id: result.recordset[0].EmpleadoID,
+      EmpleadoID: result.recordset[0].EmpleadoID
     });
   } catch (err) {
     console.error('Error al crear empleado:', err);
@@ -136,7 +133,6 @@ export const updateEmpleado = async (req, res) => {
       departamentoID
     } = req.body;
 
-    // Validación de campos obligatorios
     if (!nombre || !apellido) {
       return res.status(400).json({ 
         error: 'Los campos nombre y apellido son obligatorios' 
@@ -204,6 +200,116 @@ export const deleteEmpleado = async (req, res) => {
     res.status(500).json({ 
       error: 'Error al eliminar empleado',
       detalles: err.message 
+    });
+  }
+};
+
+// ============================================
+// FUNCIONES DE EXPEDIENTES
+// ============================================
+
+// Obtener expediente por empleado
+export const getExpedienteByEmpleado = async (req, res) => {
+  try {
+    const { empleadoId } = req.params;
+    const pool = await poolPromise;
+
+    const result = await pool.request()
+      .input('EmpleadoID', sql.Int, empleadoId)
+      .query(`
+        SELECT 
+          e.ExpedienteID,
+          e.NumeroExpediente,
+          e.EmpleadoID,
+          e.FechaCreacion,
+          e.Estado,
+          (SELECT COUNT(*) FROM DocumentosExpediente WHERE ExpedienteID = e.ExpedienteID AND Estado = 'activo') AS TotalDocumentos
+        FROM Expedientes e
+        WHERE e.EmpleadoID = @EmpleadoID
+      `);
+
+    if (result.recordset.length === 0) {
+      return res.status(404).json({ 
+        success: false,
+        message: 'Expediente no encontrado' 
+      });
+    }
+
+    res.json({
+      success: true,
+      expediente: result.recordset[0]
+    });
+  } catch (error) {
+    console.error('Error al obtener expediente:', error);
+    res.status(500).json({ 
+      success: false,
+      message: 'Error al obtener expediente',
+      error: error.message 
+    });
+  }
+};
+
+// Obtener documentos de un expediente
+export const getDocumentosExpediente = async (req, res) => {
+  try {
+    const { expedienteId } = req.params;
+    const pool = await poolPromise;
+
+    const result = await pool.request()
+      .input('ExpedienteID', sql.Int, expedienteId)
+      .query(`
+        SELECT 
+          d.DocumentoID,
+          d.NombreOriginal,
+          d.TipoArchivo,
+          d.Tamaño,
+          d.FechaCarga,
+          d.Descripcion,
+          d.FechaVencimiento,
+          c.Nombre AS Categoria,
+          c.Color AS CategoriaColor
+        FROM DocumentosExpediente d
+        LEFT JOIN CategoriasDocumento c ON d.CategoriaID = c.CategoriaID
+        WHERE d.ExpedienteID = @ExpedienteID AND d.Estado = 'activo'
+        ORDER BY d.FechaCarga DESC
+      `);
+
+    res.json({
+      success: true,
+      documentos: result.recordset
+    });
+  } catch (error) {
+    console.error('Error al obtener documentos:', error);
+    res.status(500).json({ 
+      success: false,
+      message: 'Error al obtener documentos',
+      error: error.message 
+    });
+  }
+};
+
+// Obtener categorías de documentos
+export const getCategorias = async (req, res) => {
+  try {
+    const pool = await poolPromise;
+
+    const result = await pool.request().query(`
+      SELECT CategoriaID, Nombre, Color, Icono
+      FROM CategoriasDocumento
+      WHERE Activo = 1
+      ORDER BY Orden
+    `);
+
+    res.json({
+      success: true,
+      categorias: result.recordset
+    });
+  } catch (error) {
+    console.error('Error al obtener categorías:', error);
+    res.status(500).json({ 
+      success: false,
+      message: 'Error al obtener categorías',
+      error: error.message 
     });
   }
 };

@@ -217,7 +217,78 @@ const ReportesVisualModule = () => {
           default: null
         }
       ]
+    },
+
+    {
+  id: 'vacaciones',
+  nombre: 'Reportes de Vacaciones',
+  descripcion: 'Balance, próximos aniversarios y análisis de vacaciones',
+  icono: FileText, // o usa Calendar si tienes ese icono
+  color: 'teal',
+  configuraciones: [
+    {
+      campo: 'tipoVacaciones',
+      label: 'Tipo de reporte de vacaciones',
+      tipo: 'select',
+      opciones: [
+        { value: 'balance_general', label: 'Balance General de Vacaciones' },
+        { value: 'proximos_aniversarios', label: 'Próximos Aniversarios (30 días)' },
+        { value: 'pendientes_disfrutar', label: 'Vacaciones Pendientes por Disfrutar' },
+        { value: 'por_direccion', label: 'Balance por Dirección' },
+        { value: 'por_departamento', label: 'Balance por Departamento' },
+        { value: 'estadisticas', label: 'Estadísticas Generales' },
+        { value: 'empleados_sin_balance', label: 'Empleados Sin Balance' }
+      ],
+      default: 'balance_general'
+    },
+    {
+      campo: 'periodo',
+      label: 'Periodo de consulta',
+      tipo: 'select',
+      opciones: [
+        { value: '2024-2025', label: 'Periodo 2024-2025 (Actual)' },
+        { value: '2023-2024', label: 'Periodo 2023-2024' },
+        { value: '2022-2023', label: 'Periodo 2022-2023' },
+        { value: '2025-2026', label: 'Periodo 2025-2026 (Próximo)' },
+        { value: 'todos', label: 'Todos los periodos' }
+      ],
+      default: '2024-2025'
+    },
+    {
+      campo: 'direccionId',
+      label: 'Filtrar por Dirección',
+      tipo: 'select-direcciones',
+      default: null
+    },
+    {
+      campo: 'departamentoId',
+      label: 'Filtrar por Departamento',
+      tipo: 'select-departamentos',
+      default: null
+    },
+    {
+      campo: 'minimosDiasPendientes',
+      label: 'Mínimo de días pendientes',
+      tipo: 'number',
+      default: 0,
+      min: 0
+    },
+    {
+      campo: 'ordenamiento',
+      label: 'Ordenar por',
+      tipo: 'select',
+      opciones: [
+        { value: 'nombre', label: 'Nombre' },
+        { value: 'diasPendientes', label: 'Días Pendientes' },
+        { value: 'diasTotales', label: 'Días Totales' },
+        { value: 'aniosAntiguedad', label: 'Años de Antigüedad' }
+      ],
+      default: 'diasPendientes'
     }
+  ]
+},
+
+    
   ];
 
   const ejecutarReporte = async () => {
@@ -740,6 +811,47 @@ const ReportesVisualModule = () => {
   );
 };
 
+// Componente auxiliar para select de direcciones
+const SelectDirecciones = ({ valor, onChange, config }) => {
+  const [direcciones, setDirecciones] = useState([]);
+  const { getStoredToken } = useAuth();
+
+  useEffect(() => {
+    cargarDirecciones();
+  }, []);
+
+  const cargarDirecciones = async () => {
+    try {
+      const response = await fetch(`${API_URL}/direcciones`, {
+        headers: { Authorization: `Bearer ${getStoredToken()}` }
+      });
+      const data = await response.json();
+      setDirecciones(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error('Error cargando direcciones:', error);
+      setDirecciones([]);
+    }
+  };
+
+  return (
+    <div>
+      <label className="block font-medium text-gray-700 mb-2">{config.label}</label>
+      <select
+        value={valor || ''}
+        onChange={(e) => onChange(e.target.value || null)}
+        className="w-full border-2 border-gray-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+      >
+        <option value="">Todas las direcciones</option>
+        {direcciones.map(dir => (
+          <option key={dir.DireccionID} value={dir.DireccionID}>
+            {dir.Nombre}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+};
+
 // Componente de Configuración de Campos
 const ConfiguracionCampo = ({ config, valor, onChange }) => {
   const [departamentos, setDepartamentos] = useState([]);
@@ -842,6 +954,42 @@ const ConfiguracionCampo = ({ config, valor, onChange }) => {
     );
   }
 
+  // ============================================
+// REEMPLAZAR EL BLOQUE select-direcciones
+// Busca la línea 915 donde pusiste el código
+// REEMPLAZA TODO el bloque por este:
+// ============================================
+
+  if (config.tipo === 'select-direcciones') {
+    // ✅ SOLUCIÓN: Mover los hooks FUERA del if
+    return <SelectDirecciones valor={valor} onChange={onChange} config={config} />;
+  }
+
+// ============================================
+// AGREGAR ESTE NUEVO COMPONENTE
+// Después del componente ConfiguracionCampo
+// Justo antes de GraficoRenderer
+// ============================================
+
+
+
+  if (config.tipo === 'number') {
+    return (
+      <div>
+        <label className="block font-medium text-gray-700 mb-2">{config.label}</label>
+        <input
+          type="number"
+          value={valor !== undefined ? valor : config.default}
+          onChange={(e) => onChange(parseInt(e.target.value) || 0)}
+          min={config.min || 0}
+          max={config.max}
+          className="w-full border-2 border-gray-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+        />
+      </div>
+    );
+  }
+
+
   if (config.tipo === 'checkbox') {
     return (
       <div className="flex items-center">
@@ -872,6 +1020,7 @@ const ConfiguracionCampo = ({ config, valor, onChange }) => {
 
   return null;
 };
+
 
 // Componente Renderizador de Gráficos
 const GraficoRenderer = ({ tipo, data }) => {

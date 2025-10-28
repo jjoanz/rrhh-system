@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Users, Plus, Search, Download, Edit, Trash2, X, Save,
-  CheckCircle, Building, Star
+  CheckCircle, Building, Star, FileText
 } from 'lucide-react';
 
 const EmpleadosModule = () => {
@@ -23,12 +23,11 @@ const EmpleadosModule = () => {
   const API_URL = process.env.REACT_APP_API_URL || 'http://192.168.0.239:5000/api';
   const getToken = () => localStorage.getItem("rrhh_token");
 
-  // Cargar datos iniciales
   useEffect(() => {
-    cargarEmpleados();
+    cargarDatos();
   }, []);
 
-  const cargarEmpleados = async () => {
+  const cargarDatos = async () => {
     try {
       setCargando(true);
       const token = getToken();
@@ -38,25 +37,44 @@ const EmpleadosModule = () => {
         return;
       }
 
-      const response = await fetch(`${API_URL}/empleados/list`, {
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-      });
+      // Cargar empleados, departamentos y puestos en paralelo
+      const [empleadosRes, departamentosRes, puestosRes] = await Promise.all([
+        fetch(`${API_URL}/empleados/list`, {
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+        }),
+        fetch(`${API_URL}/departamentos`, {
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+        }),
+        fetch(`${API_URL}/puestos`, {
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+        })
+      ]);
 
-      if (!response.ok) {
-        throw new Error(`Error ${response.status}: ${await response.text()}`);
+      if (!empleadosRes.ok) {
+        throw new Error(`Error ${empleadosRes.status}: ${await empleadosRes.text()}`);
       }
 
-      const data = await response.json();
-      const empleadosRaw = Array.isArray(data) ? data : data.empleados || [];
+      const empleadosData = await empleadosRes.json();
+      const departamentosData = await departamentosRes.json();
+      const puestosData = await puestosRes.json();
 
+      // Procesar empleados
+      const empleadosRaw = Array.isArray(empleadosData) ? empleadosData : empleadosData.empleados || [];
       const empleadosMapeados = empleadosRaw.map(emp => ({
         id: emp.EmpleadoID,
         codigo: `EMP${String(emp.EmpleadoID).padStart(3, "0")}`,
-        nombre: emp.NOMBRE || "",
-        apellido: emp.APELLIDO || "",
+        nombre: emp.NOMBRE || emp.Nombre || "",
+        apellido: emp.APELLIDO || emp.Apellido || "",
+        nombreCompleto: `${emp.NOMBRE || emp.Nombre || ""} ${emp.APELLIDO || emp.Apellido || ""}`.trim(),
         email: emp.Email || "",
         telefono: emp.Telefono || "",
         direccion: emp.Direccion || "",
@@ -76,29 +94,29 @@ const EmpleadosModule = () => {
 
       setEmpleados(empleadosMapeados);
 
-      // Extraer departamentos y puestos únicos
-      const depts = [...new Set(empleadosMapeados
-        .map(emp => emp.departamento)
-        .filter(dept => dept && dept !== "Sin departamento")
-      )].map((nombre, index) => ({ id: index + 1, nombre }));
+      // Procesar departamentos desde BD
+      const deptsBD = Array.isArray(departamentosData) ? departamentosData : departamentosData.departamentos || [];
+      setDepartamentos(deptsBD.map(d => ({
+        id: d.DepartamentoID || d.id,
+        nombre: d.Nombre || d.nombre
+      })));
 
-      const psts = [...new Set(empleadosMapeados
-        .map(emp => emp.puesto)
-        .filter(puesto => puesto && puesto !== "Sin puesto")
-      )].map((nombre, index) => ({ id: index + 1, nombre }));
-
-      setDepartamentos(depts);
-      setPuestos(psts);
+      // Procesar puestos desde BD
+      const puestosBD = Array.isArray(puestosData) ? puestosData : puestosData.puestos || [];
+      setPuestos(puestosBD.map(p => ({
+        id: p.PuestoID || p.id,
+        nombre: p.NOMBRE || p.Nombre || p.nombre,
+        departamentoId: p.DepartamentoID || p.departamentoId
+      })));
 
     } catch (error) {
-      console.error("Error cargando empleados:", error);
-      alert(`Error al cargar empleados: ${error.message}`);
+      console.error("Error cargando datos:", error);
+      alert(`Error al cargar datos: ${error.message}`);
     } finally {
       setCargando(false);
     }
   };
 
-  // Actualizar empleado
   const actualizarEmpleado = async (empleadoEditado) => {
     try {
       setGuardando(true);
@@ -121,7 +139,8 @@ const EmpleadosModule = () => {
           salario: parseFloat(empleadoEditado.salario) || 0,
           fechaIngreso: empleadoEditado.fechaIngreso,
           estado: empleadoEditado.estado === 'activo' ? 1 : 0,
-          departamentoID: parseInt(empleadoEditado.departamentoId) || null
+          departamentoID: parseInt(empleadoEditado.departamentoId) || null,
+          puestoID: parseInt(empleadoEditado.puestoId) || null
         })
       });
 
@@ -130,7 +149,7 @@ const EmpleadosModule = () => {
       }
 
       alert('Empleado actualizado correctamente');
-      await cargarEmpleados();
+      await cargarDatos();
       setModalActivo(null);
       setEmpleadoSeleccionado(null);
 
@@ -142,7 +161,6 @@ const EmpleadosModule = () => {
     }
   };
 
-  // Eliminar empleado
   const eliminarEmpleado = async (id) => {
     if (!window.confirm('¿Estás seguro de eliminar este empleado? Esta acción no se puede deshacer.')) {
       return;
@@ -163,7 +181,7 @@ const EmpleadosModule = () => {
       }
 
       alert('Empleado eliminado correctamente');
-      await cargarEmpleados();
+      await cargarDatos();
 
     } catch (error) {
       console.error("Error eliminando empleado:", error);
@@ -171,32 +189,38 @@ const EmpleadosModule = () => {
     }
   };
 
-  // Filtrado
+  const verExpediente = (empleado) => {
+    setEmpleadoSeleccionado(empleado);
+    setModalActivo('expediente');
+  };
+
   const empleadosFiltrados = useMemo(() => {
     return empleados.filter(empleado => {
       const terminoBusqueda = filtros.busqueda.toLowerCase().trim();
       const coincideBusqueda = terminoBusqueda === '' || [
-        empleado.nombre, empleado.apellido, empleado.email,
-        empleado.codigo, empleado.cedula, empleado.puesto, empleado.departamento
-      ].some(campo => (campo || '').toLowerCase().includes(terminoBusqueda));
-      
+        empleado.nombre,
+        empleado.apellido,
+        empleado.nombreCompleto,
+        empleado.email,
+        empleado.cedula,
+        empleado.codigo
+      ].some(campo => campo?.toLowerCase().includes(terminoBusqueda));
+
       const coincideDepartamento = filtros.departamento === '' || 
         empleado.departamento === filtros.departamento;
-      
+
       const coincideEstado = filtros.estado === 'todos' || 
         empleado.estado === filtros.estado;
-      
+
       return coincideBusqueda && coincideDepartamento && coincideEstado;
     });
   }, [empleados, filtros]);
 
-  // Estadísticas
   const estadisticas = useMemo(() => ({
     totalEmpleados: empleados.length,
-    empleadosActivos: empleados.filter(emp => emp.estado === 'activo').length,
-    departamentos: new Set(empleados
-      .map(emp => emp.departamento)
-      .filter(dept => dept && dept !== 'Sin departamento')
+    empleadosActivos: empleados.filter(e => e.estado === 'activo').length,
+    departamentos: new Set(
+      empleados.map(e => e.departamento).filter(d => d !== "Sin departamento")
     ).size,
     nuevosEsteMes: empleados.filter(emp => {
       if (!emp.fechaIngreso) return false;
@@ -206,14 +230,12 @@ const EmpleadosModule = () => {
     }).length
   }), [empleados]);
 
-  // Paginación
   const totalPaginas = Math.ceil(empleadosFiltrados.length / empleadosPorPagina);
   const empleadosPaginados = empleadosFiltrados.slice(
     (paginaActual - 1) * empleadosPorPagina,
     paginaActual * empleadosPorPagina
   );
 
-  // Formulario de empleado
   const FormularioEmpleado = ({ empleado, onGuardar, onCancelar }) => {
     const [formData, setFormData] = useState(() => {
       if (empleado) {
@@ -236,10 +258,16 @@ const EmpleadosModule = () => {
       }
       return {
         nombre: '', apellido: '', cedula: '', email: '', telefono: '',
-        direccion: '', departamento: '', puesto: '', fechaIngreso: '',
+        direccion: '', departamento: '', departamentoId: null, 
+        puesto: '', puestoId: null, fechaIngreso: '',
         salario: '', estado: 'activo'
       };
     });
+
+    // Filtrar puestos según departamento seleccionado
+    const puestosFiltrados = formData.departamentoId
+      ? puestos.filter(p => p.departamentoId === parseInt(formData.departamentoId))
+      : puestos;
 
     const handleGuardar = () => {
       if (!formData.nombre || !formData.apellido || !formData.email) {
@@ -250,8 +278,8 @@ const EmpleadosModule = () => {
     };
 
     return (
-      <div style={styles.modal}>
-        <div style={styles.modalContent}>
+      <div style={styles.modal} onClick={onCancelar}>
+        <div style={styles.modalContent} onClick={(e) => e.stopPropagation()}>
           <div style={styles.modalHeader}>
             <h3 style={styles.modalTitle}>Editar Empleado</h3>
             <button onClick={onCancelar} style={styles.closeButton}>
@@ -321,35 +349,57 @@ const EmpleadosModule = () => {
               <div>
                 <h4 style={styles.sectionTitle}>Información Laboral</h4>
                 <div style={styles.formGroup}>
-                  <label style={styles.label}>Puesto</label>
-                  <input
-                    type="text"
-                    value={formData.puesto}
-                    onChange={(e) => setFormData({...formData, puesto: e.target.value})}
-                    style={styles.input}
-                    placeholder="Ej: Desarrollador, Gerente"
-                  />
-                </div>
-                <div style={styles.formGroup}>
-                  <label style={styles.label}>Departamento</label>
+                  <label style={styles.label}>Departamento *</label>
                   <select
-                    value={formData.departamento}
+                    value={formData.departamentoId || ''}
                     onChange={(e) => {
-                      const deptSeleccionado = departamentos.find(d => d.nombre === e.target.value);
+                      const deptId = e.target.value ? parseInt(e.target.value) : null;
+                      const dept = departamentos.find(d => d.id === deptId);
                       setFormData({
                         ...formData, 
-                        departamento: e.target.value,
-                        departamentoId: deptSeleccionado?.id || null
+                        departamentoId: deptId,
+                        departamento: dept?.nombre || '',
+                        puestoId: null, // Resetear puesto al cambiar departamento
+                        puesto: ''
                       });
                     }}
                     style={styles.select}
                   >
-                    <option value="">Seleccionar</option>
+                    <option value="">Seleccionar departamento</option>
                     {departamentos.map(dept => (
-                      <option key={dept.id} value={dept.nombre}>{dept.nombre}</option>
+                      <option key={dept.id} value={dept.id}>{dept.nombre}</option>
                     ))}
                   </select>
                 </div>
+
+                <div style={styles.formGroup}>
+                  <label style={styles.label}>Puesto *</label>
+                  <select
+                    value={formData.puestoId || ''}
+                    onChange={(e) => {
+                      const puestoId = e.target.value ? parseInt(e.target.value) : null;
+                      const puesto = puestos.find(p => p.id === puestoId);
+                      setFormData({
+                        ...formData, 
+                        puestoId: puestoId,
+                        puesto: puesto?.nombre || ''
+                      });
+                    }}
+                    style={styles.select}
+                    disabled={!formData.departamentoId}
+                  >
+                    <option value="">Seleccionar puesto</option>
+                    {puestosFiltrados.map(puesto => (
+                      <option key={puesto.id} value={puesto.id}>{puesto.nombre}</option>
+                    ))}
+                  </select>
+                  {!formData.departamentoId && (
+                    <small style={{color: '#6b7280', fontSize: '12px', marginTop: '4px', display: 'block'}}>
+                      Primero selecciona un departamento
+                    </small>
+                  )}
+                </div>
+
                 <div style={styles.formGroup}>
                   <label style={styles.label}>Fecha de Ingreso</label>
                   <input
@@ -414,20 +464,18 @@ const EmpleadosModule = () => {
     <div style={styles.container}>
       <style>{styles.css}</style>
 
-      {/* Header */}
       <div style={styles.header}>
         <div>
-          <h1 style={{ ...styles.title, color: 'white' }}>
-            <Users size={32} color="#2563eb" />
+          <h1 style={styles.title}>
+            <Users size={32} />
             Gestión de Empleados
           </h1>
-          <p style={{ ...styles.subtitle, color: 'white' }}>
+          <p style={styles.subtitle}>
             {empleados.length} empleados registrados
           </p>
         </div>
       </div>
 
-      {/* Estadísticas */}
       <div style={styles.statsGrid}>
         <div style={styles.statCard}>
           <div style={styles.statContent}>
@@ -484,7 +532,6 @@ const EmpleadosModule = () => {
         </div>
       </div>
 
-      {/* Filtros */}
       <div style={styles.filtersCard}>
         <div style={styles.filtersContent}>
           <div style={styles.searchContainer}>
@@ -521,7 +568,6 @@ const EmpleadosModule = () => {
         </div>
       </div>
 
-      {/* Tabla */}
       <div style={styles.tableCard}>
         <table style={styles.table}>
           <thead style={styles.tableHeader}>
@@ -542,7 +588,7 @@ const EmpleadosModule = () => {
                     <img src={empleado.foto} alt="" style={styles.employeePhoto} />
                     <div>
                       <div style={styles.employeeName}>
-                        {empleado.nombre} {empleado.apellido}
+                        {empleado.nombreCompleto || `${empleado.nombre} ${empleado.apellido}`}
                       </div>
                       <div style={styles.employeeEmail}>{empleado.email}</div>
                     </div>
@@ -561,6 +607,13 @@ const EmpleadosModule = () => {
                 <td style={styles.td}>{empleado.fechaIngresoDisplay}</td>
                 <td style={styles.td}>
                   <div style={styles.actionButtons}>
+                    <button
+                      onClick={() => verExpediente(empleado)}
+                      style={{...styles.actionButton, color: '#2563eb'}}
+                      title="Ver Expediente"
+                    >
+                      <FileText size={16} />
+                    </button>
                     <button
                       onClick={() => {
                         setEmpleadoSeleccionado(empleado);
@@ -585,7 +638,6 @@ const EmpleadosModule = () => {
           </tbody>
         </table>
 
-        {/* Paginación */}
         {totalPaginas > 1 && (
           <div style={styles.pagination}>
             <div style={styles.paginationInfo}>
@@ -623,7 +675,6 @@ const EmpleadosModule = () => {
         )}
       </div>
 
-      {/* Modal */}
       {modalActivo === 'editar' && empleadoSeleccionado && (
         <FormularioEmpleado
           empleado={empleadoSeleccionado}
@@ -634,79 +685,115 @@ const EmpleadosModule = () => {
           }}
         />
       )}
+
+      {modalActivo === 'expediente' && empleadoSeleccionado && (
+        <div style={styles.modal} onClick={() => {
+          setModalActivo(null);
+          setEmpleadoSeleccionado(null);
+        }}>
+          <div style={{...styles.modalContent, maxWidth: '1200px'}} onClick={(e) => e.stopPropagation()}>
+            <div style={styles.modalHeader}>
+              <h2 style={{...styles.modalTitle, display: 'flex', alignItems: 'center'}}>
+                <FileText size={24} style={{marginRight: '8px'}} />
+                Expediente Digital - {empleadoSeleccionado.nombreCompleto || `${empleadoSeleccionado.nombre} ${empleadoSeleccionado.apellido}`}
+              </h2>
+              <button
+                onClick={() => {
+                  setModalActivo(null);
+                  setEmpleadoSeleccionado(null);
+                }}
+                style={styles.closeButton}
+              >
+                <X size={24} />
+              </button>
+            </div>
+            <div style={styles.modalBody}>
+              <p style={{textAlign: 'center', padding: '40px', color: '#6b7280'}}>
+                El módulo de expedientes digitales se cargará aquí...
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
 
-// Estilos (continúa en siguiente mensaje por límite de longitud)
 const styles = {
-  container: { padding: '24px' },
+  container: { padding: '24px', backgroundColor: '#f9fafb', minHeight: '100vh' },
   header: { marginBottom: '32px' },
-  title: { fontSize: '24px', fontWeight: 'bold', color: '#1f2937', display: 'flex', alignItems: 'center', gap: '12px' },
-  subtitle: { color: '#6b7280', marginTop: '4px' },
-  statsGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '24px', marginBottom: '32px' },
+  title: { fontSize: '28px', fontWeight: 'bold', color: '#1f2937', display: 'flex', alignItems: 'center', gap: '12px' },
+  subtitle: { color: '#6b7280', marginTop: '8px', fontSize: '14px' },
+  statsGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '24px', marginBottom: '32px' },
   statCard: { backgroundColor: 'white', padding: '24px', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', border: '1px solid #e5e7eb' },
   statContent: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
-  statNumber: { fontSize: '24px', fontWeight: 'bold', color: '#1f2937' },
-  statLabel: { fontSize: '14px', color: '#6b7280', fontWeight: '500', marginBottom: '4px' },
+  statNumber: { fontSize: '28px', fontWeight: 'bold', color: '#1f2937' },
+  statLabel: { fontSize: '14px', color: '#6b7280', fontWeight: '500', marginBottom: '8px' },
   statIcon: { padding: '12px', borderRadius: '12px', display: 'flex' },
   filtersCard: { backgroundColor: 'white', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', border: '1px solid #e5e7eb', padding: '20px', marginBottom: '24px' },
   filtersContent: { display: 'flex', gap: '16px', flexWrap: 'wrap' },
   searchContainer: { position: 'relative', flex: '1', minWidth: '250px' },
-  searchInput: { width: '100%', padding: '8px 8px 8px 40px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px' },
+  searchInput: { width: '100%', padding: '10px 10px 10px 40px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px' },
   searchIcon: { position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#9ca3af' },
-  select: { padding: '8px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', minWidth: '200px' },
+  select: { padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', minWidth: '200px', backgroundColor: 'white' },
   tableCard: { backgroundColor: 'white', borderRadius: '12px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', border: '1px solid #e5e7eb', overflow: 'hidden' },
   table: { width: '100%', borderCollapse: 'collapse' },
   tableHeader: { backgroundColor: '#f9fafb', borderBottom: '1px solid #e5e7eb' },
-  th: { padding: '12px 16px', textAlign: 'left', fontWeight: '500', color: '#1f2937', fontSize: '14px' },
-  tr: { borderBottom: '1px solid #e5e7eb' },
+  th: { padding: '14px 16px', textAlign: 'left', fontWeight: '600', color: '#1f2937', fontSize: '13px', textTransform: 'uppercase', letterSpacing: '0.5px' },
+  tr: { borderBottom: '1px solid #e5e7eb', transition: 'background-color 0.2s' },
   td: { padding: '16px', fontSize: '14px', color: '#1f2937' },
   employeeInfo: { display: 'flex', alignItems: 'center', gap: '12px' },
-  employeePhoto: { width: '40px', height: '40px', borderRadius: '50%' },
-  employeeName: { fontWeight: '500', color: '#1f2937' },
-  employeeEmail: { fontSize: '12px', color: '#6b7280' },
-  badge: { padding: '4px 8px', borderRadius: '12px', fontSize: '12px', fontWeight: '500' },
+  employeePhoto: { width: '40px', height: '40px', borderRadius: '50%', objectFit: 'cover' },
+  employeeName: { fontWeight: '600', color: '#1f2937', marginBottom: '2px' },
+  employeeEmail: { fontSize: '13px', color: '#6b7280' },
+  badge: { padding: '4px 12px', borderRadius: '12px', fontSize: '12px', fontWeight: '600', display: 'inline-block' },
   badgeActive: { backgroundColor: '#dcfce7', color: '#166534' },
   badgeInactive: { backgroundColor: '#fee2e2', color: '#991b1b' },
   actionButtons: { display: 'flex', gap: '8px' },
-  actionButton: { padding: '6px', border: 'none', borderRadius: '6px', cursor: 'pointer', backgroundColor: '#f3f4f6' },
-  pagination: { display: 'flex', justifyContent: 'space-between', padding: '16px 24px', borderTop: '1px solid #e5e7eb' },
+  actionButton: { padding: '8px', border: 'none', borderRadius: '6px', cursor: 'pointer', backgroundColor: '#f3f4f6', transition: 'all 0.2s' },
+  pagination: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 24px', borderTop: '1px solid #e5e7eb', backgroundColor: '#fafafa' },
   paginationInfo: { fontSize: '14px', color: '#6b7280' },
   paginationButtons: { display: 'flex', gap: '8px' },
-  paginationButton: { padding: '6px 12px', border: '1px solid #d1d5db', borderRadius: '6px', backgroundColor: 'white', cursor: 'pointer' },
+  paginationButton: { padding: '8px 12px', border: '1px solid #d1d5db', borderRadius: '6px', backgroundColor: 'white', cursor: 'pointer', fontSize: '14px', fontWeight: '500', transition: 'all 0.2s' },
   paginationButtonActive: { backgroundColor: '#2563eb', color: 'white', borderColor: '#2563eb' },
   modal: { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50, padding: '16px' },
-  modalContent: { backgroundColor: 'white', borderRadius: '12px', maxWidth: '900px', width: '100%', maxHeight: '90vh', overflow: 'auto' },
-  modalHeader: { padding: '24px', borderBottom: '1px solid #e5e7eb', display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
+  modalContent: { backgroundColor: 'white', borderRadius: '12px', maxWidth: '900px', width: '100%', maxHeight: '90vh', overflow: 'auto', boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1), 0 10px 10px -5px rgba(0,0,0,0.04)' },
+  modalHeader: { padding: '24px', borderBottom: '1px solid #e5e7eb', display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'sticky', top: 0, backgroundColor: 'white', zIndex: 10 },
   modalTitle: { fontSize: '20px', fontWeight: 'bold', color: '#1f2937' },
-  closeButton: { padding: '4px', border: 'none', background: 'none', cursor: 'pointer', color: '#6b7280' },
+  closeButton: { padding: '8px', border: 'none', background: 'none', cursor: 'pointer', color: '#6b7280', borderRadius: '6px', transition: 'background-color 0.2s' },
   modalBody: { padding: '24px' },
   formGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(350px, 1fr))', gap: '24px' },
-  sectionTitle: { fontSize: '16px', fontWeight: '600', color: '#1f2937', marginBottom: '16px', paddingBottom: '8px', borderBottom: '1px solid #e5e7eb' },
+  sectionTitle: { fontSize: '16px', fontWeight: '600', color: '#1f2937', marginBottom: '16px', paddingBottom: '8px', borderBottom: '2px solid #e5e7eb' },
   formGroup: { marginBottom: '16px' },
-  label: { display: 'block', fontSize: '14px', fontWeight: '500', color: '#374151', marginBottom: '4px' },
-  input: { width: '100%', padding: '8px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px' },
-  textarea: { width: '100%', padding: '8px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', resize: 'vertical', minHeight: '80px' },
-  button: { padding: '8px 16px', borderRadius: '8px', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', fontWeight: '500' },
+  label: { display: 'block', fontSize: '14px', fontWeight: '500', color: '#374151', marginBottom: '6px' },
+  input: { width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', transition: 'border-color 0.2s, box-shadow 0.2s' },
+  textarea: { width: '100%', padding: '10px 12px', border: '1px solid #d1d5db', borderRadius: '8px', fontSize: '14px', resize: 'vertical', minHeight: '100px', transition: 'border-color 0.2s, box-shadow 0.2s' },
+  button: { padding: '10px 20px', borderRadius: '8px', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', fontSize: '14px', fontWeight: '600', transition: 'all 0.2s' },
   buttonPrimary: { backgroundColor: '#2563eb', color: 'white' },
   buttonSecondary: { backgroundColor: '#f3f4f6', color: '#374151', border: '1px solid #d1d5db' },
   modalActions: { display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '24px', paddingTop: '24px', borderTop: '1px solid #e5e7eb' },
   loadingContainer: { display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', height: '400px', gap: '16px' },
-  spinner: { width: '32px', height: '32px', border: '3px solid #f3f3f3', borderTop: '3px solid #2563eb', borderRadius: '50%', animation: 'spin 1s linear infinite' },
+  spinner: { width: '40px', height: '40px', border: '4px solid #f3f3f3', borderTop: '4px solid #2563eb', borderRadius: '50%', animation: 'spin 1s linear infinite' },
   css: `
     @keyframes spin {
       0% { transform: rotate(0deg); }
       100% { transform: rotate(360deg); }
     }
     tr:hover { background-color: #f9fafb; }
-    button:hover { opacity: 0.9; }
-    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    button:hover { opacity: 0.9; transform: translateY(-1px); }
+    button:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
     input:focus, select:focus, textarea:focus {
       outline: none;
       border-color: #2563eb;
       box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
     }
+    select:disabled {
+      background-color: #f3f4f6;
+      cursor: not-allowed;
+      opacity: 0.6;
+    }
+    .actionButton:hover { background-color: #e5e7eb !important; }
+    .closeButton:hover { background-color: #f3f4f6 !important; }
   `
 };
 

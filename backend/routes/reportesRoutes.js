@@ -990,4 +990,162 @@ router.post('/export', async (req, res) => {
   }
 });
 
+// ===================== REPORTES DE VACACIONES =====================
+
+router.post('/vacaciones', async (req, res) => {
+  try {
+    const { 
+      tipoVacaciones, 
+      periodo,  // ✅ CAMBIÓ de 'anio' a 'periodo'
+      direccionId, 
+      departamentoId, 
+      minimosDiasPendientes,
+      ordenamiento 
+    } = req.body;
+
+    console.log('📊 Generando reporte de vacaciones:', tipoVacaciones);
+    console.log('📅 Periodo solicitado:', periodo);
+
+    // ✅ NUEVO: Procesar periodo
+    let anio;
+    if (!periodo || periodo === 'todos') {
+      anio = null; // Consultar todos
+    } else if (periodo.includes('-')) {
+      // "2024-2025" -> tomar 2024
+      anio = parseInt(periodo.split('-')[0]);
+    } else {
+      // "2024" -> usar directamente
+      anio = parseInt(periodo);
+    }
+
+    // Si no hay año, usar actual
+    if (!anio) {
+      anio = new Date().getFullYear();
+    }
+
+    console.log('📅 Año procesado:', anio);
+
+    // Mapeo de tipos de reporte a stored procedures
+    const reportesMap = {
+      'balance_general': {
+        sp: 'sp_ReporteBalanceVacaciones',
+        params: {
+          Anio: anio,  // ✅ Usa el año procesado
+          DireccionID: direccionId || null,
+          DepartamentoID: departamentoId || null,
+          MinimosDiasPendientes: minimosDiasPendientes || 0,
+          Ordenamiento: ordenamiento || 'diasPendientes'
+        }
+      },
+      'proximos_aniversarios': {
+        sp: 'sp_ReporteProximosAniversarios',
+        params: { DiasAdelante: 30 }
+      },
+      'pendientes_disfrutar': {
+        sp: 'sp_ReporteVacacionesPendientes',
+        params: { MinimosDias: minimosDiasPendientes || 10 }
+      },
+      'por_direccion': {
+        sp: 'sp_ReporteVacacionesPorDireccion',
+        params: {}
+      },
+      'por_departamento': {
+        sp: 'sp_ReporteVacacionesPorDepartamento',
+        params: { DireccionID: direccionId || null }
+      },
+      'estadisticas': {
+        sp: 'sp_ReporteEstadisticasVacaciones',
+        params: {}
+      },
+      'empleados_sin_balance': {
+        sp: 'sp_ReporteEmpleadosSinBalance',
+        params: {}
+      }
+    };
+
+    const reporteConfig = reportesMap[tipoVacaciones];
+    
+    if (!reporteConfig) {
+      return res.status(400).json({ 
+        success: false, 
+        error: 'Tipo de reporte no válido',
+        tiposValidos: Object.keys(reportesMap)
+      });
+    }
+
+    // Construir query
+    const paramNames = Object.keys(reporteConfig.params);
+    const paramString = paramNames
+      .map(name => `@${name} = @${name}`)
+      .join(', ');
+    
+    const query = paramString 
+      ? `EXEC ${reporteConfig.sp} ${paramString}`
+      : `EXEC ${reporteConfig.sp}`;
+
+    console.log('🔍 Ejecutando:', query);
+
+    // Ejecutar
+    const pool = await getConnection();
+    const request = pool.request();
+    
+    // Agregar parámetros dinámicamente
+    Object.entries(reporteConfig.params).forEach(([name, value]) => {
+      if (value !== null) {
+        const sqlType = typeof value === 'number' ? sql.Int : sql.VarChar(50);
+        request.input(name, sqlType, value);
+      } else {
+        request.input(name, sql.Int, null);
+      }
+    });
+
+    const result = await request.query(query);
+    
+    console.log('✅ Reporte generado:', result.recordset.length, 'registros');
+
+    res.json({ 
+      success: true, 
+      data: result.recordset,
+      count: result.recordset.length,
+      reporte: tipoVacaciones,
+      periodo: periodo,  // ✅ NUEVO
+      anioConsultado: anio,  // ✅ NUEVO
+      fechaGeneracion: new Date().toISOString()
+    });
+
+  } catch (error) {
+    console.error('❌ Error en reporte de vacaciones:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Error generando reporte de vacaciones',
+      details: error.message 
+    });
+  }
+});
+
+// ===================== ENDPOINT DIRECCIONES =====================
+
+router.get('/direcciones', async (req, res) => {
+  try {
+    console.log('📍 Obteniendo direcciones...');
+
+    const pool = await getConnection();
+    const result = await pool.request().query(`
+      SELECT DireccionID, Nombre, Orden
+      FROM Direcciones
+      ORDER BY Orden, Nombre
+    `);
+    
+    console.log('✅ Direcciones obtenidas:', result.recordset.length);
+    res.json(result.recordset);
+
+  } catch (error) {
+    console.error('❌ Error obteniendo direcciones:', error);
+    res.status(500).json({ 
+      error: 'Error al obtener direcciones',
+      details: error.message 
+    });
+  }
+});
+
 export default router;

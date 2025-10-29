@@ -51,6 +51,11 @@ const ReportesVisualModule = () => {
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [nombreReporte, setNombreReporte] = useState('');
 
+  useEffect(() => {
+    console.log('🔍 Estado:', { tipoReporte, configuracion });
+  }, [tipoReporte, configuracion]);
+
+
   // Cargar métricas y reportes guardados al inicio
   useEffect(() => {
     cargarMetricas();
@@ -220,73 +225,146 @@ const ReportesVisualModule = () => {
     },
 
     {
-  id: 'vacaciones',
-  nombre: 'Reportes de Vacaciones',
-  descripcion: 'Balance, próximos aniversarios y análisis de vacaciones',
-  icono: FileText, // o usa Calendar si tienes ese icono
-  color: 'teal',
-  configuraciones: [
-    {
-      campo: 'tipoVacaciones',
-      label: 'Tipo de reporte de vacaciones',
-      tipo: 'select',
-      opciones: [
-        { value: 'balance_general', label: 'Balance General de Vacaciones' },
-        { value: 'proximos_aniversarios', label: 'Próximos Aniversarios (30 días)' },
-        { value: 'pendientes_disfrutar', label: 'Vacaciones Pendientes por Disfrutar' },
-        { value: 'por_direccion', label: 'Balance por Dirección' },
-        { value: 'por_departamento', label: 'Balance por Departamento' },
-        { value: 'estadisticas', label: 'Estadísticas Generales' },
-        { value: 'empleados_sin_balance', label: 'Empleados Sin Balance' }
-      ],
-      default: 'balance_general'
+      id: 'vacaciones',
+      nombre: 'Reportes de Vacaciones',
+      descripcion: 'Balance, próximos aniversarios y análisis de vacaciones',
+      icono: FileText,
+      color: 'teal',
+      configuraciones: [
+        {
+          campo: 'tipoVacaciones',  // ✅ IMPORTANTE: este campo
+          label: 'Tipo de reporte de vacaciones',
+          tipo: 'select',
+          opciones: [
+            { value: 'balance_general', label: 'Balance General de Vacaciones' },
+            { value: 'proximos_aniversarios', label: 'Próximos Aniversarios (30 días)' },
+            { value: 'pendientes_disfrutar', label: 'Vacaciones Pendientes por Disfrutar' },
+            { value: 'por_direccion', label: 'Balance por Dirección' },
+            { value: 'por_departamento', label: 'Balance por Departamento' },
+            { value: 'estadisticas', label: 'Estadísticas Generales' },
+            { value: 'empleados_sin_balance', label: 'Empleados Sin Balance' }
+          ],
+          default: 'balance_general'
+        },
+        {
+          campo: 'periodo',
+          label: 'Periodo de consulta',
+          tipo: 'select',
+          opciones: [
+            { value: '2024-2025', label: 'Periodo 2024-2025 (Actual)' },
+            { value: '2023-2024', label: 'Periodo 2023-2024' },
+            { value: '2022-2023', label: 'Periodo 2022-2023' },
+            { value: '2025-2026', label: 'Periodo 2025-2026 (Próximo)' },
+            { value: 'todos', label: 'Todos los periodos' }
+          ],
+          default: '2024-2025'
+        },
+        {
+          campo: 'direccionId',
+          label: 'Filtrar por Dirección',
+          tipo: 'select-direcciones',
+          default: null
+        },
+        {
+          campo: 'departamentoId',
+          label: 'Filtrar por Departamento',
+          tipo: 'select-departamentos',
+          default: null
+        },
+        {
+          campo: 'minimosDiasPendientes',
+          label: 'Mínimo de días pendientes',
+          tipo: 'number',
+          default: 0,
+          min: 0
+        },
+        {
+          campo: 'ordenamiento',
+          label: 'Ordenar por',
+          tipo: 'select',
+          opciones: [
+            { value: 'nombre', label: 'Nombre' },
+            { value: 'diasPendientes', label: 'Días Pendientes' },
+            { value: 'diasTotales', label: 'Días Totales' },
+            { value: 'antiguedad', label: 'Años de Antigüedad' }
+          ],
+          default: 'diasPendientes'
+        }
+      ]
     },
+
     {
-      campo: 'periodo',
-      label: 'Periodo de consulta',
-      tipo: 'select',
-      opciones: [
-        { value: '2024-2025', label: 'Periodo 2024-2025 (Actual)' },
-        { value: '2023-2024', label: 'Periodo 2023-2024' },
-        { value: '2022-2023', label: 'Periodo 2022-2023' },
-        { value: '2025-2026', label: 'Periodo 2025-2026 (Próximo)' },
-        { value: 'todos', label: 'Todos los periodos' }
-      ],
-      default: '2024-2025'
+      id: 'compensaciones',
+      nombre: 'Compensaciones Personal ProDominicana',
+      descripcion: 'Relación de colaboradores fijos con historial salarial y compensaciones',
+      icono: DollarSign,
+      color: 'emerald',
+      configuraciones: [
+        {
+          campo: 'nivelPuesto',
+          label: 'Nivel de Puesto',
+          tipo: 'select',
+          opciones: [
+            { value: null, label: 'Todos los niveles' },
+            { value: 'Directores', label: 'Directores' },
+            { value: 'Gerentes', label: 'Gerentes' },
+            { value: 'Coordinadores', label: 'Coordinadores' },
+            { value: 'Especialistas', label: 'Especialistas' },
+            { value: 'Analistas', label: 'Analistas' },
+            { value: 'Ejecutivos', label: 'Ejecutivos' },
+            { value: 'Asistentes Ejecutivas', label: 'Asistentes Ejecutivas' },
+            { value: 'Asistentes', label: 'Asistentes' },
+            { value: 'Técnico', label: 'Técnico' },
+            { value: 'Auxiliar', label: 'Auxiliar' },
+            { value: 'Servicios Generales', label: 'Servicios Generales' }
+          ],
+          default: null
+        },
+        {
+          campo: 'direccionId',
+          label: 'Filtrar por Dirección',
+          tipo: 'select-direcciones',
+          default: null
+        },
+        {
+          campo: 'departamentoId',
+          label: 'Filtrar por Departamento',
+          tipo: 'select-departamentos',
+          default: null
+        },
+        {
+          campo: 'mesConsulta',
+          label: 'Mes de consulta',
+          tipo: 'select',
+          opciones: [
+            { value: 1, label: 'Enero' },
+            { value: 2, label: 'Febrero' },
+            { value: 3, label: 'Marzo' },
+            { value: 4, label: 'Abril' },
+            { value: 5, label: 'Mayo' },
+            { value: 6, label: 'Junio' },
+            { value: 7, label: 'Julio' },
+            { value: 8, label: 'Agosto' },
+            { value: 9, label: 'Septiembre' },
+            { value: 10, label: 'Octubre' },
+            { value: 11, label: 'Noviembre' },
+            { value: 12, label: 'Diciembre' }
+          ],
+          default: new Date().getMonth() + 1
+        },
+        {
+          campo: 'anioConsulta',
+          label: 'Año de consulta',
+          tipo: 'select',
+          opciones: [
+            { value: 2023, label: '2023' },
+            { value: 2024, label: '2024' },
+            { value: 2025, label: '2025' }
+          ],
+          default: 2025
+        }
+      ]
     },
-    {
-      campo: 'direccionId',
-      label: 'Filtrar por Dirección',
-      tipo: 'select-direcciones',
-      default: null
-    },
-    {
-      campo: 'departamentoId',
-      label: 'Filtrar por Departamento',
-      tipo: 'select-departamentos',
-      default: null
-    },
-    {
-      campo: 'minimosDiasPendientes',
-      label: 'Mínimo de días pendientes',
-      tipo: 'number',
-      default: 0,
-      min: 0
-    },
-    {
-      campo: 'ordenamiento',
-      label: 'Ordenar por',
-      tipo: 'select',
-      opciones: [
-        { value: 'nombre', label: 'Nombre' },
-        { value: 'diasPendientes', label: 'Días Pendientes' },
-        { value: 'diasTotales', label: 'Días Totales' },
-        { value: 'aniosAntiguedad', label: 'Años de Antigüedad' }
-      ],
-      default: 'diasPendientes'
-    }
-  ]
-},
 
     
   ];
@@ -299,24 +377,79 @@ const ReportesVisualModule = () => {
 
     setLoading(true);
     try {
+      // ✅ Construir payload correcto
+      let payload = { ...configuracion };
+      
+      // ✅ Si es vacaciones, construir payload específico
+      if (tipoReporte === 'vacaciones') {
+        payload = {
+          tipoVacaciones: configuracion.tipoVacaciones || 'balance_general',
+          periodo: configuracion.periodo || '2024-2025',
+          direccionId: configuracion.direccionId || null,
+          departamentoId: configuracion.departamentoId || null,
+          minimosDiasPendientes: configuracion.minimosDiasPendientes || 0,
+          ordenamiento: configuracion.ordenamiento || 'diasPendientes'
+        };
+      }
+      // ✅ Si es compensaciones, construir payload específico
+      if (tipoReporte === 'compensaciones') {
+        payload = {
+          nivelPuesto: configuracion.nivelPuesto || null,
+          direccionId: configuracion.direccionId || null,
+          departamentoId: configuracion.departamentoId || null,
+          mesConsulta: configuracion.mesConsulta || new Date().getMonth() + 1,
+          anioConsulta: configuracion.anioConsulta || new Date().getFullYear()
+        };
+      }
+
+      
+
+      console.log('📤 Payload:', payload);
+
       const response = await fetch(`${API_URL}/reportes/${tipoReporte}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${getStoredToken()}`
         },
-        body: JSON.stringify(configuracion)
+        body: JSON.stringify(payload)
       });
 
       const result = await response.json();
+      console.log('📥 Respuesta:', result);
+
       if (result.success) {
-        setData(Array.isArray(result.data) ? result.data : []);
+        let datosLimpios = Array.isArray(result.data) ? result.data : [];
+        
+        // ✅ Limpiar datos de vacaciones
+        if (tipoReporte === 'vacaciones') {
+          datosLimpios = datosLimpios.map(item => {
+            const itemLimpio = { ...item };
+            
+            // Quitar $
+            Object.keys(itemLimpio).forEach(key => {
+              if (typeof itemLimpio[key] === 'string' && itemLimpio[key].startsWith('$')) {
+                itemLimpio[key] = itemLimpio[key].replace('$', '').trim();
+              }
+            });
+
+            // Anios → Años
+            if (itemLimpio['Anios Antiguedad']) {
+              itemLimpio['Años Antigüedad'] = itemLimpio['Anios Antiguedad'];
+              delete itemLimpio['Anios Antiguedad'];
+            }
+
+            return itemLimpio;
+          });
+        }
+
+        setData(datosLimpios);
       } else {
-        alert('Error generando reporte: ' + (result.error || 'Error desconocido'));
+        alert('Error: ' + (result.error || 'Error desconocido'));
         setData([]);
       }
     } catch (error) {
-      console.error('Error:', error);
+      console.error('❌ Error:', error);
       alert('Error ejecutando reporte');
       setData([]);
     } finally {
@@ -472,37 +605,68 @@ const ReportesVisualModule = () => {
   }
 
   function formatearValor(key, value) {
-    if (value === null || value === undefined) return '-';
-    
-    if (key.toLowerCase().includes('fecha') && value) {
-      return new Date(value).toLocaleDateString('es-DO');
-    }
-    
-    if (key.toLowerCase().includes('salario') || 
-        key.toLowerCase().includes('preaviso') ||
-        key.toLowerCase().includes('cesantia') ||
-        key.toLowerCase().includes('vacaciones') ||
-        key.toLowerCase().includes('regalia') ||
-        key.toLowerCase().includes('total') ||
-        key.toLowerCase().includes('promedio') ||
-        key.toLowerCase().includes('maximo') ||
-        key.toLowerCase().includes('minimo') ||
-        key.toLowerCase().includes('masa')) {
-      return `$${parseFloat(value).toLocaleString('es-DO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-    }
-    
-    if (typeof value === 'number') {
-      return value.toLocaleString('es-DO');
-    }
-    
-    return value;
+  if (value === null || value === undefined) return '-';
+  
+  // Formatear fechas
+  if (key.toLowerCase().includes('fecha') && value) {
+    return new Date(value).toLocaleDateString('es-DO');
   }
+  
+  // Identificar columnas que son REALMENTE monetarias
+  const esColumnaMonetaria = (
+    key.toLowerCase().includes('salario') ||
+    key.toLowerCase().includes('preaviso') ||
+    key.toLowerCase().includes('cesantia') ||
+    key.toLowerCase().includes('regalia') ||
+    key.toLowerCase().includes('masa') ||
+    key.toLowerCase().includes('sueldo') ||
+    key.toLowerCase().includes('uso') ||
+    key.toLowerCase().includes('combustible') ||
+    key.toLowerCase().includes('seguro') ||
+    key.toLowerCase().includes('beneficio') ||
+    key.toLowerCase().includes('compensacion') ||
+    key.toLowerCase().includes('total')
+  );
+  
+  // Identificar columnas de días/años/vacaciones (NO son dinero)
+  const esColumnaDiasVacaciones = (
+    key.toLowerCase().includes('dias') ||
+    key.toLowerCase().includes('día') ||
+    key.toLowerCase().includes('años') ||
+    key.toLowerCase().includes('anios') ||
+    key.toLowerCase().includes('año') ||
+    key.toLowerCase().includes('vacaciones') ||
+    key.toLowerCase().includes('restantes') ||
+    key.toLowerCase().includes('pendientes') ||
+    key.toLowerCase().includes('usados') ||
+    key.toLowerCase().includes('disponibles') ||
+    key.toLowerCase().includes('totales') ||
+    key.toLowerCase().includes('antiguedad') ||
+    key.toLowerCase().includes('antigüedad') ||
+    key.toLowerCase().includes('servicio')
+  );
+  
+  // Solo formatear como moneda si es columna monetaria Y NO es columna de días
+  if (esColumnaMonetaria && !esColumnaDiasVacaciones && typeof value === 'number') {
+    return `$${parseFloat(value).toLocaleString('es-DO', { 
+      minimumFractionDigits: 2, 
+      maximumFractionDigits: 2 
+    })}`;
+  }
+  
+  // Formatear números normales (sin símbolo de moneda)
+  if (typeof value === 'number') {
+    return value.toLocaleString('es-DO');
+  }
+  
+  return value;
+}
 
   return (
     <div className="p-6 max-w-7xl mx-auto bg-gray-50 min-h-screen">
       {/* Header */}
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-800 mb-2">📊 Reportes RRHH</h1>
+        <h1 className="text-3xl font-bold text-gray-800 mb-2"> Reportes RRHH</h1>
         <p className="text-gray-600">Sistema de reportería visual profesional</p>
       </div>
 
@@ -812,8 +976,10 @@ const ReportesVisualModule = () => {
 };
 
 // Componente auxiliar para select de direcciones
+// Componente auxiliar para select de direcciones
 const SelectDirecciones = ({ valor, onChange, config }) => {
   const [direcciones, setDirecciones] = useState([]);
+  const [cargando, setCargando] = useState(false);
   const { getStoredToken } = useAuth();
 
   useEffect(() => {
@@ -821,15 +987,30 @@ const SelectDirecciones = ({ valor, onChange, config }) => {
   }, []);
 
   const cargarDirecciones = async () => {
+    setCargando(true);
     try {
-      const response = await fetch(`${API_URL}/direcciones`, {
-        headers: { Authorization: `Bearer ${getStoredToken()}` }
+      console.log('📍 Cargando direcciones desde:', `${API_URL}/reportes/direcciones`);
+      
+      const response = await fetch(`${API_URL}/reportes/direcciones`, {
+        headers: { 
+          Authorization: `Bearer ${getStoredToken()}`,
+          'Content-Type': 'application/json'
+        }
       });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
       const data = await response.json();
+      console.log('✅ Direcciones cargadas:', data);
+      
       setDirecciones(Array.isArray(data) ? data : []);
     } catch (error) {
-      console.error('Error cargando direcciones:', error);
+      console.error('❌ Error cargando direcciones:', error);
       setDirecciones([]);
+    } finally {
+      setCargando(false);
     }
   };
 
@@ -839,15 +1020,24 @@ const SelectDirecciones = ({ valor, onChange, config }) => {
       <select
         value={valor || ''}
         onChange={(e) => onChange(e.target.value || null)}
-        className="w-full border-2 border-gray-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+        disabled={cargando}
+        className="w-full border-2 border-gray-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
       >
-        <option value="">Todas las direcciones</option>
+        <option value="">
+          {cargando ? 'Cargando direcciones...' : 'Todas las direcciones'}
+        </option>
         {direcciones.map(dir => (
           <option key={dir.DireccionID} value={dir.DireccionID}>
             {dir.Nombre}
           </option>
         ))}
       </select>
+      {cargando && (
+        <p className="text-xs text-gray-500 mt-1">⏳ Cargando...</p>
+      )}
+      {!cargando && direcciones.length === 0 && (
+        <p className="text-xs text-red-500 mt-1">⚠️ No se pudieron cargar las direcciones</p>
+      )}
     </div>
   );
 };
@@ -855,6 +1045,7 @@ const SelectDirecciones = ({ valor, onChange, config }) => {
 // Componente de Configuración de Campos
 const ConfiguracionCampo = ({ config, valor, onChange }) => {
   const [departamentos, setDepartamentos] = useState([]);
+  const [cargandoDepts, setCargandoDepts] = useState(false); // ✅ HOOK AL INICIO
   const { getStoredToken } = useAuth();
 
   useEffect(() => {
@@ -864,18 +1055,34 @@ const ConfiguracionCampo = ({ config, valor, onChange }) => {
   }, [config.tipo]);
 
   const cargarDepartamentos = async () => {
+    setCargandoDepts(true);
     try {
-      const response = await fetch(`${API_URL}/departamentos`, {
-        headers: { Authorization: `Bearer ${getStoredToken()}` }
+      console.log('🏢 Cargando departamentos...');
+      
+      const response = await fetch(`${API_URL}/reportes/departamentos`, {
+        headers: { 
+          Authorization: `Bearer ${getStoredToken()}`,
+          'Content-Type': 'application/json'
+        }
       });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      
       const data = await response.json();
+      console.log('✅ Departamentos cargados:', data);
+      
       setDepartamentos(Array.isArray(data) ? data : []);
     } catch (error) {
-      console.error('Error cargando departamentos:', error);
+      console.error('❌ Error cargando departamentos:', error);
       setDepartamentos([]);
+    } finally {
+      setCargandoDepts(false);
     }
   };
 
+  // ===================== MULTISELECT =====================
   if (config.tipo === 'multiselect') {
     const valoresSeleccionados = valor || config.default || [];
     
@@ -915,6 +1122,7 @@ const ConfiguracionCampo = ({ config, valor, onChange }) => {
     );
   }
 
+  // ===================== SELECT =====================
   if (config.tipo === 'select') {
     return (
       <div>
@@ -934,6 +1142,7 @@ const ConfiguracionCampo = ({ config, valor, onChange }) => {
     );
   }
 
+  // ===================== SELECT DEPARTAMENTOS =====================
   if (config.tipo === 'select-departamentos') {
     return (
       <div>
@@ -941,38 +1150,35 @@ const ConfiguracionCampo = ({ config, valor, onChange }) => {
         <select
           value={valor || ''}
           onChange={(e) => onChange(e.target.value || null)}
-          className="w-full border-2 border-gray-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+          disabled={cargandoDepts}
+          className="w-full border-2 border-gray-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
         >
-          <option value="">Todos los departamentos</option>
+          <option value="">
+            {cargandoDepts ? 'Cargando departamentos...' : 'Todos los departamentos'}
+          </option>
           {departamentos.map(dept => (
             <option key={dept.DepartamentoID} value={dept.DepartamentoID}>
               {dept.Nombre}
+              {dept.NombreDireccion && ` (${dept.NombreDireccion})`}
             </option>
           ))}
         </select>
+        {cargandoDepts && (
+          <p className="text-xs text-gray-500 mt-1">⏳ Cargando...</p>
+        )}
+        {!cargandoDepts && departamentos.length === 0 && (
+          <p className="text-xs text-red-500 mt-1">⚠️ No se pudieron cargar los departamentos</p>
+        )}
       </div>
     );
   }
 
-  // ============================================
-// REEMPLAZAR EL BLOQUE select-direcciones
-// Busca la línea 915 donde pusiste el código
-// REEMPLAZA TODO el bloque por este:
-// ============================================
-
+  // ===================== SELECT DIRECCIONES =====================
   if (config.tipo === 'select-direcciones') {
-    // ✅ SOLUCIÓN: Mover los hooks FUERA del if
     return <SelectDirecciones valor={valor} onChange={onChange} config={config} />;
   }
 
-// ============================================
-// AGREGAR ESTE NUEVO COMPONENTE
-// Después del componente ConfiguracionCampo
-// Justo antes de GraficoRenderer
-// ============================================
-
-
-
+  // ===================== NUMBER =====================
   if (config.tipo === 'number') {
     return (
       <div>
@@ -989,7 +1195,7 @@ const ConfiguracionCampo = ({ config, valor, onChange }) => {
     );
   }
 
-
+  // ===================== CHECKBOX =====================
   if (config.tipo === 'checkbox') {
     return (
       <div className="flex items-center">
@@ -1004,6 +1210,7 @@ const ConfiguracionCampo = ({ config, valor, onChange }) => {
     );
   }
 
+  // ===================== DATE =====================
   if (config.tipo === 'date') {
     return (
       <div>

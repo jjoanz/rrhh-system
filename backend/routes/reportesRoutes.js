@@ -226,7 +226,7 @@ async function obtenerMetricasRRHH() {
     const vacantesAbiertas = await pool.request().query(`
       SELECT COUNT(*) as total 
       FROM Vacantes 
-      WHERE Estado = 'Abierta'
+      WHERE Estado = 'Activa'
     `);
     metricas.vacantesAbiertas = vacantesAbiertas.recordset[0].total;
 
@@ -1148,4 +1148,97 @@ router.get('/direcciones', async (req, res) => {
   }
 });
 
+// ===================== ENDPOINT DEPARTAMENTOS =====================
+
+router.get('/departamentos', async (req, res) => {
+  try {
+    const { direccionId } = req.query;
+    
+    console.log('🏢 Obteniendo departamentos...');
+    if (direccionId) {
+      console.log('📍 Filtrado por dirección:', direccionId);
+    }
+
+    const pool = await getConnection();
+    const request = pool.request();
+    
+    let query = `
+      SELECT 
+        d.DepartamentoID,
+        d.Nombre,
+        d.DireccionID,
+        dir.Nombre as NombreDireccion
+      FROM Departamentos d
+      LEFT JOIN Direcciones dir ON d.DireccionID = dir.DireccionID
+      WHERE 1=1
+    `;
+    
+    if (direccionId) {
+      query += ` AND d.DireccionID = @direccionId`;
+      request.input('direccionId', sql.Int, parseInt(direccionId));
+    }
+    
+    query += ` ORDER BY d.Nombre`;
+    
+    const result = await request.query(query);
+    
+    console.log('✅ Departamentos obtenidos:', result.recordset.length);
+    res.json(result.recordset);
+
+  } catch (error) {
+    console.error('❌ Error obteniendo departamentos:', error);
+    res.status(500).json({ 
+      error: 'Error al obtener departamentos',
+      details: error.message 
+    });
+  }
+});
+
+// ===================== REPORTE DE COMPENSACIONES =====================
+
+router.post('/compensaciones', async (req, res) => {
+  try {
+    const { 
+      direccionId, 
+      departamentoId, 
+      nivelPuesto,
+      mesConsulta = new Date().getMonth() + 1,
+      anioConsulta = new Date().getFullYear()
+    } = req.body;
+
+    console.log('💰 Generando reporte de compensaciones...');
+    console.log('📋 Filtros:', { direccionId, departamentoId, nivelPuesto });
+
+    const pool = await getConnection();
+    const request = pool.request();
+    
+    // Agregar parámetros
+    request.input('DireccionID', sql.Int, direccionId || null);
+    request.input('DepartamentoID', sql.Int, departamentoId || null);
+    request.input('NivelPuesto', sql.VarChar(50), nivelPuesto || null);
+
+    const result = await request.execute('sp_ReporteCompensaciones');
+    
+    console.log('✅ Reporte generado:', result.recordset.length, 'registros');
+
+    res.json({ 
+      success: true, 
+      data: result.recordset,
+      count: result.recordset.length,
+      mes: mesConsulta,
+      anio: anioConsulta,
+      fechaGeneracion: new Date().toISOString()
+    });
+
+  } catch (error) {
+    console.error('❌ Error en reporte de compensaciones:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: 'Error generando reporte de compensaciones',
+      details: error.message 
+    });
+  }
+});
+
 export default router;
+

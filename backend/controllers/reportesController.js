@@ -731,6 +731,7 @@ export const exportarReporte = async (req, res) => {
         const doc = new PDFDocument({ 
           margin: 30, 
           size: "A4",
+          layout: 'landscape', // ✅ HORIZONTAL para más columnas
           bufferPages: true,
           autoFirstPage: false
         });
@@ -741,48 +742,129 @@ export const exportarReporte = async (req, res) => {
 
         doc.addPage();
         
-        // Encabezado
-        doc.fontSize(18).fillColor('#0066CC').text('Reporte de Datos', { align: 'center' });
-        doc.moveDown(0.5);
-        doc.fontSize(10).fillColor('black')
-           .text(`Generado: ${new Date().toLocaleString()}`, { align: 'right' });
+        // ============= ENCABEZADO =============
+        doc.fontSize(16).fillColor('#0066CC').text('Reporte de Datos', { align: 'center' });
+        doc.moveDown(0.3);
+        doc.fontSize(9).fillColor('black')
+           .text(`Generado: ${new Date().toLocaleString('es-DO')}`, { align: 'right' });
         doc.text(`Total de registros: ${data.length}`, { align: 'right' });
-        doc.text(`Exportado por: ${req.user?.name || req.user?.id || 'Sistema'}`, { align: 'right' });
-        doc.moveDown();
+        doc.moveDown(0.5);
 
         // Línea separadora
-        doc.moveTo(30, doc.y).lineTo(565, doc.y).stroke();
-        doc.moveDown();
+        doc.moveTo(30, doc.y).lineTo(810, doc.y).stroke();
+        doc.moveDown(0.5);
 
-        // Datos en formato tabla simplificada
-        doc.fontSize(8);
-        const itemsPerPage = 25;
-
-        data.forEach((row, index) => {
-          if (index % itemsPerPage === 0 && index > 0) {
+        // ============= TABLA CON TODAS LAS COLUMNAS =============
+        const columnas = Object.keys(data[0]);
+        const numColumnas = columnas.length;
+        
+        // Calcular ancho disponible
+        const anchoDisponible = 810 - 60; // Margen izq + der
+        const anchoCelda = anchoDisponible / numColumnas;
+        
+        let yPos = doc.y;
+        const rowHeight = 20;
+        const headerHeight = 25;
+        
+        // Función para verificar si necesita nueva página
+        const checkNewPage = () => {
+          if (yPos > 550) { // Límite antes del pie de página
             doc.addPage();
+            yPos = 30;
+            // Redibujar encabezados en nueva página
+            dibujarEncabezados();
           }
-
-          const y = 100 + (index % itemsPerPage) * 20;
-          
-          // Fila con datos clave
-          const rowText = Object.entries(row)
-            .slice(0, 4) // Primeras 4 columnas
-            .map(([key, value]) => `${key}: ${value}`)
-            .join(' | ');
+        };
+        
+        // Función para dibujar encabezados
+        const dibujarEncabezados = () => {
+          doc.fontSize(7).fillColor('white');
+          columnas.forEach((col, index) => {
+            const xPos = 30 + (index * anchoCelda);
             
-          doc.text(`${index + 1}. ${rowText}`, 30, y, {
-            width: 535,
-            ellipsis: true
+            // Fondo azul
+            doc.rect(xPos, yPos, anchoCelda, headerHeight)
+               .fill('#0066CC');
+            
+            // Texto del encabezado
+            doc.fillColor('white')
+               .text(
+                 col.toUpperCase().replace(/_/g, ' '), 
+                 xPos + 2, 
+                 yPos + 5, 
+                 { 
+                   width: anchoCelda - 4, 
+                   align: 'center',
+                   ellipsis: true
+                 }
+               );
           });
+          
+          yPos += headerHeight;
+          doc.fillColor('black');
+        };
+        
+        // Dibujar encabezados iniciales
+        dibujarEncabezados();
+        
+        // ============= DATOS =============
+        data.forEach((row, rowIndex) => {
+          checkNewPage();
+          
+          // Alternar color de fila
+          const fillColor = rowIndex % 2 === 0 ? '#F8F9FA' : '#FFFFFF';
+          doc.rect(30, yPos, anchoDisponible, rowHeight).fill(fillColor);
+          
+          doc.fontSize(6).fillColor('black');
+          
+          columnas.forEach((col, colIndex) => {
+            const xPos = 30 + (colIndex * anchoCelda);
+            let valor = row[col];
+            
+            // Formatear valores
+            if (valor === null || valor === undefined) {
+              valor = '-';
+            } else if (typeof valor === 'number') {
+              // Si es un número con decimales, formatear
+              valor = Number.isInteger(valor) 
+                ? valor.toString() 
+                : valor.toFixed(2);
+            } else if (valor instanceof Date) {
+              valor = valor.toLocaleDateString('es-DO');
+            } else {
+              valor = String(valor);
+            }
+            
+            // Dibujar borde de celda
+            doc.rect(xPos, yPos, anchoCelda, rowHeight).stroke('#E0E0E0');
+            
+            // Texto de la celda
+            doc.text(
+              valor, 
+              xPos + 2, 
+              yPos + 5, 
+              { 
+                width: anchoCelda - 4, 
+                align: 'left',
+                ellipsis: true
+              }
+            );
+          });
+          
+          yPos += rowHeight;
         });
 
-        // Pie de página en cada página
+        // ============= PIE DE PÁGINA =============
         const pageCount = doc.bufferedPageRange().count;
         for (let i = 0; i < pageCount; i++) {
           doc.switchToPage(i);
-          doc.fontSize(8).fillColor('gray')
-             .text(`Página ${i + 1} de ${pageCount}`, 30, 750, { align: 'center' });
+          doc.fontSize(7).fillColor('gray')
+             .text(
+               `Página ${i + 1} de ${pageCount} | Sistema RRHH - ${new Date().getFullYear()}`, 
+               30, 
+               560, 
+               { align: 'center', width: 750 }
+             );
         }
 
         doc.end();
@@ -2079,6 +2161,50 @@ export const getDirecciones = async (req, res) => {
     console.error('Error obteniendo direcciones:', error);
     res.status(500).json({ 
       error: 'Error al obtener direcciones',
+      details: error.message 
+    });
+  }
+};
+
+// Endpoint para obtener departamentos
+export const getDepartamentos = async (req, res) => {
+  try {
+    const { direccionId } = req.query;
+    const usuarioId = req.user?.id || 'sistema';
+    
+    logActivity(usuarioId, "Consultando departamentos", direccionId ? `Dirección: ${direccionId}` : "Todos");
+
+    const pool = await getConnection();
+    const request = pool.request();
+    
+    let query = `
+      SELECT 
+        d.DepartamentoID,
+        d.Nombre,
+        d.DireccionID,
+        dir.Nombre as NombreDireccion
+      FROM Departamentos d
+      LEFT JOIN Direcciones dir ON d.DireccionID = dir.DireccionID
+      WHERE d.Activo = 1
+    `;
+    
+    if (direccionId) {
+      query += ` AND d.DireccionID = @direccionId`;
+      request.input('direccionId', parseInt(direccionId));
+    }
+    
+    query += ` ORDER BY d.Nombre`;
+    
+    const result = await request.query(query);
+    
+    logActivity(usuarioId, "Departamentos obtenidos", `${result.recordset.length} encontrados`);
+    
+    res.json(result.recordset);
+
+  } catch (error) {
+    console.error('Error obteniendo departamentos:', error);
+    res.status(500).json({ 
+      error: 'Error al obtener departamentos',
       details: error.message 
     });
   }

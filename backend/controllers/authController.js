@@ -188,14 +188,18 @@ export const getUserPermissions = async (userId) => {
   try {
     const pool = await getConnection();
     if (!pool) {
-      console.error('No hay conexión disponible para obtener permisos');
+      console.error('❌ No hay conexión disponible');
       return [];
     }
 
-    // ✅ CONSULTA CORREGIDA - Usar Permisos en lugar de RolPermisos
-    const result = await pool.request()
+    const request = pool.request();
+    request.timeout = 10000; // 10 segundos
+    
+    const result = await request
       .input('userId', sql.Int, userId)
       .query(`
+        SET LOCK_TIMEOUT 5000;
+        
         SELECT 
           p.PermisoID,
           p.ModuloID,
@@ -206,20 +210,50 @@ export const getUserPermissions = async (userId) => {
           p.PuedeCrear,
           p.PuedeEditar,
           p.PuedeEliminar
-        FROM Permisos p
-        INNER JOIN Roles r ON p.RolID = r.RolID
-        INNER JOIN Usuarios u ON u.Rol = r.NombreRol
+        FROM Usuarios u WITH (NOLOCK)
+        INNER JOIN Roles r WITH (NOLOCK) ON u.Rol = r.NombreRol
+        INNER JOIN Permisos p WITH (NOLOCK) ON p.RolID = r.RolID
         WHERE u.UsuarioID = @userId
+        ORDER BY p.ModuloID;
+      `);
+    
+    console.log(`✅ Permisos cargados: ${result.recordset.length}`);
+    return result.recordset;
+    
+  } catch (error) {
+    console.error('❌ Error obteniendo permisos:', error.message);
+    return [];
+  }
+};
+
+// Función de respaldo más simple
+const getPermissionsSimplified = async (userId) => {
+  try {
+    const pool = await getConnection();
+    const request = pool.request();
+    request.timeout = 10000;
+    
+    // Consulta más simple sin JOINS complejos
+    const result = await request
+      .input('userId', sql.Int, userId)
+      .query(`
+        SELECT TOP 100
+          p.*
+        FROM Permisos p WITH (NOLOCK)
+        WHERE p.RolID = (
+          SELECT TOP 1 r.RolID 
+          FROM Usuarios u WITH (NOLOCK)
+          INNER JOIN Roles r WITH (NOLOCK) ON u.Rol = r.NombreRol
+          WHERE u.UsuarioID = @userId
+        )
         ORDER BY p.ModuloID
       `);
-
-    console.log('🔑 Permisos cargados para usuario', userId, ':', result.recordset.length); // ⬅️ LOG
-
-    // ✅ RETORNAR ARRAY PARA COMPATIBILIDAD CON MIDDLEWARE
+    
+    console.log(`✅ Permisos cargados (modo simplificado): ${result.recordset.length}`);
     return result.recordset;
-
+    
   } catch (error) {
-    console.error('Error obteniendo permisos:', error);
+    console.error('❌ Error en consulta simplificada:', error.message);
     return [];
   }
 };

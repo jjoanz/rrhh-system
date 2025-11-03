@@ -28,23 +28,8 @@ router.get(
   VacacionesController.getSolicitudes
 );
 
-// Crear nueva solicitud de vacaciones
-// POST /api/vacaciones
-router.post(
-  '/', 
-  authenticateToken, 
-  VacacionesController.crearSolicitud
-);
+// IMPORTANTE: Rutas específicas ANTES de rutas con parámetros
 
-// Crear solicitud con períodos múltiples
-// POST /api/vacaciones/con-periodos
-router.post(
-  '/con-periodos', 
-  authenticateToken, 
-  VacacionesController.crearSolicitudConPeriodos
-);
-
-// IMPORTANTE: Estas rutas DEBEN estar ANTES de '/:id'
 // Obtener estadísticas detalladas con períodos
 // GET /api/vacaciones/estadisticas-detalladas/:empleadoId
 router.get(
@@ -53,13 +38,12 @@ router.get(
   VacacionesController.getEstadisticasDetalladas
 );
 
-// Asignar días manualmente (solo RRHH)
-// POST /api/vacaciones/asignar-dias
+// Crear nueva solicitud de vacaciones
+// POST /api/vacaciones
 router.post(
-  '/asignar-dias', 
-  authenticateToken,
-  authorizeRoles(['RRHH', 'Gerente RRHH', 'Director RRHH']),
-  VacacionesController.asignarDias
+  '/', 
+  authenticateToken, 
+  VacacionesController.crearSolicitud
 );
 
 // Procesar solicitud (aprobar/rechazar)

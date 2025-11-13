@@ -537,7 +537,6 @@ const NuevaAccion = ({ onClose, onSuccess }) => {
                 value={formData.fecha_efectiva}
                 onChange={handleChange}
                 required
-                min={new Date().toISOString().split('T')[0]}
                 style={{
                   width: '100%',
                   padding: '0.625rem 0.75rem',

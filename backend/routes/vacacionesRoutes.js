@@ -5,13 +5,11 @@ const router = express.Router();
 
 // Middleware básico de autenticación
 const authenticateToken = (req, res, next) => {
-  // Por ahora pasa sin validación, ajusta según tu sistema de auth
   next();
 };
 
 const authorizeRoles = (roles) => {
   return (req, res, next) => {
-    // Validación de roles si es necesario
     next();
   };
 };
@@ -20,7 +18,7 @@ const authorizeRoles = (roles) => {
 // RUTAS DE SOLICITUDES DE VACACIONES
 // ===============================
 
-// Obtener solicitudes según rol y jerarquía
+// 1️⃣ Obtener solicitudes según rol y jerarquía
 // GET /api/vacaciones?usuarioID=123&rol=gerente
 router.get(
   '/', 
@@ -28,17 +26,35 @@ router.get(
   VacacionesController.getSolicitudes
 );
 
-// IMPORTANTE: Rutas específicas ANTES de rutas con parámetros
-
-// Obtener estadísticas detalladas con períodos
+// 2️⃣ Obtener estadísticas detalladas con períodos
 // GET /api/vacaciones/estadisticas-detalladas/:empleadoId
+// ⚠️ DEBE IR ANTES DE /:id PARA NO CHOCAR
 router.get(
   '/estadisticas-detalladas/:empleadoId', 
   authenticateToken, 
   VacacionesController.getEstadisticasDetalladas
 );
 
-// Crear nueva solicitud de vacaciones
+
+// 3️⃣ NUEVA - Crear solicitud CON selección de períodos
+// POST /api/vacaciones/con-periodos
+// ⚠️ DEBE IR ANTES DE POST / PARA NO CHOCAR
+router.post(
+  '/con-periodos', 
+  authenticateToken, 
+  VacacionesController.crearSolicitudConPeriodos
+);
+
+// 4️⃣ NUEVA - Aprobar solicitud (sin ID en URL)
+// POST /api/vacaciones/aprobar
+// ⚠️ CAMBIADO: Antes era /:solicitudID/aprobar
+router.post(
+  '/aprobar', 
+  authenticateToken, 
+  VacacionesController.aprobarSolicitud
+);
+
+// 5️⃣ Crear solicitud simple (sin períodos)
 // POST /api/vacaciones
 router.post(
   '/', 
@@ -46,17 +62,9 @@ router.post(
   VacacionesController.crearSolicitud
 );
 
-// Procesar solicitud (aprobar/rechazar)
-// POST /api/vacaciones/:solicitudID/aprobar
-router.post(
-  '/:solicitudID/aprobar', 
-  authenticateToken, 
-  VacacionesController.aprobarSolicitud
-);
-
-// Obtener detalles de una solicitud específica
+// 6️⃣ Obtener detalles de una solicitud específica
 // GET /api/vacaciones/:id
-// NOTA: Esta ruta DEBE estar al final para evitar conflictos
+// ⚠️ DEBE ESTAR AL FINAL SIEMPRE
 router.get(
   '/:id', 
   authenticateToken, 

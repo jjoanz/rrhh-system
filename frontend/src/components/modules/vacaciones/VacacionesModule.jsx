@@ -3,11 +3,26 @@ import { useAuth } from '../../../context/AuthContext';
 import { useApp } from '../../../context/AppContext';
 import vacacionesService from '../../../api/vacacionesService';
 import { Calendar, Plus, Clock, Check, X, FileText, Users, ArrowRight, AlertTriangle, Edit, Package } from 'lucide-react';
+import { showNotification } from '@mantine/notifications';
+
 
 const VacacionesModule = () => {
   const { user } = useAuth();
-  const { showSuccessMessage, showErrorMessage } = useApp();
+ // const { showNotification } = useApp();  //  Solo obtener showNotification
+   
+ // const notify = (message, type = 'info') => {
+  //  if (showNotification) {
+   //   showNotification({ type, message });
+   // } else {
+   //   console.warn('showNotification no disponible:', message);
+  //  }
+ // };
+
+  // ✅ LOGS DETALLADOS
+  console.log('🔍 Usuario completo:', user);
   console.log('🔍 ROL DEL USUARIO:', user.role);
+  console.log('🔍 ROL NORMALIZADO:', user.role?.toLowerCase().replace(/\s+/g, '_'));
+
   const [activeTab, setActiveTab] = useState('solicitar');
   const [loading, setLoading] = useState(false);
   
@@ -18,6 +33,11 @@ const VacacionesModule = () => {
     diasUsados: 0,
     diasDisponibles: 0
   });
+
+  const [solicitudSeleccionada, setSolicitudSeleccionada] = useState(null);
+  const [mostrarModalAprobacion, setMostrarModalAprobacion] = useState(false);
+  const [mostrarModalRechazo, setMostrarModalRechazo] = useState(false);
+
   const [periodos, setPeriodos] = useState([]);
 
   const diasDisponibles = estadisticas?.diasDisponibles || 0;
@@ -57,6 +77,19 @@ const VacacionesModule = () => {
   'colaborador': 'Colaborador'
 };
 
+// Función para mostrar notificaciones (usa los helpers globales si existen)
+  
+
+  // Función para recargar las solicitudes
+  const cargarSolicitudes = async () => {
+    try {
+      const response = await vacacionesService.obtenerSolicitudes();
+      setSolicitudes(response.data || []);
+    } catch (error) {
+      showNotification('Error al cargar las solicitudes', 'error');
+    }
+  };
+
   // Cargar datos al montar
   useEffect(() => {
     if (user?.id && user?.empleadoId) {
@@ -90,8 +123,8 @@ const VacacionesModule = () => {
     
     setPeriodos(statsData.periodos || []);
   } catch (error) {
-    showErrorMessage('Error al cargar datos de vacaciones');
-    console.error('Error:', error);
+  showNotification('Error al cargar datos de vacaciones', 'error');
+  console.error('Error:', error);
     
     // Establecer valores por defecto en caso de error
     setEstadisticas({
@@ -138,64 +171,54 @@ const VacacionesModule = () => {
   // Abrir modal de períodos
   // Abrir modal de períodos
 const abrirModalPeriodos = () => {
-  console.log('🔧 Ejecutando abrirModalPeriodos');
-  console.log('Períodos recibidos:', periodos);
-  console.log('ESTRUCTURA COMPLETA:', JSON.stringify(periodos[0], null, 2));
+  console.log('🔧 Abriendo modal de períodos');
+  console.log('📋 Períodos disponibles:', periodos);
   
   try {
     const diasSolicitados = calcularDias();
-    console.log('Días solicitados:', diasSolicitados);
-    
     const seleccionInicial = [];
     let diasRestantes = diasSolicitados;
     
     for (const periodo of periodos) {
-      console.log('📌 Procesando período:', periodo);
+      if (diasRestantes <= 0) break;
       
+      // ✅ Normalizar nombres de campos (SQL Server usa MAYÚSCULAS, JS usa camelCase)
       const balanceId = periodo.balanceId || periodo.BalanceID || periodo.id;
-      const descripcion = periodo.descripcion || periodo.Descripcion;
-      const diasDisponiblesPeriodo = periodo.diasDisponibles || periodo.DiasDisponibles || 
-                              (periodo.diasTotales - periodo.diasUsados - periodo.diasPendientes) ||
-                              (periodo.DiasTotales - periodo.DiasUsados - periodo.DiasPendientes);
+      const diasDisponibles = periodo.diasDisponibles || periodo.DiasDisponibles || periodo.DiasPendientes;
+      const descripcion = periodo.descripcion || periodo.Descripcion || 
+                         `${periodo.anioInicio || periodo.AnioInicio}-${periodo.anioFin || periodo.AnioFin}`;
       
-      console.log('   - balanceId:', balanceId);
-      console.log('   - descripcion:', descripcion);
-      console.log('   - diasDisponibles:', diasDisponiblesPeriodo);
-      console.log('   - diasRestantes:', diasRestantes);
-      
-      if (diasRestantes <= 0) {
-        console.log('   ⚠️ diasRestantes <= 0, saliendo del loop');
-        break;
+      if (!balanceId) {
+        console.error('⚠️ Período sin balanceId:', periodo);
+        continue;
       }
       
-      const diasAUsar = Math.min(diasRestantes, diasDisponiblesPeriodo);
-      console.log('   - diasAUsar calculado:', diasAUsar);
+      const diasAUsar = Math.min(diasRestantes, diasDisponibles);
       
       if (diasAUsar > 0) {
-        console.log('   ✅ Agregando período a selección');
         seleccionInicial.push({
           balanceId: balanceId,
           descripcion: descripcion,
-          diasDisponibles: diasDisponiblesPeriodo,
+          diasDisponibles: diasDisponibles,
           dias: diasAUsar
         });
         diasRestantes -= diasAUsar;
-      } else {
-        console.log('   ❌ diasAUsar NO es mayor a 0');
+        console.log(`✅ Período agregado: ${descripcion} - ${diasAUsar} días`);
       }
     }
     
-    console.log('Selección inicial creada:', seleccionInicial);
-    console.log('Cambiando showPeriodosModal a true');
-    
+    console.log('📦 Selección inicial:', seleccionInicial);
     setPeriodosSeleccionados(seleccionInicial);
     setShowPeriodosModal(true);
-    
-    console.log('✅ Modal debería estar visible ahora');
   } catch (error) {
-    console.error('❌ ERROR en abrirModalPeriodos:', error);
-  }
+  console.error('❌ Error en abrirModalPeriodos:', error);
+  showNotification({
+    type: 'error',
+    message: 'Error al abrir selección de períodos'
+  });
+}
 };
+
 
   // Actualizar días de un período seleccionado
   const actualizarDiasPeriodo = (balanceId, nuevosDias) => {
@@ -220,29 +243,40 @@ const handleSubmitSolicitud = async (e) => {
   console.log('Períodos:', periodos);
   
   if (!solicitudForm.fechaInicio || !solicitudForm.fechaFin || !solicitudForm.motivo.trim()) {
-    showErrorMessage('Por favor completa todos los campos obligatorios');
-    return;
-  }
+  showNotification('Por favor completa todos los campos obligatorios', 'error');
+  return;
+}
+
 
   const inicio = new Date(solicitudForm.fechaInicio);
   const fin = new Date(solicitudForm.fechaFin);
   
   if (inicio >= fin) {
-    showErrorMessage('La fecha de fin debe ser posterior a la fecha de inicio');
-    return;
-  }
+  showNotification({
+    type: 'error',
+    message: 'La fecha de fin debe ser posterior a la fecha de inicio'
+  });
+  return;
+}
 
-  if (inicio <= new Date()) {
-    showErrorMessage('La fecha de inicio debe ser futura');
-    return;
-  }
+if (inicio <= new Date()) {
+  showNotification({
+    type: 'error',
+    message: 'La fecha de inicio debe ser futura'
+  });
+  return;
+}
 
-  const diasSolicitados = calcularDias();
-  
-  if (diasSolicitados > diasDisponibles && solicitudForm.tipo === 'vacaciones') {
-    showErrorMessage(`No tienes suficientes días disponibles. Solicitas ${diasSolicitados} días pero solo tienes ${diasDisponibles} disponibles.`);
-    return;
-  }
+const diasSolicitados = calcularDias();
+
+if (diasSolicitados > diasDisponibles && solicitudForm.tipo === 'vacaciones') {
+  showNotification({
+    type: 'error',
+    message: `No tienes suficientes días disponibles. Solicitas ${diasSolicitados} días pero solo tienes ${diasDisponibles} disponibles.`
+  });
+  return;
+}
+
 
   console.log('¿Abrir modal?', solicitudForm.tipo === 'vacaciones' && periodos.length > 1);
   
@@ -257,44 +291,67 @@ const handleSubmitSolicitud = async (e) => {
 };
 
   const crearSolicitudDirecta = async () => {
-    try {
-      setLoading(true);
-      const diasSolicitados = calcularDias();
+  setLoading(true);
 
-      await vacacionesService.crearSolicitud({
-        empleadoId: user.empleadoId,
-        tipo: solicitudForm.tipo,
-        fechaInicio: solicitudForm.fechaInicio,
-        fechaFin: solicitudForm.fechaFin,
-        dias: diasSolicitados,
-        diasHabiles: calcularDiasHabiles(),
-        motivo: solicitudForm.motivo
-      });
+  try {
+    const diasSolicitados = calcularDias();
 
-      await cargarDatos();
-      showSuccessMessage(`Solicitud de ${diasSolicitados} días enviada correctamente.`);
-      
-      setSolicitudForm({
-        fechaInicio: '',
-        fechaFin: '',
-        motivo: '',
-        tipo: 'vacaciones'
-      });
-    } catch (error) {
-      showErrorMessage('Error al crear solicitud: ' + (error.response?.data?.error || error.message));
-    } finally {
-      setLoading(false);
-    }
-  };
+    // Llamada al servicio para crear la solicitud
+    await vacacionesService.crearSolicitud({
+      empleadoId: user.empleadoId,
+      tipo: solicitudForm.tipo,
+      fechaInicio: solicitudForm.fechaInicio,
+      fechaFin: solicitudForm.fechaFin,
+      dias: diasSolicitados,
+      diasHabiles: calcularDiasHabiles(),
+      motivo: solicitudForm.motivo,
+    });
+
+    // Recargar datos después de crear la solicitud
+    await cargarDatos();
+
+    // Notificación de éxito
+    showNotification({
+      title: 'Éxito',
+      message: `Solicitud de ${diasSolicitados} días enviada correctamente.`,
+      color: 'green',
+    });
+
+    // Reiniciar formulario
+    setSolicitudForm({
+      fechaInicio: '',
+      fechaFin: '',
+      motivo: '',
+      tipo: 'vacaciones',
+    });
+
+  } catch (error) {
+    // Notificación de error
+    showNotification({
+      title: 'Error',
+      message: 'Error al crear solicitud: ' + (error.response?.data?.error || error.message),
+      color: 'red',
+    });
+
+  } finally {
+    setLoading(false);
+  }
+};
+
 
 const confirmarSolicitudConPeriodos = async () => {
   const diasSolicitados = calcularDias();
   const totalSeleccionado = calcularTotalSeleccionado();
 
   if (totalSeleccionado !== diasSolicitados) {
-    showErrorMessage(`La suma de días seleccionados (${totalSeleccionado}) debe ser igual a los días solicitados (${diasSolicitados})`);
-    return;
-  }
+  showNotification({
+    title: 'Atención',
+    message: `La suma de días seleccionados (${totalSeleccionado}) debe ser igual a los días solicitados (${diasSolicitados})`,
+    color: 'yellow', 
+  });
+  return;
+}
+
 
   try {
     setLoading(true);
@@ -326,71 +383,77 @@ const confirmarSolicitudConPeriodos = async () => {
     
     // Recargar datos al final
     await cargarDatos();
+
     
-    // Mostrar mensaje de éxito
-    if (showSuccessMessage) {
-      showSuccessMessage(`Solicitud de ${diasSolicitados} días enviada correctamente.`);
-    }
-  } catch (error) {
-    console.error('Error:', error);
-    if (showErrorMessage) {
-      showErrorMessage('Error al crear solicitud: ' + (error?.response?.data?.error || error?.message || 'Error desconocido'));
-    }
-  } finally {
-    setLoading(false);
-  }
-};
+  // Mostrar mensaje de éxito
+  showNotification({
+    title: 'Éxito',
+    message: `Solicitud de ${diasSolicitados} días enviada correctamente.`,
+    color: 'green',
+  });
 
-  // Aprobar/Rechazar solicitud
-  const handleAprobarSolicitud = async (solicitudId, accion, esManual = false, motivoManual = '') => {
-    try {
-      setLoading(true);
-
-      await vacacionesService.procesarSolicitud(solicitudId, {
-        accion,
-        aprobadorId: user.empleadoId,
-        rol: user.role,
-        esManual,
-        motivoManual
-      });
-
-      await cargarDatos();
-
-      if (esManual) {
-        showSuccessMessage(`Aprobación manual registrada: ${accion}`);
-      } else {
-        const mensaje = accion === 'aprobada' 
-          ? 'Solicitud aprobada y enviada al siguiente nivel' 
-          : 'Solicitud rechazada';
-        showSuccessMessage(mensaje);
-      }
     } catch (error) {
-      showErrorMessage('Error al procesar solicitud: ' + (error.response?.data?.error || error.message));
+  console.error('Error:', error);
+  showNotification({
+    title: 'Error',
+    message: 'Error al crear solicitud: ' + (error?.response?.data?.error || error?.message || 'Error desconocido'),
+    color: 'red',
+  });
     } finally {
       setLoading(false);
     }
-  };
 
-  const handleManualApproval = () => {
-    if (!manualApprovalData.motivo.trim()) {
-      showErrorMessage('Debes proporcionar un motivo para la aprobación manual');
-      return;
-    }
+};
 
-    handleAprobarSolicitud(
-      manualApprovalData.solicitudId, 
-      manualApprovalData.accion, 
-      true, 
-      manualApprovalData.motivo
-    );
-
-    setShowManualModal(false);
-    setManualApprovalData({
-      solicitudId: null,
-      motivo: '',
-      accion: 'aprobada'
+  const handleManualApproval = async () => {
+  if (!manualApprovalData.motivo.trim()) {
+    showNotification({
+      title: 'Atención',
+      message: 'Debes proporcionar un motivo para la aprobación manual',
+      color: 'red', // 'red' para error
     });
-  };
+    return;
+  }
+
+  try {
+    setLoading(true);
+    await vacacionesService.procesarSolicitud(manualApprovalData.solicitudId, {
+      usuarioID: user.id,
+      accion: manualApprovalData.accion,
+      esManual: true,
+      motivoManual: manualApprovalData.motivo
+    });
+
+    // Notificación de éxito
+      showNotification({
+        title: 'Éxito',
+        message:
+          manualApprovalData.accion === 'aprobada'
+            ? 'Solicitud aprobada manualmente'
+            : 'Solicitud rechazada manualmente',
+        color: 'green',
+      });
+
+    await cargarDatos();
+  } catch (error) {
+  // Notificación de error
+  showNotification({
+    title: 'Error',
+    message: 'Error al procesar: ' + (error.response?.data?.error || error.message),
+    color: 'red',
+  });
+  } finally {
+    setLoading(false);
+  }
+
+  setShowManualModal(false);
+  setManualApprovalData({
+    solicitudId: null,
+    motivo: '',
+    accion: 'aprobada'
+  });
+
+};
 
   const openManualModal = (solicitudId, accion = 'aprobada') => {
     setManualApprovalData({
@@ -402,23 +465,57 @@ const confirmarSolicitudConPeriodos = async () => {
   };
 
   // Verificar si puede aprobar
- const puedeAprobar = (solicitud) => {
-    if (!solicitud.flujoAprobacion) return { puede: false };
-    
-    // Normalizar roles para comparación
-    const rolNormalizado = user.role?.toLowerCase().replace(/\s+/g, '_');
-    const rolActualNormalizado = solicitud.flujoAprobacion.actual?.toLowerCase().replace(/\s+/g, '_');
-    
-    if (rolActualNormalizado === rolNormalizado) {
-      return { puede: true, motivo: 'normal' };
-    }
-    
-    if (ROLES_APROBACION_MANUAL.includes(user.role)) {
-      return { puede: true, motivo: 'manual' };
-    }
-    
+ // Verificar si puede aprobar
+const puedeAprobar = (solicitud) => {
+  if (!solicitud.flujoAprobacion || !Array.isArray(solicitud.flujoAprobacion)) {
+    console.log('❌ Sin flujo o no es array:', {
+      solicitudId: solicitud.id,
+      tieneFlujo: !!solicitud.flujoAprobacion,
+      esArray: Array.isArray(solicitud.flujoAprobacion)
+    });
     return { puede: false };
-  };
+  }
+  
+  // Encontrar el primer nivel pendiente (sin accion)
+  const nivelPendiente = solicitud.flujoAprobacion.find(nivel => !nivel.accion);
+  
+  if (!nivelPendiente) {
+    console.log('⏭️ No hay niveles pendientes (todo aprobado/rechazado):', {
+      solicitudId: solicitud.id,
+      niveles: solicitud.flujoAprobacion.map(n => ({rol: n.rol, accion: n.accion}))
+    });
+    return { puede: false };
+  }
+  
+  // Normalizar roles para comparación
+  const rolUsuario = user.role?.toLowerCase().replace(/\s+/g, '_');
+  const rolPendiente = nivelPendiente.rol?.toLowerCase().replace(/\s+/g, '_');
+  
+  console.log('🔍 Verificando permisos detallados:', {
+    solicitudId: solicitud.id,
+    empleado: solicitud.empleado,
+    rolUsuario,
+    rolPendiente,
+    nivelPendiente,
+    coincide: rolUsuario === rolPendiente,
+    flujoCompleto: solicitud.flujoAprobacion
+  });
+  
+  // Si el rol del usuario coincide con el nivel pendiente
+  if (rolUsuario === rolPendiente) {
+    console.log('✅ PUEDE APROBAR - Rol coincide');
+    return { puede: true, motivo: 'normal' };
+  }
+  
+  // RRHH puede hacer aprobación manual
+  if (ROLES_APROBACION_MANUAL.includes(user.role)) {
+    console.log('✅ PUEDE APROBAR - Aprobación manual (RRHH)');
+    return { puede: true, motivo: 'manual' };
+  }
+  
+  console.log('❌ NO PUEDE APROBAR');
+  return { puede: false };
+};
 
   // Obtener solicitudes pendientes
   const solicitudesPendientes = solicitudes.filter(sol => {
@@ -462,79 +559,85 @@ const confirmarSolicitudConPeriodos = async () => {
   };
 
   const FlujAprobacion = ({ flujo, estado, aprobacionManual }) => {
-    if (!flujo) return null;
-    
-    return (
-      <div style={{ marginTop: '1rem', padding: '1rem', background: '#f8fafc', borderRadius: '0.5rem', border: '1px solid #e2e8f0' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
-          <h5 style={{ fontSize: '0.875rem', fontWeight: '600', color: '#374151', margin: 0 }}>
-            Flujo de Aprobación
-          </h5>
-          {aprobacionManual && (
-            <span style={{
-              padding: '0.25rem 0.5rem',
-              borderRadius: '9999px',
-              fontSize: '0.625rem',
-              fontWeight: '600',
-              background: '#fef3c7',
-              color: '#92400e',
-              border: '1px solid #fcd34d'
-            }}>
-              APROBACIÓN MANUAL
-            </span>
-          )}
-        </div>
+  if (!flujo || !Array.isArray(flujo) || flujo.length === 0) return null;
+  
+  return (
+    <div style={{ marginTop: '1rem', padding: '1rem', background: '#f8fafc', borderRadius: '0.5rem', border: '1px solid #e2e8f0' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
+        <h5 style={{ fontSize: '0.875rem', fontWeight: '600', color: '#374151', margin: 0 }}>
+          Flujo de Aprobación
+        </h5>
+        {aprobacionManual && (
+          <span style={{
+            padding: '0.25rem 0.5rem',
+            borderRadius: '9999px',
+            fontSize: '0.625rem',
+            fontWeight: '600',
+            background: '#fef3c7',
+            color: '#92400e',
+            border: '1px solid #fcd34d'
+          }}>
+            APROBACIÓN MANUAL
+          </span>
+        )}
+      </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
-          {flujo.requeridos?.map((rol, index) => {
-            const isCompleted = flujo.completados?.includes(rol);
-            const isCurrent = flujo.actual === rol && estado === 'pendiente';
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+        {flujo.map((nivel, index) => {
+          const isCompleted = nivel.accion !== null;
+          const isCurrent = nivel.accion === null && 
+                           (index === 0 || flujo[index - 1]?.accion !== null);
+          
+          return (
+            <React.Fragment key={nivel.orden || index}>
+              <div style={{
+                padding: '0.25rem 0.75rem',
+                borderRadius: '9999px',
+                fontSize: '0.75rem',
+                fontWeight: '500',
+                background: isCompleted ? '#f0fdf4' : isCurrent ? '#fff7ed' : '#f1f5f9',
+                color: isCompleted ? '#166534' : isCurrent ? '#ea580c' : '#64748b',
+                border: `1px solid ${isCompleted ? '#bbf7d0' : isCurrent ? '#fed7aa' : '#cbd5e1'}`,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.25rem'
+              }}>
+                {isCompleted && <Check style={{ width: '0.75rem', height: '0.75rem' }} />}
+                {isCurrent && <Clock style={{ width: '0.75rem', height: '0.75rem' }} />}
+                {ROLES_LABELS[nivel.rol] || nivel.rol}
+              </div>
+              {index < flujo.length - 1 && (
+                <ArrowRight style={{ width: '1rem', height: '1rem', color: '#9ca3af' }} />
+              )}
+            </React.Fragment>
+          );
+        })}
+      </div>
+      
+      {/* Historial */}
+      {flujo.some(n => n.aprobadoPor) && (
+        <div style={{ marginTop: '0.75rem' }}>
+          <h6 style={{ fontSize: '0.75rem', fontWeight: '600', color: '#6b7280', margin: 0, marginBottom: '0.5rem' }}>
+            HISTORIAL DE APROBACIONES
+          </h6>
+          {flujo.map((nivel, index) => {
+            if (!nivel.aprobadoPor && !nivel.accion) return null;
             
             return (
-              <React.Fragment key={index}>
-                <div style={{
-                  padding: '0.25rem 0.75rem',
-                  borderRadius: '9999px',
-                  fontSize: '0.75rem',
-                  fontWeight: '500',
-                  background: isCompleted ? '#f0fdf4' : isCurrent ? '#fff7ed' : '#f1f5f9',
-                  color: isCompleted ? '#166534' : isCurrent ? '#ea580c' : '#64748b',
-                  border: `1px solid ${isCompleted ? '#bbf7d0' : isCurrent ? '#fed7aa' : '#cbd5e1'}`,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.25rem'
-                }}>
-                  {isCompleted && <Check style={{ width: '0.75rem', height: '0.75rem' }} />}
-                  {isCurrent && <Clock style={{ width: '0.75rem', height: '0.75rem' }} />}
-                  {ROLES_LABELS[rol] || rol}
-                </div>
-                {index < flujo.requeridos.length - 1 && (
-                  <ArrowRight style={{ width: '1rem', height: '1rem', color: '#9ca3af' }} />
-                )}
-              </React.Fragment>
-            );
-          })}
-        </div>
-        
-        {flujo.historial && flujo.historial.length > 0 && (
-          <div style={{ marginTop: '0.75rem' }}>
-            <h6 style={{ fontSize: '0.75rem', fontWeight: '600', color: '#6b7280', margin: 0, marginBottom: '0.5rem' }}>
-              HISTORIAL DE APROBACIONES
-            </h6>
-            {flujo.historial.map((evento, index) => (
               <div key={index} style={{ 
                 fontSize: '0.75rem', 
                 color: '#6b7280', 
                 marginBottom: '0.5rem',
                 padding: '0.5rem',
-                background: evento.tipo === 'manual' ? '#fef3c7' : 'transparent',
+                background: nivel.tipo === 'manual' ? '#fef3c7' : 'transparent',
                 borderRadius: '0.25rem',
-                border: evento.tipo === 'manual' ? '1px solid #fcd34d' : 'none'
+                border: nivel.tipo === 'manual' ? '1px solid #fcd34d' : 'none'
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  {evento.accion === 'aprobada' ? '✅' : '❌'} 
-                  <strong>{ROLES_LABELS[evento.rol] || evento.rol}</strong>: {evento.aprobadoPor}
-                  {evento.tipo === 'manual' && (
+                  {nivel.accion === 'aprobada' ? '✅' : nivel.accion === 'rechazada' ? '❌' : '⏳'} 
+                  <strong>{ROLES_LABELS[nivel.rol] || nivel.rol}</strong>
+                  {nivel.aprobadoPor && `: ${nivel.aprobadoPor}`}
+                  {nivel.tipo === 'manual' && (
                     <span style={{
                       padding: '0.125rem 0.375rem',
                       borderRadius: '9999px',
@@ -548,22 +651,25 @@ const confirmarSolicitudConPeriodos = async () => {
                   )}
                 </div>
                 <div style={{ marginLeft: '1.25rem', marginTop: '0.25rem' }}>
-                  {evento.fecha && evento.aprobadoPor ? (
-                    <>Fecha: {new Date(evento.fecha).toLocaleString()}</> ) : (                     
-                    <em style={{ color: '#9ca3af' }}>Pendiente de aprobación</em> )}                    
-                  {evento.motivoManual && (
+                  {nivel.fecha ? (
+                    <>Fecha: {new Date(nivel.fecha).toLocaleString()}</>
+                  ) : (
+                    <em style={{ color: '#9ca3af' }}>Pendiente de aprobación</em>
+                  )}
+                  {nivel.motivoManual && (
                     <div style={{ marginTop: '0.25rem', fontStyle: 'italic' }}>
-                      Motivo: {evento.motivoManual}
+                      Motivo: {nivel.motivoManual}
                     </div>
                   )}
                 </div>
               </div>
-            ))}
-          </div>
-        )}
-      </div>
-    );
-  };
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+};
 
   return (
     <div style={{ padding: '1.5rem', background: '#f1eeeeff', minHeight: '100vh' }}>
@@ -664,42 +770,136 @@ const confirmarSolicitudConPeriodos = async () => {
 
             <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
               <button
+  onClick={() => {
+    setShowPeriodosModal(false);
+    setPeriodosSeleccionados([]);
+  }}
+  style={{
+    padding: '0.5rem 1rem',
+    background: '#f3f4f6',
+    color: '#374151',
+    border: '1px solid #d1d5db',
+    borderRadius: '0.375rem',
+    fontSize: '0.875rem',
+    cursor: 'pointer'
+  }}
+>
+  Cancelar
+            </button>
+
+            <button
+              onClick={confirmarSolicitudConPeriodos}
+              disabled={calcularTotalSeleccionado() !== calcularDias() || loading}
+              style={{
+                padding: '0.5rem 1rem',
+                background: calcularTotalSeleccionado() === calcularDias() && !loading ? '#3b82f6' : '#9ca3af',
+                color: 'white',
+                border: 'none',
+                borderRadius: '0.375rem',
+                fontSize: '0.875rem',
+                fontWeight: '500',
+                cursor: calcularTotalSeleccionado() === calcularDias() && !loading ? 'pointer' : 'not-allowed'
+              }}
+            >
+              {loading ? 'Enviando...' : 'Confirmar Solicitud'}
+            </button>
+            </div>
+          </div>
+        </div>
+      )}    
+
+       {/* Modal de Rechazo */}
+      {mostrarModalRechazo && solicitudSeleccionada && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000
+        }}>
+          <div style={{
+            background: 'white',
+            borderRadius: '0.5rem',
+            padding: '2rem',
+            maxWidth: '28rem',
+            width: '90%'
+          }}>
+            <h3 style={{ fontSize: '1.25rem', fontWeight: '600', marginBottom: '1rem' }}>
+              Rechazar Solicitud
+            </h3>
+            <p style={{ color: '#6b7280', marginBottom: '1.5rem' }}>
+              ¿Estás seguro de rechazar la solicitud de <strong>{solicitudSeleccionada.empleado}</strong>?
+            </p>
+            <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+              <button
                 onClick={() => {
-                  setShowPeriodosModal(false);
-                  setPeriodosSeleccionados([]);
+                  setMostrarModalRechazo(false);
+                  setSolicitudSeleccionada(null);
                 }}
                 style={{
                   padding: '0.5rem 1rem',
                   background: '#f3f4f6',
                   color: '#374151',
-                  border: '1px solid #d1d5db',
+                  border: 'none',
                   borderRadius: '0.375rem',
-                  fontSize: '0.875rem',
                   cursor: 'pointer'
                 }}
               >
                 Cancelar
               </button>
               <button
-                onClick={() => {
-                  console.log('🔴 BOTÓN CLICKEADO');
-                  console.log('Función existe?', typeof confirmarSolicitudConPeriodos);
-                  confirmarSolicitudConPeriodos();
+                onClick={async () => {
+                  try {
+                    setLoading(true);
+                    await vacacionesService.procesarSolicitud(solicitudSeleccionada.id, {
+                      usuarioID: user.id,
+                      accion: 'rechazada',
+                      esManual: false,
+                      motivoManual: ''
+                    });
+                    showNotification({
+                      title: 'Éxito',
+                      message: 'Solicitud rechazada correctamente.',
+                      color: 'green',
+                    });
+                    setMostrarModalRechazo(false);
+                    setSolicitudSeleccionada(null);
+                    await cargarDatos();
+                  } catch (error) {
+                    // Notificación de error
+                  showNotification({
+                    title: 'Error',
+                    message: 'Error al rechazar: ' + (error.response?.data?.error || error.message),
+                    color: 'red',
+                  });
+                  } finally {
+                    setLoading(false);
+                  }
                 }}
-                disabled={calcularTotalSeleccionado() !== calcularDias() || loading}
+                disabled={loading}
                 style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem',
                   padding: '0.5rem 1rem',
-                  background: calcularTotalSeleccionado() === calcularDias() && !loading ? '#3b82f6' : '#9ca3af',
+                  background: '#ef4444',
                   color: 'white',
                   border: 'none',
                   borderRadius: '0.375rem',
                   fontSize: '0.875rem',
                   fontWeight: '500',
-                  cursor: calcularTotalSeleccionado() === calcularDias() && !loading ? 'pointer' : 'not-allowed'
+                  cursor: loading ? 'not-allowed' : 'pointer'
                 }}
               >
-                {loading ? 'Enviando...' : 'Confirmar Solicitud'}
+                <X style={{ width: '1rem', height: '1rem' }} />
+                Rechazar
               </button>
+
             </div>
           </div>
         </div>
@@ -1320,6 +1520,7 @@ const confirmarSolicitudConPeriodos = async () => {
                     {solicitudes.map(solicitud => {
                       const estadoStyle = getEstadoColor(solicitud.estado);
                       const esMia = solicitud.empleadoId === user.empleadoId;
+                      const permisoAprobacion = puedeAprobar(solicitud);
                       
                       return (
                         <div
@@ -1403,6 +1604,158 @@ const confirmarSolicitudConPeriodos = async () => {
                             estado={solicitud.estado}
                             aprobacionManual={solicitud.aprobacionManual}
                           />
+
+                          {/* BOTONES DE APROBACIÓN */}
+                            {permisoAprobacion.puede && solicitud.estado === 'pendiente' && (
+                              <div style={{ 
+                                marginTop: '1rem', 
+                                paddingTop: '1rem', 
+                                borderTop: '1px solid #e5e7eb',
+                                display: 'flex',
+                                gap: '0.75rem',
+                                alignItems: 'center'
+                              }}>
+                                {permisoAprobacion.motivo === 'manual' && (
+                                  <div style={{
+                                    flex: 1,
+                                    padding: '0.75rem',
+                                    background: '#fef3c7',
+                                    border: '1px solid #fcd34d',
+                                    borderRadius: '0.375rem',
+                                    fontSize: '0.75rem',
+                                    color: '#92400e',
+                                    fontWeight: '500'
+                                  }}>
+                                    ⚠️ Aprobación manual - Debes proporcionar un motivo
+                                  </div>
+                                )}
+                                
+                                {permisoAprobacion.motivo === 'normal' ? (
+                                  <>
+                                   <button
+                                      onClick={async () => {
+                                        try {
+                                          setLoading(true);
+                                          await vacacionesService.procesarSolicitud(solicitud.id, {
+                                            usuarioID: user.id,
+                                            accion: 'aprobada',
+                                            esManual: false,
+                                            motivoManual: ''
+                                          });
+                                          showNotification({
+                                            title: 'Éxito',
+                                            message: 'Solicitud aprobada correctamente.',
+                                            color: 'green',
+                                          });
+                                          await cargarDatos();
+                                        } catch (error) {
+                                          showNotification({
+                                            title: 'Error',
+                                            message: 'Error al aprobar: ' + (error.response?.data?.error || error.message),
+                                            color: 'red',
+                                          });
+                                        } finally {
+                                          setLoading(false);
+                                        }
+                                      }}
+                                      disabled={loading}
+                                      style={{
+                                        padding: '0.625rem 1.25rem',
+                                        background: loading ? '#9ca3af' : '#10b981',
+                                        color: 'white',
+                                        border: 'none',
+                                        borderRadius: '0.375rem',
+                                        fontSize: '0.875rem',
+                                        fontWeight: '500',
+                                        cursor: loading ? 'not-allowed' : 'pointer',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '0.375rem',
+                                        transition: 'all 0.2s'
+                                      }}
+                                      onMouseOver={(e) => !loading && (e.target.style.background = '#059669')}
+                                      onMouseOut={(e) => !loading && (e.target.style.background = '#10b981')}
+                                    >
+                                      <Check style={{ width: '1rem', height: '1rem' }} />
+                                      Aprobar
+                                    </button>
+
+                                    
+                                    <button
+                                        onClick={async () => {
+                                          try {
+                                            setLoading(true);
+                                            await vacacionesService.procesarSolicitud(solicitud.id, {
+                                              usuarioID: user.id,
+                                              accion: 'rechazada',
+                                              esManual: false,
+                                              motivoManual: ''
+                                            });
+                                           // Notificación de éxito
+                                              showNotification({
+                                                title: 'Éxito',
+                                                message: 'Solicitud rechazada correctamente.',
+                                                color: 'green',
+                                              });
+                                          await cargarDatos();
+                                          } catch (error) {
+                                            // Notificación de error
+                                            showNotification({
+                                              title: 'Error',
+                                              message: 'Error al rechazar: ' + (error.response?.data?.error || error.message),
+                                              color: 'red',
+                                            });
+                                          } finally {
+                                            setLoading(false);
+                                          }
+                                        }}
+                                        disabled={loading}
+                                        style={{
+                                          padding: '0.625rem 1.25rem',
+                                          background: loading ? '#9ca3af' : '#ef4444',
+                                          color: 'white',
+                                          border: 'none',
+                                          borderRadius: '0.375rem',
+                                          fontSize: '0.875rem',
+                                          fontWeight: '500',
+                                          cursor: loading ? 'not-allowed' : 'pointer',
+                                          display: 'flex',
+                                          alignItems: 'center',
+                                          gap: '0.375rem',
+                                          transition: 'all 0.2s'
+                                        }}
+                                        onMouseOver={(e) => !loading && (e.target.style.background = '#dc2626')}
+                                        onMouseOut={(e) => !loading && (e.target.style.background = '#ef4444')}
+                                      >
+                                        <X style={{ width: '1rem', height: '1rem' }} />
+                                        Rechazar
+                                      </button>
+
+                                  </>
+                                ) : (
+                                  <button
+                                    onClick={() => openManualModal(solicitud.id, 'aprobada')}
+                                    disabled={loading}
+                                    style={{
+                                      padding: '0.625rem 1.25rem',
+                                      background: loading ? '#9ca3af' : '#dc2626',
+                                      color: 'white',
+                                      border: 'none',
+                                      borderRadius: '0.375rem',
+                                      fontSize: '0.875rem',
+                                      fontWeight: '500',
+                                      cursor: loading ? 'not-allowed' : 'pointer',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '0.375rem'
+                                    }}
+                                  >
+                                    <Edit style={{ width: '1rem', height: '1rem' }} />
+                                    Aprobación Manual
+                                  </button>
+                                )}
+                              </div>
+                            )}
                         </div>
                       );
                     })}
@@ -1482,44 +1835,104 @@ const confirmarSolicitudConPeriodos = async () => {
                             {esNormal ? (
                               <>
                                 <button
-                                  onClick={() => handleAprobarSolicitud(solicitud.id, 'aprobada')}
-                                  disabled={loading}
-                                  style={{
-                                    display: 'flex',
-                                    alignItems: 'center',gap: '0.5rem',
-                                    padding: '0.5rem 1rem',
-                                    background: '#10b981',
-                                    color: 'white',
-                                    border: 'none',
-                                    borderRadius: '0.375rem',
-                                    fontSize: '0.875rem',
-                                    fontWeight: '500',
-                                    cursor: loading ? 'not-allowed' : 'pointer'
-                                  }}
-                                >
-                                  <Check style={{ width: '1rem', height: '1rem' }} />
-                                  Aprobar
-                                </button>
+                                    onClick={async () => {
+                                      try {
+                                        setLoading(true);
+                                        await vacacionesService.procesarSolicitud(solicitud.id, {
+                                          usuarioID: user.id,
+                                          accion: 'aprobada',
+                                          esManual: false,
+                                          motivoManual: ''
+                                        });
+
+                                        // ✅ Notificación moderna
+                                        showNotification({
+                                          title: 'Éxito',
+                                          message: 'Solicitud aprobada correctamente',
+                                          color: 'green', // 'green' para éxito, 'red' para error, 'yellow' para advertencia
+                                        });
+
+                                        await cargarDatos();
+                                      } catch (error) {
+                                        showNotification({
+                                          title: 'Error',
+                                          message: 'Error al aprobar: ' + (error.response?.data?.error || error.message),
+                                          color: 'red', // 'red' para errores
+                                        });
+
+                                      } finally {
+                                        setLoading(false);
+                                      }
+                                    }}
+                                    disabled={loading}
+                                    style={{
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '0.5rem',
+                                      padding: '0.5rem 1rem',
+                                      background: loading ? '#9ca3af' : '#10b981',
+                                      color: 'white',
+                                      border: 'none',
+                                      borderRadius: '0.375rem',
+                                      fontSize: '0.875rem',
+                                      fontWeight: '500',
+                                      cursor: loading ? 'not-allowed' : 'pointer'
+                                    }}
+                                  >
+                                    <Check style={{ width: '1rem', height: '1rem' }} />
+                                    Aprobar
+                                  </button>
+
                                 <button
-                                  onClick={() => handleAprobarSolicitud(solicitud.id, 'rechazada')}
-                                  disabled={loading}
-                                  style={{
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: '0.5rem',
-                                    padding: '0.5rem 1rem',
-                                    background: '#ef4444',
-                                    color: 'white',
-                                    border: 'none',
-                                    borderRadius: '0.375rem',
-                                    fontSize: '0.875rem',
-                                    fontWeight: '500',
-                                    cursor: loading ? 'not-allowed' : 'pointer'
-                                  }}
-                                >
-                                  <X style={{ width: '1rem', height: '1rem' }} />
-                                  Rechazar
-                                </button>
+                                    onClick={async () => {
+                                      try {
+                                        setLoading(true);
+                                        await vacacionesService.procesarSolicitud(solicitud.id, {
+                                          usuarioID: user.id,
+                                          accion: 'rechazada',
+                                          esManual: false,
+                                          motivoManual: ''
+                                        });
+
+                                        // ✅ Notificación unificada
+                                        showNotification({
+                                          title: 'Éxito',
+                                          message: 'Solicitud rechazada correctamente',
+                                          color: 'green', // 'green' indica éxito
+                                        });
+
+
+                                        await cargarDatos();
+                                      } catch (error) {
+                                        showNotification({
+                                          title: 'Error',
+                                          message: 'Error al rechazar: ' + (error.response?.data?.error || error.message),
+                                          color: 'red', // 🔴 rojo para error
+                                        });
+
+                                      } finally {
+                                        setLoading(false);
+                                      }
+                                    }}
+                                    disabled={loading}
+                                    style={{
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '0.5rem',
+                                      padding: '0.5rem 1rem',
+                                      background: loading ? '#9ca3af' : '#ef4444',
+                                      color: 'white',
+                                      border: 'none',
+                                      borderRadius: '0.375rem',
+                                      fontSize: '0.875rem',
+                                      fontWeight: '500',
+                                      cursor: loading ? 'not-allowed' : 'pointer'
+                                    }}
+                                  >
+                                    <X style={{ width: '1rem', height: '1rem' }} />
+                                    Rechazar
+                                  </button>
+
                               </>
                             ) : (
                               <>
@@ -1531,7 +1944,7 @@ const confirmarSolicitudConPeriodos = async () => {
                                     alignItems: 'center',
                                     gap: '0.5rem',
                                     padding: '0.5rem 1rem',
-                                    background: '#dc2626',
+                                    background: loading ? '#9ca3af' : '#dc2626',
                                     color: 'white',
                                     border: 'none',
                                     borderRadius: '0.375rem',

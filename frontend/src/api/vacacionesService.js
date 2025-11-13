@@ -14,36 +14,67 @@ const vacacionesService = {
 
   // Crear nueva solicitud
   async crearSolicitud(datos) {
-    try {
-      const response = await api.post('/vacaciones', datos);
-      return response.data;
-    } catch (error) {
-      console.error('Error al crear solicitud:', error);
-      throw error;
-    }
-  },
+  try {
+    // ✅ Normalizar nombres de campos para el backend
+    const payload = {
+      empleadoID: datos.empleadoId,  // Backend espera empleadoID
+      fechaInicio: datos.fechaInicio,
+      fechaFin: datos.fechaFin,
+      dias: datos.dias,
+      diasHabiles: datos.diasHabiles || datos.dias,
+      motivo: datos.motivo,
+      tipo: datos.tipo || 'vacaciones'
+    };
+    
+    const response = await api.post('/vacaciones', payload);
+    return response.data;
+  } catch (error) {
+    console.error('Error al crear solicitud:', error);
+    throw error;
+  }
+},
 
   // Crear solicitud con períodos múltiples
   async crearSolicitudConPeriodos(datos) {
-    try {
-      const response = await api.post('/vacaciones/con-periodos', datos);
-      return response.data;
-    } catch (error) {
-      console.error('Error al crear solicitud con períodos:', error);
-      throw error;
-    }
-  },
+  try {
+    // ✅ Normalizar nombres de campos
+    const payload = {
+      empleadoId: datos.empleadoId,  // Este endpoint usa empleadoId (camelCase)
+      fechaInicio: datos.fechaInicio,
+      fechaFin: datos.fechaFin,
+      dias: datos.dias,
+      diasHabiles: datos.diasHabiles || datos.dias,
+      motivo: datos.motivo,
+      tipo: datos.tipo || 'vacaciones',
+      periodosSeleccionados: datos.periodosSeleccionados
+    };
+    
+    const response = await api.post('/vacaciones/con-periodos', payload);
+    return response.data;
+  } catch (error) {
+    console.error('Error al crear solicitud con períodos:', error);
+    throw error;
+  }
+},
 
   // Procesar solicitud (aprobar/rechazar)
-  async procesarSolicitud(solicitudId, datos) {
-    try {
-      const response = await api.put(`/vacaciones/${solicitudId}/procesar`, datos);
-      return response.data;
-    } catch (error) {
-      console.error('Error al procesar solicitud:', error);
-      throw error;
-    }
-  },
+  // Procesar solicitud (aprobar/rechazar)
+async procesarSolicitud(solicitudId, datos) {
+  try {
+    // ✅ CAMBIO: La ruta correcta es /vacaciones/aprobar
+    const response = await api.post('/vacaciones/aprobar', {
+      solicitudID: solicitudId,
+      usuarioID: datos.usuarioID || datos.aprobadorId,  // Asegurar que envía usuarioID
+      accion: datos.accion,
+      esManual: datos.esManual,
+      motivo: datos.motivoManual || datos.motivo || ''
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Error al procesar solicitud:', error);
+    throw error;
+  }
+},
 
   // Obtener estadísticas del empleado (simple)
   async getEstadisticas(empleadoId, anio = null) {

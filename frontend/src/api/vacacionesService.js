@@ -125,7 +125,29 @@ async procesarSolicitud(solicitudId, datos) {
       console.error('Error al obtener solicitud:', error);
       throw error;
     }
+  },
+
+  // Crear solicitud con entrada manual (ya aprobada)
+async crearSolicitudManual(datos) {
+  try {
+    const payload = {
+      empleadoID: datos.empleadoId,
+      fechaInicio: datos.fechaInicio,
+      fechaFin: datos.fechaFin,
+      dias: datos.dias,
+      diasHabiles: datos.diasHabiles || datos.dias,
+      motivo: datos.motivo,
+      tipo: datos.tipo || 'vacaciones'
+    };
+    
+    const response = await api.post('/vacaciones/entrada-manual', payload);
+    return response.data;
+  } catch (error) {
+    console.error('Error al crear solicitud manual:', error);
+    throw error;
   }
+}
+
 };
 
 export default vacacionesService;

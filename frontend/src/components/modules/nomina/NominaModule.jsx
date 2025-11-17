@@ -262,8 +262,8 @@ const SistemaNominaCompleto = () => {
                 <th style={{ padding: '0.75rem', textAlign: 'left', fontWeight: '600', color: '#374151' }}>Cargo</th>
                 <th style={{ padding: '0.75rem', textAlign: 'left', fontWeight: '600', color: '#374151' }}>Fecha de Ingreso</th>
                 <th style={{ padding: '0.75rem', textAlign: 'right', fontWeight: '600', color: '#374151' }}>Salario Nómina</th>
-                <th style={{ padding: '0.75rem', textAlign: 'right', fontWeight: '600', color: '#374151' }}>2.87%</th>
-                <th style={{ padding: '0.75rem', textAlign: 'right', fontWeight: '600', color: '#374151' }}>3.04%</th>
+                <th style={{ padding: '0.75rem', textAlign: 'right', fontWeight: '600', color: '#374151' }}> AFP (Pensiones) <br></br>2.87%</th>
+                <th style={{ padding: '0.75rem', textAlign: 'right', fontWeight: '600', color: '#374151' }}>ARS (Salud) <br></br>3.04%</th>
                 <th style={{ padding: '0.75rem', textAlign: 'right', fontWeight: '600', color: '#374151' }}>Total Retención TSS</th>
                 <th style={{ padding: '0.75rem', textAlign: 'right', fontWeight: '600', color: '#374151' }}>Savica</th>
                 <th style={{ padding: '0.75rem', textAlign: 'right', fontWeight: '600', color: '#374151' }}>Total Salario (Retención TSS)</th>

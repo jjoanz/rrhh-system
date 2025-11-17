@@ -2,7 +2,7 @@
 import api from './api';
 
 // Obtener todos los empleados
-export const getEmpleados = async () => {
+const getEmpleados = async () => {
   try {
     const response = await api.get('/empleados/list');
     return response.data;
@@ -13,7 +13,7 @@ export const getEmpleados = async () => {
 };
 
 // Exportar empleados
-export const exportEmpleados = async () => {
+const exportEmpleados = async () => {
   try {
     const response = await api.get('/empleados/export');
     return response.data;
@@ -28,7 +28,7 @@ export const exportEmpleados = async () => {
 // ============================================
 
 // Obtener expediente de un empleado
-export const getExpedienteByEmpleado = async (empleadoId) => {
+const getExpedienteByEmpleado = async (empleadoId) => {
   try {
     const response = await api.get(`/empleados/${empleadoId}/expediente`);
     return response.data;
@@ -39,7 +39,7 @@ export const getExpedienteByEmpleado = async (empleadoId) => {
 };
 
 // Obtener documentos del expediente
-export const getDocumentosExpediente = async (expedienteId) => {
+const getDocumentosExpediente = async (expedienteId) => {
   try {
     const response = await api.get(`/empleados/expediente/${expedienteId}/documentos`);
     return response.data;
@@ -50,7 +50,7 @@ export const getDocumentosExpediente = async (expedienteId) => {
 };
 
 // Subir documento al expediente
-export const uploadDocumento = async (expedienteId, formData) => {
+const uploadDocumento = async (expedienteId, formData) => {
   try {
     const response = await api.post(`/empleados/expediente/${expedienteId}/upload`, formData, {
       headers: {
@@ -65,12 +65,12 @@ export const uploadDocumento = async (expedienteId, formData) => {
 };
 
 // Descargar documento
-export const downloadDocumento = (documentoId) => {
+const downloadDocumento = (documentoId) => {
   return `${api.defaults.baseURL}/empleados/documento/${documentoId}/download`;
 };
 
 // Eliminar documento
-export const deleteDocumento = async (documentoId) => {
+const deleteDocumento = async (documentoId) => {
   try {
     const response = await api.delete(`/empleados/documento/${documentoId}`);
     return response.data;
@@ -81,7 +81,7 @@ export const deleteDocumento = async (documentoId) => {
 };
 
 // Obtener categorías de documentos
-export const getCategorias = async () => {
+const getCategorias = async () => {
   try {
     const response = await api.get('/empleados/categorias/documentos');
     return response.data;
@@ -90,3 +90,17 @@ export const getCategorias = async () => {
     throw error;
   }
 };
+
+// Exportación default como objeto
+const empleadosService = {
+  getEmpleados,
+  exportEmpleados,
+  getExpedienteByEmpleado,
+  getDocumentosExpediente,
+  uploadDocumento,
+  downloadDocumento,
+  deleteDocumento,
+  getCategorias
+};
+
+export default empleadosService;

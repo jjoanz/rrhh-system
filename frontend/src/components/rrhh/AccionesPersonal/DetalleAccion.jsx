@@ -193,170 +193,178 @@ const DetalleAccion = ({ accionId, onClose, onSuccess }) => {
   };
 
   const renderDatosEspecificos = () => {
-    if (!accion) return null;
+  if (!accion) return null;
 
-    const datosNuevos = JSON.parse(accion.DatosNuevos || '{}');
-    const datosAnteriores = JSON.parse(accion.DatosAnteriores || '{}');
+  // ✅ Si ya son objetos, no parsear. Si son strings, parsear.
+  const datosNuevos = typeof accion.DatosNuevos === 'string' 
+    ? JSON.parse(accion.DatosNuevos || '{}') 
+    : (accion.DatosNuevos || {});
+    
+  const datosAnteriores = typeof accion.DatosAnteriores === 'string'
+    ? JSON.parse(accion.DatosAnteriores || '{}')
+    : (accion.DatosAnteriores || {});
 
-    switch (accion.TipoAccion) {
-      case 'INGRESO':
-        return (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem' }}>
-            <InfoItem icon={<User size={18} />} label="Nombre Completo" value={datosNuevos.nombre ? `${datosNuevos.nombre} ${datosNuevos.apellido || ''}` : 'N/A'} />
-            <InfoItem icon={<FileText size={18} />} label="Cédula" value={datosNuevos.cedula} />
-            <InfoItem icon={<Building2 size={18} />} label="Cargo" value={datosNuevos.cargo} />
-            <InfoItem icon={<DollarSign size={18} />} label="Salario" value={`RD$ ${parseFloat(datosNuevos.salario || 0).toLocaleString('es-DO', { minimumFractionDigits: 2 })}`} />
-            <InfoItem icon={<Calendar size={18} />} label="Tipo de Contrato" value={datosNuevos.tipoContrato} />
-            <InfoItem icon={<Clock size={18} />} label="Jornada" value={datosNuevos.jornada} />
-          </div>
-        );
+  switch (accion.TipoAccion) {
+    case 'INGRESO':
+      return (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem' }}>
+          <InfoItem icon={<User size={18} />} label="Nombre Completo" value={datosNuevos.nombre ? `${datosNuevos.nombre} ${datosNuevos.apellido || ''}` : accion.NombreEmpleado || 'N/A'} />
+          <InfoItem icon={<FileText size={18} />} label="Cédula" value={datosNuevos.cedula || accion.CEDULA || 'N/A'} />
+          <InfoItem icon={<Building2 size={18} />} label="Cargo" value={datosNuevos.cargo || accion.CARGO || 'N/A'} />
+          <InfoItem icon={<DollarSign size={18} />} label="Salario" value={`RD$ ${parseFloat(datosNuevos.salario || 0).toLocaleString('es-DO', { minimumFractionDigits: 2 })}`} />
+          <InfoItem icon={<Calendar size={18} />} label="Tipo de Contrato" value={datosNuevos.tipoContrato || 'N/A'} />
+          <InfoItem icon={<Clock size={18} />} label="Jornada" value={datosNuevos.jornada || 'N/A'} />
+          {datosNuevos.email && <InfoItem icon={<FileText size={18} />} label="Email" value={datosNuevos.email} />}
+          {datosNuevos.telefono && <InfoItem icon={<FileText size={18} />} label="Teléfono" value={datosNuevos.telefono} />}
+        </div>
+      );
 
-      case 'PROMOCION':
-        return (
-          <div style={{ display: 'grid', gap: '1rem' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem' }}>
-              <div>
-                <p style={{ fontSize: '0.75rem', color: '#6b7280', margin: 0 }}>Cargo Anterior</p>
-                <p style={{ fontSize: '0.875rem', fontWeight: '600', color: '#1f2937', margin: '0.25rem 0 0' }}>
-                  {datosAnteriores.cargo || 'N/A'}
-                </p>
-              </div>
-              <div>
-                <p style={{ fontSize: '0.75rem', color: '#6b7280', margin: 0 }}>Nuevo Cargo</p>
-                <p style={{ fontSize: '0.875rem', fontWeight: '600', color: '#059669', margin: '0.25rem 0 0' }}>
-                  {datosNuevos.nuevoCargo || 'N/A'}
-                </p>
-              </div>
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem' }}>
-              <div>
-                <p style={{ fontSize: '0.75rem', color: '#6b7280', margin: 0 }}>Salario Anterior</p>
-                <p style={{ fontSize: '0.875rem', fontWeight: '600', color: '#1f2937', margin: '0.25rem 0 0' }}>
-                  RD$ {parseFloat(datosAnteriores.salario || 0).toLocaleString('es-DO', { minimumFractionDigits: 2 })}
-                </p>
-              </div>
-              <div>
-                <p style={{ fontSize: '0.75rem', color: '#6b7280', margin: 0 }}>Nuevo Salario</p>
-                <p style={{ fontSize: '0.875rem', fontWeight: '600', color: '#059669', margin: '0.25rem 0 0' }}>
-                  RD$ {parseFloat(datosNuevos.nuevoSalario || 0).toLocaleString('es-DO', { minimumFractionDigits: 2 })}
-                </p>
-              </div>
-            </div>
-          </div>
-        );
-
-      case 'AJUSTE_SALARIAL':
-        const salarioAnterior = parseFloat(datosAnteriores.salario || 0);
-        const salarioNuevo = parseFloat(datosNuevos.nuevoSalario || 0);
-        const incremento = salarioNuevo - salarioAnterior;
-        const porcentaje = salarioAnterior > 0 ? ((incremento / salarioAnterior) * 100).toFixed(2) : 0;
-        
-        return (
-          <div style={{ display: 'grid', gap: '1rem' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem' }}>
-              <div>
-                <p style={{ fontSize: '0.75rem', color: '#6b7280', margin: 0 }}>Salario Actual</p>
-                <p style={{ fontSize: '0.875rem', fontWeight: '600', color: '#1f2937', margin: '0.25rem 0 0' }}>
-                  RD$ {salarioAnterior.toLocaleString('es-DO', { minimumFractionDigits: 2 })}
-                </p>
-              </div>
-              <div>
-                <p style={{ fontSize: '0.75rem', color: '#6b7280', margin: 0 }}>Nuevo Salario</p>
-                <p style={{ fontSize: '0.875rem', fontWeight: '600', color: '#059669', margin: '0.25rem 0 0' }}>
-                  RD$ {salarioNuevo.toLocaleString('es-DO', { minimumFractionDigits: 2 })}
-                </p>
-              </div>
-            </div>
-            <div style={{
-              padding: '1rem',
-              background: '#f0fdf4',
-              borderRadius: '8px',
-              border: '1px solid #86efac'
-            }}>
-              <div style={{ display: 'flex', justifyContent: 'space-around' }}>
-                <div style={{ textAlign: 'center' }}>
-                  <p style={{ fontSize: '0.75rem', color: '#166534', margin: 0 }}>Incremento</p>
-                  <p style={{ fontSize: '1.25rem', fontWeight: 'bold', color: '#15803d', margin: '0.25rem 0 0' }}>
-                    RD$ {incremento.toLocaleString('es-DO', { minimumFractionDigits: 2 })}
-                  </p>
-                </div>
-                <div style={{ textAlign: 'center' }}>
-                  <p style={{ fontSize: '0.75rem', color: '#166534', margin: 0 }}>Porcentaje</p>
-                  <p style={{ fontSize: '1.25rem', fontWeight: 'bold', color: '#15803d', margin: '0.25rem 0 0' }}>
-                    {porcentaje}%
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-        );
-
-      case 'CAMBIO_DEPTO':
-        return (
+    case 'PROMOCION':
+      return (
+        <div style={{ display: 'grid', gap: '1rem' }}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem' }}>
             <div>
-              <p style={{ fontSize: '0.75rem', color: '#6b7280', margin: 0 }}>Departamento Anterior</p>
+              <p style={{ fontSize: '0.75rem', color: '#6b7280', margin: 0 }}>Cargo Anterior</p>
               <p style={{ fontSize: '0.875rem', fontWeight: '600', color: '#1f2937', margin: '0.25rem 0 0' }}>
-                {datosAnteriores.departamento || 'N/A'}
+                {datosAnteriores.cargo || 'N/A'}
               </p>
             </div>
             <div>
-              <p style={{ fontSize: '0.75rem', color: '#6b7280', margin: 0 }}>Nuevo Departamento</p>
-              <p style={{ fontSize: '0.875rem', fontWeight: '600', color: '#059669', margin: '0.25rem 0 0' }}>
-                {datosNuevos.nuevoDepartamento || 'N/A'}
-              </p>
-            </div>
-          </div>
-        );
-
-      case 'CAMBIO_PUESTO':
-        return (
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem' }}>
-            <div>
-              <p style={{ fontSize: '0.75rem', color: '#6b7280', margin: 0 }}>Puesto Anterior</p>
-              <p style={{ fontSize: '0.875rem', fontWeight: '600', color: '#1f2937', margin: '0.25rem 0 0' }}>
-                {datosAnteriores.puesto || 'N/A'}
-              </p>
-            </div>
-            <div>
-              <p style={{ fontSize: '0.75rem', color: '#6b7280', margin: 0 }}>Nuevo Puesto</p>
+              <p style={{ fontSize: '0.75rem', color: '#6b7280', margin: 0 }}>Nuevo Cargo</p>
               <p style={{ fontSize: '0.875rem', fontWeight: '600', color: '#059669', margin: '0.25rem 0 0' }}>
                 {datosNuevos.nuevoCargo || 'N/A'}
               </p>
             </div>
           </div>
-        );
-
-      case 'TERMINACION':
-        return (
-          <div style={{ display: 'grid', gap: '1rem' }}>
-            <InfoItem icon={<Calendar size={18} />} label="Fecha de Salida" value={formatearFecha(datosNuevos.fechaSalida)} />
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem' }}>
             <div>
-              <p style={{ fontSize: '0.75rem', color: '#6b7280', margin: 0 }}>Motivo de Salida</p>
-              <p style={{ fontSize: '0.875rem', color: '#1f2937', margin: '0.25rem 0 0', lineHeight: '1.5' }}>
-                {datosNuevos.motivoSalida || 'No especificado'}
+              <p style={{ fontSize: '0.75rem', color: '#6b7280', margin: 0 }}>Salario Anterior</p>
+              <p style={{ fontSize: '0.875rem', fontWeight: '600', color: '#1f2937', margin: '0.25rem 0 0' }}>
+                RD$ {parseFloat(datosAnteriores.salario || 0).toLocaleString('es-DO', { minimumFractionDigits: 2 })}
+              </p>
+            </div>
+            <div>
+              <p style={{ fontSize: '0.75rem', color: '#6b7280', margin: 0 }}>Nuevo Salario</p>
+              <p style={{ fontSize: '0.875rem', fontWeight: '600', color: '#059669', margin: '0.25rem 0 0' }}>
+                RD$ {parseFloat(datosNuevos.nuevoSalario || 0).toLocaleString('es-DO', { minimumFractionDigits: 2 })}
               </p>
             </div>
           </div>
-        );
+        </div>
+      );
 
-      default:
-        return (
+    case 'AJUSTE_SALARIAL':
+      const salarioAnterior = parseFloat(datosAnteriores.salario || 0);
+      const salarioNuevo = parseFloat(datosNuevos.nuevoSalario || 0);
+      const incremento = salarioNuevo - salarioAnterior;
+      const porcentaje = salarioAnterior > 0 ? ((incremento / salarioAnterior) * 100).toFixed(2) : 0;
+      
+      return (
+        <div style={{ display: 'grid', gap: '1rem' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem' }}>
+            <div>
+              <p style={{ fontSize: '0.75rem', color: '#6b7280', margin: 0 }}>Salario Actual</p>
+              <p style={{ fontSize: '0.875rem', fontWeight: '600', color: '#1f2937', margin: '0.25rem 0 0' }}>
+                RD$ {salarioAnterior.toLocaleString('es-DO', { minimumFractionDigits: 2 })}
+              </p>
+            </div>
+            <div>
+              <p style={{ fontSize: '0.75rem', color: '#6b7280', margin: 0 }}>Nuevo Salario</p>
+              <p style={{ fontSize: '0.875rem', fontWeight: '600', color: '#059669', margin: '0.25rem 0 0' }}>
+                RD$ {salarioNuevo.toLocaleString('es-DO', { minimumFractionDigits: 2 })}
+              </p>
+            </div>
+          </div>
           <div style={{
             padding: '1rem',
-            background: '#f9fafb',
+            background: '#f0fdf4',
             borderRadius: '8px',
-            textAlign: 'center',
-            color: '#6b7280'
+            border: '1px solid #86efac'
           }}>
-            <FileText size={32} style={{ margin: '0 auto 0.5rem', opacity: 0.5 }} />
-            <p style={{ margin: 0, fontSize: '0.875rem' }}>
-              Detalles específicos no disponibles para este tipo de acción
+            <div style={{ display: 'flex', justifyContent: 'space-around' }}>
+              <div style={{ textAlign: 'center' }}>
+                <p style={{ fontSize: '0.75rem', color: '#166534', margin: 0 }}>Incremento</p>
+                <p style={{ fontSize: '1.25rem', fontWeight: 'bold', color: '#15803d', margin: '0.25rem 0 0' }}>
+                  RD$ {incremento.toLocaleString('es-DO', { minimumFractionDigits: 2 })}
+                </p>
+              </div>
+              <div style={{ textAlign: 'center' }}>
+                <p style={{ fontSize: '0.75rem', color: '#166534', margin: 0 }}>Porcentaje</p>
+                <p style={{ fontSize: '1.25rem', fontWeight: 'bold', color: '#15803d', margin: '0.25rem 0 0' }}>
+                  {porcentaje}%
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+
+    case 'CAMBIO_DEPTO':
+      return (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem' }}>
+          <div>
+            <p style={{ fontSize: '0.75rem', color: '#6b7280', margin: 0 }}>Departamento Anterior</p>
+            <p style={{ fontSize: '0.875rem', fontWeight: '600', color: '#1f2937', margin: '0.25rem 0 0' }}>
+              {datosAnteriores.departamento || 'N/A'}
             </p>
           </div>
-        );
-    }
-  };
+          <div>
+            <p style={{ fontSize: '0.75rem', color: '#6b7280', margin: 0 }}>Nuevo Departamento</p>
+            <p style={{ fontSize: '0.875rem', fontWeight: '600', color: '#059669', margin: '0.25rem 0 0' }}>
+              {datosNuevos.nuevoDepartamento || 'N/A'}
+            </p>
+          </div>
+        </div>
+      );
+
+    case 'CAMBIO_PUESTO':
+      return (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem' }}>
+          <div>
+            <p style={{ fontSize: '0.75rem', color: '#6b7280', margin: 0 }}>Puesto Anterior</p>
+            <p style={{ fontSize: '0.875rem', fontWeight: '600', color: '#1f2937', margin: '0.25rem 0 0' }}>
+              {datosAnteriores.puesto || 'N/A'}
+            </p>
+          </div>
+          <div>
+            <p style={{ fontSize: '0.75rem', color: '#6b7280', margin: 0 }}>Nuevo Puesto</p>
+            <p style={{ fontSize: '0.875rem', fontWeight: '600', color: '#059669', margin: '0.25rem 0 0' }}>
+              {datosNuevos.nuevoCargo || 'N/A'}
+            </p>
+          </div>
+        </div>
+      );
+
+    case 'TERMINACION':
+      return (
+        <div style={{ display: 'grid', gap: '1rem' }}>
+          <InfoItem icon={<Calendar size={18} />} label="Fecha de Salida" value={formatearFecha(datosNuevos.fechaSalida)} />
+          <div>
+            <p style={{ fontSize: '0.75rem', color: '#6b7280', margin: 0 }}>Motivo de Salida</p>
+            <p style={{ fontSize: '0.875rem', color: '#1f2937', margin: '0.25rem 0 0', lineHeight: '1.5' }}>
+              {datosNuevos.motivoSalida || 'No especificado'}
+            </p>
+          </div>
+        </div>
+      );
+
+    default:
+      return (
+        <div style={{
+          padding: '1rem',
+          background: '#f9fafb',
+          borderRadius: '8px',
+          textAlign: 'center',
+          color: '#6b7280'
+        }}>
+          <FileText size={32} style={{ margin: '0 auto 0.5rem', opacity: 0.5 }} />
+          <p style={{ margin: 0, fontSize: '0.875rem' }}>
+            Detalles específicos no disponibles para este tipo de acción
+          </p>
+        </div>
+      );
+  }
+};
 
   if (loading) {
     return (

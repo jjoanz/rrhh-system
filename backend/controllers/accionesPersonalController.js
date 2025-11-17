@@ -62,8 +62,18 @@ export const getAcciones = async (req, res) => {
         ap.AccionID,
         ap.TipoAccion,
         ap.EmpleadoID,
-        e.NOMBRE + ' ' + e.APELLIDO AS NombreEmpleado,
-        e.CEDULA,
+        CASE 
+          WHEN ap.TipoAccion = 'INGRESO' AND ap.Estado = 'Pendiente' THEN 
+            JSON_VALUE(ap.DatosNuevos, '$.nombre') + ' ' + JSON_VALUE(ap.DatosNuevos, '$.apellido')
+          ELSE 
+            e.NOMBRE + ' ' + e.APELLIDO
+        END AS NombreEmpleado,
+        CASE 
+          WHEN ap.TipoAccion = 'INGRESO' AND ap.Estado = 'Pendiente' THEN 
+            JSON_VALUE(ap.DatosNuevos, '$.cedula')
+          ELSE 
+            e.CEDULA
+        END AS CEDULA,
         ap.FechaSolicitud,
         ap.FechaEfectiva,
         ap.Estado,
@@ -72,7 +82,7 @@ export const getAcciones = async (req, res) => {
         ap.FechaAprobacion,
         ua.Username AS AprobadoPor
       FROM AccionesPersonal ap
-      INNER JOIN Empleados e ON ap.EmpleadoID = e.EmpleadoID
+      LEFT JOIN Empleados e ON ap.EmpleadoID = e.EmpleadoID
       INNER JOIN Usuarios u ON ap.SolicitanteID = u.UsuarioID
       LEFT JOIN Usuarios ua ON ap.AprobadoPor = ua.UsuarioID
       WHERE 1=1
@@ -81,7 +91,7 @@ export const getAcciones = async (req, res) => {
     const request = pool.request();
 
     // Filtros según rol
-   if (rol !== 'director_rrhh' && rol !== 'gerente_rrhh') {
+    if (rol !== 'director_rrhh' && rol !== 'gerente_rrhh' && rol !== 'rrhh') {
       query += ` AND ap.SolicitanteID = @usuarioId`;
       request.input('usuarioId', sql.Int, usuarioId);
     }
@@ -130,50 +140,63 @@ export const getAcciones = async (req, res) => {
 };
 
 // Obtener estadísticas para el dashboard
+// Obtener estadísticas del dashboard
 export const getEstadisticas = async (req, res) => {
   try {
     const pool = await poolPromise;
     const { usuarioId, rol } = req.user;
 
-    // Estadísticas del mes actual
-    const result = await pool.request().query(`
-      DECLARE @MesActual DATE = DATEFROMPARTS(YEAR(GETDATE()), MONTH(GETDATE()), 1);
-      
+    console.log('📊 Obteniendo estadísticas para:', { usuarioId, rol });
+
+    const mesActual = new Date().getMonth() + 1;
+    const anioActual = new Date().getFullYear();
+
+    // Determinar si el usuario puede ver todas las estadísticas
+    const puedeVerTodo = ['director_rrhh', 'gerente_rrhh', 'rrhh', 'admin'].includes(rol);
+
+    let queryBase = `
       SELECT 
-        -- Ingresos del mes
-        (SELECT COUNT(*) FROM AccionesPersonal 
-         WHERE TipoAccion IN ('INGRESO', 'REINGRESO') 
-         AND Estado = 'Ejecutada'
-         AND FechaEfectiva >= @MesActual) AS IngresosMes,
-        
-        -- Egresos del mes
-        (SELECT COUNT(*) FROM AccionesPersonal 
-         WHERE TipoAccion IN ('TERMINACION', 'JUBILACION') 
-         AND Estado = 'Ejecutada'
-         AND FechaEfectiva >= @MesActual) AS EgresosMes,
-        
-        -- Movimientos del mes
-        (SELECT COUNT(*) FROM AccionesPersonal 
-         WHERE TipoAccion IN ('PROMOCION', 'CAMBIO_DEPTO', 'CAMBIO_PUESTO', 'TRANSFERENCIA', 'AJUSTE_SALARIAL') 
-         AND Estado = 'Ejecutada'
-         AND FechaEfectiva >= @MesActual) AS MovimientosMes,
-        
-        -- Acciones pendientes (propias o todas según rol)
-        (SELECT COUNT(*) FROM AccionesPersonal 
-         WHERE Estado = 'Pendiente'
-         ${rol === 'Admin' || rol === 'Director RRHH' || rol === 'Gerente RRHH' ? '' : 'AND SolicitanteID = ' + usuarioId}) AS AccionesPendientes,
-        
-        -- Total empleados activos
-        (SELECT COUNT(*) FROM Empleados WHERE Estado = 1) AS TotalEmpleados
-    `);
+        COUNT(CASE WHEN TipoAccion = 'INGRESO' THEN 1 END) AS IngresosMes,
+        COUNT(CASE WHEN TipoAccion IN ('TERMINACION', 'JUBILACION') THEN 1 END) AS EgresosMes,
+        COUNT(CASE WHEN TipoAccion NOT IN ('INGRESO', 'TERMINACION', 'JUBILACION') THEN 1 END) AS MovimientosMes,
+        COUNT(CASE WHEN Estado = 'Pendiente' THEN 1 END) AS AccionesPendientes
+      FROM AccionesPersonal
+      WHERE 
+        MONTH(FechaSolicitud) = @mes 
+        AND YEAR(FechaSolicitud) = @anio
+    `;
+
+    // Si no puede ver todo, filtrar solo sus solicitudes
+    if (!puedeVerTodo) {
+      queryBase += ` AND SolicitanteID = @usuarioId`;
+    }
+
+    const request = pool.request()
+      .input('mes', sql.Int, mesActual)
+      .input('anio', sql.Int, anioActual);
+
+    if (!puedeVerTodo) {
+      request.input('usuarioId', sql.Int, usuarioId);
+    }
+
+    const result = await request.query(queryBase);
+
+    const estadisticas = result.recordset[0];
+
+    console.log('✅ Estadísticas obtenidas:', estadisticas);
 
     res.json({
       success: true,
-      estadisticas: result.recordset[0]
+      estadisticas: {
+        IngresosMes: estadisticas.IngresosMes || 0,
+        EgresosMes: estadisticas.EgresosMes || 0,
+        MovimientosMes: estadisticas.MovimientosMes || 0,
+        AccionesPendientes: estadisticas.AccionesPendientes || 0
+      }
     });
 
   } catch (error) {
-    console.error('Error al obtener estadísticas:', error);
+    console.error('❌ Error al obtener estadísticas:', error);
     res.status(500).json({
       success: false,
       message: 'Error al obtener estadísticas'
@@ -188,7 +211,7 @@ export const getAccionesPendientes = async (req, res) => {
     const { usuarioId, rol } = req.user;
 
     // Solo RRHH y Admin pueden ver acciones pendientes de aprobación
-   if (rol !== 'director_rrhh' && rol !== 'gerente_rrhh') {
+    if (rol !== 'director_rrhh' && rol !== 'gerente_rrhh' && rol !== 'rrhh') {
       return res.json({
         success: true,
         acciones: []
@@ -200,8 +223,18 @@ export const getAccionesPendientes = async (req, res) => {
         ap.AccionID,
         ap.TipoAccion,
         ap.EmpleadoID,
-        e.NOMBRE + ' ' + e.APELLIDO AS NombreEmpleado,
-        e.CEDULA,
+        CASE 
+          WHEN ap.TipoAccion = 'INGRESO' THEN 
+            JSON_VALUE(ap.DatosNuevos, '$.nombre') + ' ' + JSON_VALUE(ap.DatosNuevos, '$.apellido')
+          ELSE 
+            e.NOMBRE + ' ' + e.APELLIDO
+        END AS NombreEmpleado,
+        CASE 
+          WHEN ap.TipoAccion = 'INGRESO' THEN 
+            JSON_VALUE(ap.DatosNuevos, '$.cedula')
+          ELSE 
+            e.CEDULA
+        END AS CEDULA,
         ap.FechaSolicitud,
         ap.FechaEfectiva,
         ap.Estado,
@@ -209,7 +242,7 @@ export const getAccionesPendientes = async (req, res) => {
         u.Username AS Solicitante,
         DATEDIFF(day, ap.FechaSolicitud, GETDATE()) AS DiasEspera
       FROM AccionesPersonal ap
-      INNER JOIN Empleados e ON ap.EmpleadoID = e.EmpleadoID
+      LEFT JOIN Empleados e ON ap.EmpleadoID = e.EmpleadoID
       INNER JOIN Usuarios u ON ap.SolicitanteID = u.UsuarioID
       WHERE ap.Estado = 'Pendiente'
       ORDER BY ap.FechaSolicitud ASC
@@ -230,6 +263,7 @@ export const getAccionesPendientes = async (req, res) => {
 };
 
 // Obtener una acción específica
+// Obtener una acción específica
 export const getAccionById = async (req, res) => {
   try {
     const pool = await poolPromise;
@@ -240,8 +274,18 @@ export const getAccionById = async (req, res) => {
       .query(`
         SELECT 
           ap.*,
-          e.NOMBRE + ' ' + e.APELLIDO AS NombreEmpleado,
-          e.CEDULA,
+          CASE 
+            WHEN ap.TipoAccion = 'INGRESO' AND e.EmpleadoID IS NULL THEN 
+              JSON_VALUE(ap.DatosNuevos, '$.nombre') + ' ' + JSON_VALUE(ap.DatosNuevos, '$.apellido')
+            ELSE 
+              e.NOMBRE + ' ' + e.APELLIDO
+          END AS NombreEmpleado,
+          CASE 
+            WHEN ap.TipoAccion = 'INGRESO' AND e.EmpleadoID IS NULL THEN 
+              JSON_VALUE(ap.DatosNuevos, '$.cedula')
+            ELSE 
+              e.CEDULA
+          END AS CEDULA,
           e.Email,
           e.Telefono,
           u.Username AS Solicitante,
@@ -249,7 +293,7 @@ export const getAccionById = async (req, res) => {
           ua.Username AS AprobadoPor,
           ue.Username AS EjecutadoPor
         FROM AccionesPersonal ap
-        INNER JOIN Empleados e ON ap.EmpleadoID = e.EmpleadoID
+        LEFT JOIN Empleados e ON ap.EmpleadoID = e.EmpleadoID
         INNER JOIN Usuarios u ON ap.SolicitanteID = u.UsuarioID
         LEFT JOIN Usuarios ur ON ap.RevisadoPor = ur.UsuarioID
         LEFT JOIN Usuarios ua ON ap.AprobadoPor = ua.UsuarioID
@@ -293,18 +337,16 @@ export const getAccionById = async (req, res) => {
 // Continúa en el siguiente mensaje...// Continuación de accionesPersonalController.js
 
 // Crear nueva acción de personal
+// Crear nueva acción de personal
+// Crear nueva acción de personal
+// Crear nueva acción de personal
 export const crearAccion = async (req, res) => {
+  let transaction = null;
+  
   try {
-
-    // 🔍 DEBUG TEMPORAL - AGREGAR ESTAS LÍNEAS
-    console.log('🔍 req.user completo:', req.user);
-    console.log('🔍 req.user.usuarioId:', req.user?.usuarioId);
-    console.log('🔍 req.user.userId:', req.user?.userId);
-    
     const pool = await poolPromise;
     const { usuarioId } = req.user;
     
-    console.log('🔍 usuarioId extraído:', usuarioId); // AGREGAR ESTA LÍNEA
     const {
       tipoAccion,
       empleadoId,
@@ -313,6 +355,8 @@ export const crearAccion = async (req, res) => {
       datosAnteriores,
       datosNuevos
     } = req.body;
+
+    console.log('📝 Datos recibidos:', { tipoAccion, empleadoId, usuarioId, datosNuevos });
 
     // Validar tipo de acción
     const tipoValido = TIPOS_ACCION.find(t => t.codigo === tipoAccion);
@@ -323,8 +367,111 @@ export const crearAccion = async (req, res) => {
       });
     }
 
-    // Validar que el empleado existe (excepto para INGRESO)
-    if (tipoAccion !== 'INGRESO') {
+    let empleadoIdFinal = empleadoId;
+
+    // Si es un INGRESO, crear el empleado primero
+    if (tipoAccion === 'INGRESO') {
+      console.log('🔄 Tipo INGRESO detectado, iniciando proceso...');
+      
+      transaction = new sql.Transaction(pool);
+      
+      try {
+        console.log('🔄 Iniciando transacción...');
+        await transaction.begin();
+        console.log('✅ Transacción iniciada');
+
+        const request = new sql.Request(transaction);
+        
+        console.log('🔄 Ejecutando INSERT en Empleados...');
+        const resultEmpleado = await request
+          .input('nombre', sql.NVarChar, datosNuevos.nombre?.trim())
+          .input('apellido', sql.NVarChar, datosNuevos.apellido?.trim())
+          .input('cedula', sql.NVarChar, datosNuevos.cedula?.trim())
+          .input('email', sql.NVarChar, datosNuevos.email?.trim() || null)
+          .input('telefono', sql.NVarChar, datosNuevos.telefono?.trim() || null)
+          .input('cargo', sql.NVarChar, datosNuevos.cargo?.trim() || 'Por Asignar')
+          .input('departamentoId', sql.Int, datosNuevos.departamento ? parseInt(datosNuevos.departamento) : null)
+          .input('salario', sql.Decimal(18, 2), datosNuevos.salario ? parseFloat(datosNuevos.salario) : 0)
+          .input('fechaIngreso', sql.Date, datosNuevos.fechaIngreso || fechaEfectiva)
+          .query(`
+            INSERT INTO Empleados (
+              NOMBRE, APELLIDO, CEDULA, Email, Telefono, CARGO, 
+              DEPARTAMENTOID, Salario, FECHAINGRESO, Estado
+            )
+            VALUES (
+              @nombre, @apellido, @cedula, @email, @telefono, @cargo,
+              @departamentoId, @salario, @fechaIngreso, 1
+            );
+            
+            SELECT SCOPE_IDENTITY() AS EmpleadoID;
+          `);
+
+        empleadoIdFinal = resultEmpleado.recordset[0].EmpleadoID;
+        console.log('✅ Empleado creado exitosamente con ID:', empleadoIdFinal);
+
+        // Insertar la acción dentro de la misma transacción
+        console.log('🔄 Insertando AccionPersonal...');
+        const requestAccion = new sql.Request(transaction);
+        const result = await requestAccion
+          .input('tipoAccion', sql.NVarChar, tipoAccion)
+          .input('empleadoId', sql.Int, empleadoIdFinal)
+          .input('solicitanteId', sql.Int, usuarioId)
+          .input('fechaEfectiva', sql.Date, fechaEfectiva)
+          .input('justificacion', sql.NVarChar, justificacion)
+          .input('datosAnteriores', sql.NVarChar, JSON.stringify(datosAnteriores || {}))
+          .input('datosNuevos', sql.NVarChar, JSON.stringify(datosNuevos))
+          .input('creadoPor', sql.Int, usuarioId)
+          .query(`
+            INSERT INTO AccionesPersonal (
+              TipoAccion, EmpleadoID, SolicitanteID, FechaSolicitud,
+              FechaEfectiva, Estado, Justificacion, DatosAnteriores,
+              DatosNuevos, CreadoPor, FechaCreacion
+            )
+            VALUES (
+              @tipoAccion, @empleadoId, @solicitanteId, GETDATE(),
+              @fechaEfectiva, 'Pendiente', @justificacion, @datosAnteriores,
+              @datosNuevos, @creadoPor, GETDATE()
+            );
+            
+            SELECT SCOPE_IDENTITY() AS AccionID;
+          `);
+
+        const accionId = result.recordset[0].AccionID;
+        console.log('✅ AccionPersonal creada con ID:', accionId);
+        
+        // Commit de la transacción
+        console.log('🔄 Haciendo commit...');
+        await transaction.commit();
+        console.log('✅ Transacción completada exitosamente');
+
+        return res.status(201).json({
+          success: true,
+          message: 'Acción de personal creada exitosamente',
+          accionId: accionId,
+          empleadoId: empleadoIdFinal
+        });
+
+      } catch (innerError) {
+        console.error('❌ Error dentro de la transacción:', innerError.message);
+        
+        // Intentar rollback solo si la transacción está activa
+        if (transaction && !transaction._aborted) {
+          try {
+            await transaction.rollback();
+            console.log('✅ Rollback ejecutado');
+          } catch (rollbackError) {
+            console.error('⚠️ Error al hacer rollback (puede ser normal si ya se abortó)');
+          }
+        }
+        
+        throw innerError;
+      }
+
+    } else {
+      // Para otros tipos de acción (sin transacción)
+      console.log('🔄 Procesando acción tipo:', tipoAccion);
+      
+      // Validar que el empleado existe
       const empleadoExiste = await pool.request()
         .input('empleadoId', sql.Int, empleadoId)
         .query('SELECT EmpleadoID FROM Empleados WHERE EmpleadoID = @empleadoId');
@@ -335,48 +482,51 @@ export const crearAccion = async (req, res) => {
           message: 'Empleado no encontrado'
         });
       }
+
+      // Insertar la acción
+      const result = await pool.request()
+        .input('tipoAccion', sql.NVarChar, tipoAccion)
+        .input('empleadoId', sql.Int, empleadoId)
+        .input('solicitanteId', sql.Int, usuarioId)
+        .input('fechaEfectiva', sql.Date, fechaEfectiva)
+        .input('justificacion', sql.NVarChar, justificacion)
+        .input('datosAnteriores', sql.NVarChar, JSON.stringify(datosAnteriores || {}))
+        .input('datosNuevos', sql.NVarChar, JSON.stringify(datosNuevos))
+        .input('creadoPor', sql.Int, usuarioId)
+        .query(`
+          INSERT INTO AccionesPersonal (
+            TipoAccion, EmpleadoID, SolicitanteID, FechaSolicitud,
+            FechaEfectiva, Estado, Justificacion, DatosAnteriores,
+            DatosNuevos, CreadoPor, FechaCreacion
+          )
+          VALUES (
+            @tipoAccion, @empleadoId, @solicitanteId, GETDATE(),
+            @fechaEfectiva, 'Pendiente', @justificacion, @datosAnteriores,
+            @datosNuevos, @creadoPor, GETDATE()
+          );
+          
+          SELECT SCOPE_IDENTITY() AS AccionID;
+        `);
+
+      const accionId = result.recordset[0].AccionID;
+
+      return res.status(201).json({
+        success: true,
+        message: 'Acción de personal creada exitosamente',
+        accionId: accionId
+      });
     }
 
-    // Insertar la acción
-    const result = await pool.request()
-      .input('tipoAccion', sql.NVarChar, tipoAccion)
-      .input('empleadoId', sql.Int, empleadoId || null)
-      .input('solicitanteId', sql.Int, usuarioId)
-      .input('fechaEfectiva', sql.Date, fechaEfectiva)
-      .input('justificacion', sql.NVarChar, justificacion)
-      .input('datosAnteriores', sql.NVarChar, JSON.stringify(datosAnteriores || {}))
-      .input('datosNuevos', sql.NVarChar, JSON.stringify(datosNuevos))
-      .input('creadoPor', sql.Int, usuarioId)
-      .query(`
-        INSERT INTO AccionesPersonal (
-          TipoAccion, EmpleadoID, SolicitanteID, FechaSolicitud,
-          FechaEfectiva, Estado, Justificacion, DatosAnteriores,
-          DatosNuevos, CreadoPor, FechaCreacion
-        )
-        VALUES (
-          @tipoAccion, @empleadoId, @solicitanteId, GETDATE(),
-          @fechaEfectiva, 'Pendiente', @justificacion, @datosAnteriores,
-          @datosNuevos, @creadoPor, GETDATE()
-        );
-        SELECT SCOPE_IDENTITY() AS AccionID;
-      `);
-
-    const accionId = result.recordset[0].AccionID;
-
-    res.status(201).json({
-      success: true,
-      message: 'Acción de personal creada exitosamente',
-      accionId: accionId
-    });
-
   } catch (error) {
-    console.error('Error al crear acción:', error);
+    console.error('❌ Error al crear acción:', error.message);
+    
     res.status(500).json({
       success: false,
-      message: 'Error al crear acción de personal'
+      message: error.message || 'Error al crear acción de personal'
     });
   }
 };
+
 
 // Actualizar acción (solo si está pendiente)
 export const actualizarAccion = async (req, res) => {

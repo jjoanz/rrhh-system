@@ -1003,6 +1003,145 @@ class VacacionesController {
       res.status(500).json({ error: 'Error al cancelar solicitud', details: error.message });
     }
   }
+  // ===============================
+// Entrada Manual - RRHH
+// ===============================
+static async crearSolicitudManual(req, res) {
+  const transaction = new sql.Transaction(req.app.locals.db);
+  try {
+    await transaction.begin();
+
+    const {
+      empleadoID,
+      fechaInicio,
+      fechaFin,
+      dias,
+      diasHabiles,
+      motivo,
+      tipo
+    } = req.body;
+
+    if (!empleadoID || !fechaInicio || !fechaFin || !dias) {
+      await transaction.rollback();
+      return res.status(400).json({ error: 'Faltan datos requeridos' });
+    }
+
+    // Validar fechas
+    const inicio = new Date(fechaInicio);
+    const fin = new Date(fechaFin);
+
+    if (fin <= inicio) {
+      await transaction.rollback();
+      return res.status(400).json({ error: 'La fecha de fin debe ser posterior a la fecha de inicio' });
+    }
+
+    // Obtener rol del empleado
+    const empleadoRequest = new sql.Request(transaction);
+    empleadoRequest.input('empleadoID', sql.Int, empleadoID);
+    const empleadoResult = await empleadoRequest.query(`
+      SELECT u.Rol 
+      FROM Usuarios u 
+      WHERE u.EmpleadoID = @empleadoID
+    `);
+
+    const rolEmpleado = empleadoResult.recordset[0]?.Rol || 'colaborador';
+
+    // Verificar días disponibles solo para vacaciones
+    if (tipo === 'vacaciones') {
+      const checkRequest = new sql.Request(transaction);
+      checkRequest.input('empleadoID', sql.Int, empleadoID);
+      const checkResult = await checkRequest.query(`
+        SELECT (DiasPendientes + DiasDisponibles) AS TotalDisponible
+        FROM BalanceVacaciones
+        WHERE EmpleadoID = @empleadoID AND Anio = YEAR(GETDATE())
+      `);
+
+      const totalDisponible = checkResult.recordset[0]?.TotalDisponible ?? 0;
+
+      if (totalDisponible < dias) {
+        await transaction.rollback();
+        return res.status(400).json({ 
+          error: 'Días insuficientes', 
+          disponibles: totalDisponible,
+          solicitados: dias
+        });
+      }
+    }
+
+    // Insertar solicitud directamente como APROBADA
+    const insertRequest = new sql.Request(transaction);
+    insertRequest.input('empleadoID', sql.Int, empleadoID);
+    insertRequest.input('fechaInicio', sql.Date, fechaInicio);
+    insertRequest.input('fechaFin', sql.Date, fechaFin);
+    insertRequest.input('dias', sql.Int, dias);
+    insertRequest.input('diasHabiles', sql.Int, diasHabiles || dias);
+    insertRequest.input('motivo', sql.NVarChar, motivo || '');
+    insertRequest.input('tipo', sql.NVarChar, tipo || 'Vacaciones');
+
+    const insertResult = await insertRequest.query(`
+      INSERT INTO SolicitudesVacaciones
+        (EmpleadoID, TipoSolicitud, FechaInicio, FechaFin, Dias, DiasHabiles, Motivo, Estado, FechaSolicitud, FechaAprobacionFinal, AprobacionManual)
+      VALUES
+        (@empleadoID, @tipo, @fechaInicio, @fechaFin, @dias, @diasHabiles, @motivo, 'Aprobada', GETDATE(), GETDATE(), 1);
+      SELECT CAST(SCOPE_IDENTITY() AS INT) AS SolicitudID;
+    `);
+
+    const solicitudID = insertResult.recordset?.[0]?.SolicitudID ?? null;
+
+    if (!solicitudID) {
+      await transaction.rollback();
+      return res.status(500).json({ error: 'No fue posible crear la solicitud' });
+    }
+
+    // Crear flujo de aprobación marcado como manual
+    const flujoAprobacion = VacacionesController.getFlujoAprobacion(rolEmpleado);
+
+    for (const nivel of flujoAprobacion) {
+      const flujoRequest = new sql.Request(transaction);
+      flujoRequest.input('solicitudID', sql.Int, solicitudID);
+      flujoRequest.input('rol', sql.NVarChar, nivel.rol);
+      flujoRequest.input('tipo', sql.NVarChar, 'manual');
+      flujoRequest.input('orden', sql.Int, nivel.orden);
+      await flujoRequest.query(`
+        INSERT INTO FlujoAprobacionVacaciones (SolicitudID, RolAprobador, TipoAprobacion, OrdenFlujo, Accion, FechaAprobacion)
+        VALUES (@solicitudID, @rol, @tipo, @orden, 'Aprobada', GETDATE())
+      `);
+    }
+
+    // Descontar días del balance
+    if (tipo === 'vacaciones') {
+      const updateBalanceRequest = new sql.Request(transaction);
+      updateBalanceRequest.input('empleadoID', sql.Int, empleadoID);
+      updateBalanceRequest.input('dias', sql.Int, dias);
+      
+      await updateBalanceRequest.query(`
+        UPDATE BalanceVacaciones
+        SET DiasUsados = DiasUsados + @dias,
+            DiasDisponibles = CASE 
+              WHEN DiasDisponibles >= @dias THEN DiasDisponibles - @dias
+              ELSE 0
+            END,
+            DiasPendientes = CASE 
+              WHEN DiasDisponibles < @dias THEN DiasPendientes - (@dias - DiasDisponibles)
+              ELSE DiasPendientes
+            END,
+            FechaActualizacion = GETDATE()
+        WHERE EmpleadoID = @empleadoID AND Anio = YEAR(GETDATE())
+      `);
+    }
+
+    await transaction.commit();
+    res.status(201).json({ 
+      message: 'Solicitud registrada y aprobada exitosamente', 
+      solicitudID,
+      diasDescontados: dias
+    });
+  } catch (error) {
+    console.error('❌ Error crearSolicitudManual:', error);
+    try { await transaction.rollback(); } catch (e) { console.error('Rollback error', e); }
+    res.status(500).json({ error: 'Error al crear solicitud manual', details: error.message });
+  }
+}
 }
 
 export default VacacionesController;

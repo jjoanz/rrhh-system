@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../../context/AuthContext';
 import { useApp } from '../../../context/AppContext';
 import vacacionesService from '../../../api/vacacionesService';
+import empleadosService from '../../../api/empleadosService';
 import { Calendar, Plus, Clock, Check, X, FileText, Users, ArrowRight, AlertTriangle, Edit, Package } from 'lucide-react';
 import { showNotification } from '@mantine/notifications';
 
@@ -65,6 +66,20 @@ const VacacionesModule = () => {
     tipo: 'vacaciones'
   });
 
+  // Estados para entrada manual
+  const [empleados, setEmpleados] = useState([]);
+  const [empleadoBusqueda, setEmpleadoBusqueda] = useState('');
+  const [mostrarListaEmpleados, setMostrarListaEmpleados] = useState(false);
+  const [entradaManualForm, setEntradaManualForm] = useState({
+    empleadoId: null,
+    empleadoNombre: '',
+    tipoSolicitud: 'vacaciones',
+    fechaInicio: '',
+    fechaFin: '',
+    justificacion: '',
+    documentoReferencia: ''
+  });
+
   // Roles con aprobación manual (RRHH)
   const ROLES_APROBACION_MANUAL = ['rrhh', 'gerente_rrhh', 'director_rrhh'];
 
@@ -89,6 +104,20 @@ const VacacionesModule = () => {
       showNotification('Error al cargar las solicitudes', 'error');
     }
   };
+
+  const cargarEmpleados = async () => {
+  try {
+    const response = await empleadosService.getEmpleados();
+    setEmpleados(response.data || []);
+  } catch (error) {
+    console.error('Error al cargar empleados:', error);
+    showNotification({
+      title: 'Error',
+      message: 'Error al cargar lista de empleados',
+      color: 'red'
+    });
+  }
+};
 
   // Cargar datos al montar
   useEffect(() => {
@@ -1217,6 +1246,31 @@ const puedeAprobar = (solicitud) => {
                 )}
               </button>
             )}
+            {ROLES_APROBACION_MANUAL.includes(user.role?.toLowerCase()) && (
+              <button
+                onClick={() => {
+                  setActiveTab('entrada_manual');
+                  cargarEmpleados(); // Cargar empleados al abrir la pestaña
+                }}
+                style={{
+                  flex: 1,
+                  minWidth: '150px',
+                  padding: '1rem',
+                  border: 'none',
+                  background: activeTab === 'entrada_manual' ? '#f8fafc' : 'transparent',
+                  color: activeTab === 'entrada_manual' ? '#3b82f6' : '#6b7280',
+                  fontWeight: activeTab === 'entrada_manual' ? '600' : '500',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '0.5rem'
+                }}
+              >
+                <FileText style={{ width: '1rem', height: '1rem' }} />
+                Entrada Manual
+              </button>
+            )}
           </div>
 
           <div style={{ padding: '2rem' }}>
@@ -1966,6 +2020,114 @@ const puedeAprobar = (solicitud) => {
                 )}
               </div>
             )}
+            {activeTab === 'entrada_manual' && (
+            <div>
+              {/* Alerta informativa */}
+              <div style={{
+                background: '#fef3c7',
+                border: '1px solid #fcd34d',
+                borderRadius: '0.5rem',
+                padding: '1rem',
+                marginBottom: '2rem',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.75rem'
+              }}>
+                <AlertTriangle style={{ width: '1.25rem', height: '1.25rem', color: '#92400e' }} />
+                <div>
+                  <h4 style={{ fontSize: '0.875rem', fontWeight: '600', color: '#92400e', margin: 0, marginBottom: '0.25rem' }}>
+                    Entrada Manual de Solicitudes Ejecutadas
+                  </h4>
+                  <p style={{ fontSize: '0.75rem', color: '#92400e', margin: 0 }}>
+                    Registra solicitudes que YA fueron ejecutadas para descontar los días del balance.
+                  </p>
+                </div>
+              </div>
+
+              <h3 style={{ fontSize: '1.25rem', fontWeight: '600', color: '#111827', marginBottom: '1.5rem' }}>
+                Registrar Solicitud Ejecutada
+              </h3>
+
+              {/* Aquí va TODO el formulario completo que te envié antes */}
+              <form onSubmit={async (e) => {
+                e.preventDefault();
+                
+                if (!entradaManualForm.empleadoId) {
+                  showNotification({
+                    title: 'Error',
+                    message: 'Debes seleccionar un empleado',
+                    color: 'red'
+                  });
+                  return;
+                }
+
+                const inicio = new Date(entradaManualForm.fechaInicio);
+                const fin = new Date(entradaManualForm.fechaFin);
+                
+                if (fin < inicio) {
+                  showNotification({
+                    title: 'Error',
+                    message: 'La fecha de fin debe ser posterior a la fecha de inicio',
+                    color: 'red'
+                  });
+                  return;
+                }
+
+                const diffTime = fin - inicio;
+                const dias = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+                
+                let diasHabiles = 0;
+                for (let d = new Date(inicio); d <= fin; d.setDate(d.getDate() + 1)) {
+                  const diaSemana = d.getDay();
+                  if (diaSemana !== 0 && diaSemana !== 6) diasHabiles++;
+                }
+
+                try {
+                  setLoading(true);
+                  
+                  await vacacionesService.crearSolicitudManual({
+                    empleadoId: entradaManualForm.empleadoId,
+                    tipo: entradaManualForm.tipoSolicitud,
+                    fechaInicio: entradaManualForm.fechaInicio,
+                    fechaFin: entradaManualForm.fechaFin,
+                    dias: dias,
+                    diasHabiles: diasHabiles,
+                    motivo: `[ENTRADA MANUAL - RRHH] ${entradaManualForm.justificacion}${entradaManualForm.documentoReferencia ? ` | Ref: ${entradaManualForm.documentoReferencia}` : ''}`
+                  });
+
+                  showNotification({
+                    title: 'Éxito',
+                    message: `Solicitud registrada y ${dias} días descontados del balance de ${entradaManualForm.empleadoNombre}`,
+                    color: 'green'
+                  });
+
+                  setEntradaManualForm({
+                    empleadoId: null,
+                    empleadoNombre: '',
+                    tipoSolicitud: 'vacaciones',
+                    fechaInicio: '',
+                    fechaFin: '',
+                    justificacion: '',
+                    documentoReferencia: ''
+                  });
+                  setEmpleadoBusqueda('');
+
+                  await cargarDatos();
+                } catch (error) {
+                  showNotification({
+                    title: 'Error',
+                    message: 'Error al registrar: ' + (error.response?.data?.error || error.message),
+                    color: 'red'
+                  });
+                } finally {
+                  setLoading(false);
+                }
+              }} style={{ maxWidth: '48rem' }}>
+                
+                {/* Aquí va todo el resto del formulario que te di en el mensaje anterior */}
+              </form>
+            </div>
+          )}
           </div>
         </div>
       </div>

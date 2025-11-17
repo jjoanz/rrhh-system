@@ -106,14 +106,18 @@ const NuevaAccion = ({ onClose, onSuccess }) => {
     
     switch (formData.tipo_accion) {
       case 'INGRESO':
+        // 🔧 Obtener el NOMBRE del puesto, no el ID
+        const puestoSeleccionado = puestos.find(p => p.id === parseInt(formData.puesto_nuevo));
+        
         datos.nombre = formData.nombre_empleado;
         datos.apellido = formData.apellido_empleado;
         datos.cedula = formData.cedula_empleado;
-        datos.email = formData.email_empleado;
-        datos.telefono = formData.telefono_empleado;
-        datos.cargo = formData.puesto_nuevo;
-        datos.salario = formData.salario_nuevo;
-        datos.departamento = formData.departamento_nuevo;
+        datos.email = formData.email_empleado || null;
+        datos.telefono = formData.telefono_empleado || null;
+        datos.cargo = puestoSeleccionado ? puestoSeleccionado.nombre : 'Por Asignar';
+        datos.salario = parseFloat(formData.salario_nuevo) || 0;
+        datos.departamento = parseInt(formData.departamento_nuevo) || null;
+        datos.fechaIngreso = formData.fecha_efectiva;
         break;
         
       case 'PROMOCION':

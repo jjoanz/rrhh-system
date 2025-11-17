@@ -61,6 +61,7 @@ router.post(
   authenticateToken, 
   VacacionesController.crearSolicitud
 );
+router.post('/vacaciones/entrada-manual', VacacionesController.crearSolicitudManual);
 
 // 6️⃣ Obtener detalles de una solicitud específica
 // GET /api/vacaciones/:id

@@ -2021,113 +2021,395 @@ const puedeAprobar = (solicitud) => {
               </div>
             )}
             {activeTab === 'entrada_manual' && (
-            <div>
-              {/* Alerta informativa */}
-              <div style={{
-                background: '#fef3c7',
-                border: '1px solid #fcd34d',
-                borderRadius: '0.5rem',
-                padding: '1rem',
-                marginBottom: '2rem',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.75rem'
-              }}>
-                <AlertTriangle style={{ width: '1.25rem', height: '1.25rem', color: '#92400e' }} />
-                <div>
-                  <h4 style={{ fontSize: '0.875rem', fontWeight: '600', color: '#92400e', margin: 0, marginBottom: '0.25rem' }}>
-                    Entrada Manual de Solicitudes Ejecutadas
-                  </h4>
-                  <p style={{ fontSize: '0.75rem', color: '#92400e', margin: 0 }}>
-                    Registra solicitudes que YA fueron ejecutadas para descontar los días del balance.
-                  </p>
+              <div>
+                {/* Alerta informativa */}
+                <div style={{
+                  background: '#fef3c7',
+                  border: '1px solid #fcd34d',
+                  borderRadius: '0.5rem',
+                  padding: '1rem',
+                  marginBottom: '2rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.75rem'
+                }}>
+                  <AlertTriangle style={{ width: '1.25rem', height: '1.25rem', color: '#92400e' }} />
+                  <div>
+                    <h4 style={{ fontSize: '0.875rem', fontWeight: '600', color: '#92400e', margin: 0, marginBottom: '0.25rem' }}>
+                      Entrada Manual de Solicitudes Ejecutadas
+                    </h4>
+                    <p style={{ fontSize: '0.75rem', color: '#92400e', margin: 0 }}>
+                      Registra solicitudes que YA fueron ejecutadas para descontar los días del balance.
+                    </p>
+                  </div>
                 </div>
-              </div>
 
-              <h3 style={{ fontSize: '1.25rem', fontWeight: '600', color: '#111827', marginBottom: '1.5rem' }}>
-                Registrar Solicitud Ejecutada
-              </h3>
+                <h3 style={{ fontSize: '1.25rem', fontWeight: '600', color: '#111827', marginBottom: '1.5rem' }}>
+                  Registrar Solicitud Ejecutada
+                </h3>
 
-              {/* Aquí va TODO el formulario completo que te envié antes */}
-              <form onSubmit={async (e) => {
-                e.preventDefault();
-                
-                if (!entradaManualForm.empleadoId) {
-                  showNotification({
-                    title: 'Error',
-                    message: 'Debes seleccionar un empleado',
-                    color: 'red'
-                  });
-                  return;
-                }
-
-                const inicio = new Date(entradaManualForm.fechaInicio);
-                const fin = new Date(entradaManualForm.fechaFin);
-                
-                if (fin < inicio) {
-                  showNotification({
-                    title: 'Error',
-                    message: 'La fecha de fin debe ser posterior a la fecha de inicio',
-                    color: 'red'
-                  });
-                  return;
-                }
-
-                const diffTime = fin - inicio;
-                const dias = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
-                
-                let diasHabiles = 0;
-                for (let d = new Date(inicio); d <= fin; d.setDate(d.getDate() + 1)) {
-                  const diaSemana = d.getDay();
-                  if (diaSemana !== 0 && diaSemana !== 6) diasHabiles++;
-                }
-
-                try {
-                  setLoading(true);
+                <form onSubmit={async (e) => {
+                  e.preventDefault();
                   
-                  await vacacionesService.crearSolicitudManual({
-                    empleadoId: entradaManualForm.empleadoId,
-                    tipo: entradaManualForm.tipoSolicitud,
-                    fechaInicio: entradaManualForm.fechaInicio,
-                    fechaFin: entradaManualForm.fechaFin,
-                    dias: dias,
-                    diasHabiles: diasHabiles,
-                    motivo: `[ENTRADA MANUAL - RRHH] ${entradaManualForm.justificacion}${entradaManualForm.documentoReferencia ? ` | Ref: ${entradaManualForm.documentoReferencia}` : ''}`
-                  });
+                  if (!entradaManualForm.empleadoId) {
+                    showNotification({
+                      title: 'Error',
+                      message: 'Debes seleccionar un empleado',
+                      color: 'red'
+                    });
+                    return;
+                  }
 
-                  showNotification({
-                    title: 'Éxito',
-                    message: `Solicitud registrada y ${dias} días descontados del balance de ${entradaManualForm.empleadoNombre}`,
-                    color: 'green'
-                  });
+                  const inicio = new Date(entradaManualForm.fechaInicio);
+                  const fin = new Date(entradaManualForm.fechaFin);
+                  
+                  if (fin < inicio) {
+                    showNotification({
+                      title: 'Error',
+                      message: 'La fecha de fin debe ser posterior a la fecha de inicio',
+                      color: 'red'
+                    });
+                    return;
+                  }
 
-                  setEntradaManualForm({
-                    empleadoId: null,
-                    empleadoNombre: '',
-                    tipoSolicitud: 'vacaciones',
-                    fechaInicio: '',
-                    fechaFin: '',
-                    justificacion: '',
-                    documentoReferencia: ''
-                  });
-                  setEmpleadoBusqueda('');
+                  const diffTime = fin - inicio;
+                  const dias = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+                  
+                  let diasHabiles = 0;
+                  for (let d = new Date(inicio); d <= fin; d.setDate(d.getDate() + 1)) {
+                    const diaSemana = d.getDay();
+                    if (diaSemana !== 0 && diaSemana !== 6) diasHabiles++;
+                  }
 
-                  await cargarDatos();
-                } catch (error) {
-                  showNotification({
-                    title: 'Error',
-                    message: 'Error al registrar: ' + (error.response?.data?.error || error.message),
-                    color: 'red'
-                  });
-                } finally {
-                  setLoading(false);
-                }
-              }} style={{ maxWidth: '48rem' }}>
-                
-                {/* Aquí va todo el resto del formulario que te di en el mensaje anterior */}
-              </form>
-            </div>
-          )}
+                  try {
+                    setLoading(true);
+                    
+                    await vacacionesService.crearSolicitudManual({
+                      empleadoId: entradaManualForm.empleadoId,
+                      tipo: entradaManualForm.tipoSolicitud,
+                      fechaInicio: entradaManualForm.fechaInicio,
+                      fechaFin: entradaManualForm.fechaFin,
+                      dias: dias,
+                      diasHabiles: diasHabiles,
+                      motivo: `[ENTRADA MANUAL - RRHH] ${entradaManualForm.justificacion}${entradaManualForm.documentoReferencia ? ` | Ref: ${entradaManualForm.documentoReferencia}` : ''}`
+                    });
+
+                    showNotification({
+                      title: 'Éxito',
+                      message: `Solicitud registrada y ${dias} días descontados del balance de ${entradaManualForm.empleadoNombre}`,
+                      color: 'green'
+                    });
+
+                    setEntradaManualForm({
+                      empleadoId: null,
+                      empleadoNombre: '',
+                      tipoSolicitud: 'vacaciones',
+                      fechaInicio: '',
+                      fechaFin: '',
+                      justificacion: '',
+                      documentoReferencia: ''
+                    });
+                    setEmpleadoBusqueda('');
+
+                    await cargarDatos();
+                  } catch (error) {
+                    showNotification({
+                      title: 'Error',
+                      message: 'Error al registrar: ' + (error.response?.data?.error || error.message),
+                      color: 'red'
+                    });
+                  } finally {
+                    setLoading(false);
+                  }
+                }} style={{ maxWidth: '48rem' }}>
+                  
+                  {/* Selector de Empleado */}
+                  <div style={{ marginBottom: '1.5rem' }}>
+                    <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: '500', color: '#374151', marginBottom: '0.5rem' }}>
+                      Empleado *
+                    </label>
+                    <div style={{ position: 'relative' }}>
+                      <div style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.5rem',
+                        padding: '0.75rem',
+                        border: '1px solid #d1d5db',
+                        borderRadius: '0.5rem',
+                        background: 'white'
+                      }}>
+                        <Users style={{ width: '1.25rem', height: '1.25rem', color: '#6b7280' }} />
+                        <input
+                          type="text"
+                          value={entradaManualForm.empleadoNombre || empleadoBusqueda}
+                          onChange={(e) => {
+                            setEmpleadoBusqueda(e.target.value);
+                            setMostrarListaEmpleados(true);
+                            setEntradaManualForm(prev => ({ ...prev, empleadoId: null, empleadoNombre: '' }));
+                          }}
+                          onFocus={() => setMostrarListaEmpleados(true)}
+                          placeholder="Buscar empleado..."
+                          style={{
+                            flex: 1,
+                            border: 'none',
+                            outline: 'none',
+                            fontSize: '1rem'
+                          }}
+                          required
+                        />
+                      </div>
+
+                      {mostrarListaEmpleados && empleadoBusqueda && (
+                        <div style={{
+                          position: 'absolute',
+                          top: '100%',
+                          left: 0,
+                          right: 0,
+                          marginTop: '0.25rem',
+                          background: 'white',
+                          border: '1px solid #d1d5db',
+                          borderRadius: '0.5rem',
+                          boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+                          maxHeight: '16rem',
+                          overflow: 'auto',
+                          zIndex: 10
+                        }}>
+                          {empleados
+                            .filter(emp => 
+                              emp.nombre.toLowerCase().includes(empleadoBusqueda.toLowerCase())
+                            )
+                            .map(empleado => (
+                              <button
+                                key={empleado.id}
+                                type="button"
+                                onClick={() => {
+                                  setEntradaManualForm(prev => ({
+                                    ...prev,
+                                    empleadoId: empleado.id,
+                                    empleadoNombre: empleado.nombre
+                                  }));
+                                  setEmpleadoBusqueda('');
+                                  setMostrarListaEmpleados(false);
+                                }}
+                                style={{
+                                  width: '100%',
+                                  padding: '0.75rem',
+                                  textAlign: 'left',
+                                  border: 'none',
+                                  background: 'white',
+                                  cursor: 'pointer',
+                                  borderBottom: '1px solid #f3f4f6'
+                                }}
+                                onMouseOver={(e) => e.target.style.background = '#f9fafb'}
+                                onMouseOut={(e) => e.target.style.background = 'white'}
+                              >
+                                <div style={{ fontWeight: '500', color: '#111827' }}>
+                                  {empleado.nombre}
+                                </div>
+                                <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>
+                                  {empleado.puesto} • {empleado.departamento}
+                                </div>
+                              </button>
+                            ))}
+                        </div>
+                      )}
+
+                      {entradaManualForm.empleadoId && (
+                        <div style={{
+                          marginTop: '0.5rem',
+                          padding: '0.75rem',
+                          background: '#f0f9ff',
+                          border: '1px solid #bae6fd',
+                          borderRadius: '0.375rem'
+                        }}>
+                          <p style={{ fontSize: '0.875rem', color: '#0369a1', margin: 0 }}>
+                            ✓ Seleccionado: <strong>{entradaManualForm.empleadoNombre}</strong>
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Tipo de Solicitud */}
+                  <div style={{ marginBottom: '1.5rem' }}>
+                    <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: '500', color: '#374151', marginBottom: '0.5rem' }}>
+                      Tipo de Solicitud *
+                    </label>
+                    <select
+                      value={entradaManualForm.tipoSolicitud}
+                      onChange={(e) => setEntradaManualForm(prev => ({ ...prev, tipoSolicitud: e.target.value }))}
+                      style={{
+                        width: '100%',
+                        padding: '0.75rem',
+                        border: '1px solid #d1d5db',
+                        borderRadius: '0.5rem',
+                        fontSize: '1rem'
+                      }}
+                      required
+                    >
+                      <option value="vacaciones">Vacaciones</option>
+                      <option value="permiso">Permiso Personal</option>
+                      <option value="permiso_año">Permiso del Año</option>
+                      <option value="cumpleaños">Permiso de Cumpleaños</option>
+                      <option value="medico">Permiso Médico</option>
+                    </select>
+                  </div>
+
+                  {/* Fechas */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.5rem' }}>
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: '500', color: '#374151', marginBottom: '0.5rem' }}>
+                        Fecha de Inicio *
+                      </label>
+                      <input
+                        type="date"
+                        value={entradaManualForm.fechaInicio}
+                        onChange={(e) => setEntradaManualForm(prev => ({ ...prev, fechaInicio: e.target.value }))}
+                        style={{
+                          width: '100%',
+                          padding: '0.75rem',
+                          border: '1px solid #d1d5db',
+                          borderRadius: '0.5rem',
+                          fontSize: '1rem'
+                        }}
+                        required
+                      />
+                    </div>
+
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: '500', color: '#374151', marginBottom: '0.5rem' }}>
+                        Fecha de Fin *
+                      </label>
+                      <input
+                        type="date"
+                        value={entradaManualForm.fechaFin}
+                        onChange={(e) => setEntradaManualForm(prev => ({ ...prev, fechaFin: e.target.value }))}
+                        min={entradaManualForm.fechaInicio}
+                        style={{
+                          width: '100%',
+                          padding: '0.75rem',
+                          border: '1px solid #d1d5db',
+                          borderRadius: '0.5rem',
+                          fontSize: '1rem'
+                        }}
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  {/* Cálculo de días */}
+                  {entradaManualForm.fechaInicio && entradaManualForm.fechaFin && (() => {
+                    const inicio = new Date(entradaManualForm.fechaInicio);
+                    const fin = new Date(entradaManualForm.fechaFin);
+                    const diffTime = fin - inicio;
+                    const dias = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+                    
+                    let diasHabiles = 0;
+                    for (let d = new Date(inicio); d <= fin; d.setDate(d.getDate() + 1)) {
+                      const diaSemana = d.getDay();
+                      if (diaSemana !== 0 && diaSemana !== 6) diasHabiles++;
+                    }
+                    
+                    return dias > 0 ? (
+                      <div style={{
+                        background: '#f0f9ff',
+                        border: '1px solid #bae6fd',
+                        borderRadius: '0.5rem',
+                        padding: '1rem',
+                        marginBottom: '1.5rem'
+                      }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '1rem' }}>
+                          <div>
+                            <p style={{ fontSize: '0.75rem', color: '#0369a1', margin: 0, fontWeight: '600' }}>
+                              DÍAS TOTALES
+                            </p>
+                            <p style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#0369a1', margin: 0 }}>
+                              {dias}
+                            </p>
+                          </div>
+                          <div>
+                            <p style={{ fontSize: '0.75rem', color: '#0369a1', margin: 0, fontWeight: '600' }}>
+                              DÍAS HÁBILES
+                            </p>
+                            <p style={{ fontSize: '1.5rem', fontWeight: 'bold', color: '#0369a1', margin: 0 }}>
+                              {diasHabiles}
+                            </p>
+                          </div>
+                        </div>
+                        <p style={{ fontSize: '0.75rem', color: '#0369a1', margin: 0, marginTop: '0.5rem' }}>
+                          ⚠️ Estos días serán descontados del balance del empleado
+                        </p>
+                      </div>
+                    ) : null;
+                  })()}
+
+                  {/* Justificación */}
+                  <div style={{ marginBottom: '1.5rem' }}>
+                    <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: '500', color: '#374151', marginBottom: '0.5rem' }}>
+                      Justificación / Motivo *
+                    </label>
+                    <textarea
+                      value={entradaManualForm.justificacion}
+                      onChange={(e) => setEntradaManualForm(prev => ({ ...prev, justificacion: e.target.value }))}
+                      placeholder="Ejemplo: Empleado tomó vacaciones sin registrar, permiso verbal autorizado, etc."
+                      rows={3}
+                      style={{
+                        width: '100%',
+                        padding: '0.75rem',
+                        border: '1px solid #d1d5db',
+                        borderRadius: '0.5rem',
+                        fontSize: '1rem',
+                        resize: 'vertical'
+                      }}
+                      required
+                    />
+                  </div>
+
+                  {/* Documento/Referencia */}
+                  <div style={{ marginBottom: '1.5rem' }}>
+                    <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: '500', color: '#374151', marginBottom: '0.5rem' }}>
+                      Documento o Referencia (Opcional)
+                    </label>
+                    <input
+                      type="text"
+                      value={entradaManualForm.documentoReferencia}
+                      onChange={(e) => setEntradaManualForm(prev => ({ ...prev, documentoReferencia: e.target.value }))}
+                      placeholder="Número de documento, email de autorización, etc."
+                      style={{
+                        width: '100%',
+                        padding: '0.75rem',
+                        border: '1px solid #d1d5db',
+                        borderRadius: '0.5rem',
+                        fontSize: '1rem'
+                      }}
+                    />
+                  </div>
+
+                  {/* Botón de envío */}
+                  <button
+                    type="submit"
+                    disabled={loading}
+                    style={{
+                      background: loading ? '#9ca3af' : '#dc2626',
+                      color: 'white',
+                      padding: '0.75rem 1.5rem',
+                      borderRadius: '0.5rem',
+                      border: 'none',
+                      fontSize: '1rem',
+                      fontWeight: '500',
+                      cursor: loading ? 'not-allowed' : 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '0.5rem'
+                    }}
+                  >
+                    <FileText style={{ width: '1rem', height: '1rem' }} />
+                    {loading ? 'Registrando...' : 'Registrar y Descontar Días'}
+                  </button>
+                </form>
+              </div>
+                        
+            )}
           </div>
         </div>
       </div>
